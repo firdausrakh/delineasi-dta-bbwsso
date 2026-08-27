@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+{% block title %}Delineasi DTA{% endblock %}
+{% block body_class %}spatial-page{% endblock %}
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.0-p33" />
+{% endblock %}
+{% block content %}
+<main id="spatialWorkspace" class="webgis-shell">
+    <aside id="sidebar" class="sidebar">
+            <div class="sidebar-scroll">
+        <div class="sidebar-title">
+          <div class="section-icon"><i data-lucide="route"></i></div>
+          <div class="sidebar-title-copy"><span class="eyebrow">ANALISIS SPASIAL</span><h1>Delineasi DTA</h1></div>
+          <button id="usageInfoBtn" class="sidebar-title-info" type="button" aria-label="Pemberitahuan penggunaan"><i data-lucide="info"></i></button>
+        </div>
+        <div class="sidebar-info-links">
+          <button id="definitionSidebarBtn" class="definition-link" type="button"><i data-lucide="circle-help"></i>Istilah & Definisi</button>
+          <button id="methodologySidebarBtn" class="definition-link" type="button"><i data-lucide="book-open-text"></i>Metodologi & Sumber Data</button>
+        </div>
+
+        <section class="panel-section">
+          <div class="section-heading"><h2>Pilih Titik</h2><span id="pointModeBadge" class="step-badge">Mode satu titik</span></div>
+          <p class="help">Pencarian dan <b>Tampilkan Titik</b> dapat digunakan sebagai pratinjau kapan saja. Klik peta baru memilih outlet setelah <b>Mulai Tambah Titik</b> diaktifkan. Pilih <b>Satu Titik</b> untuk mengganti hasil sebelumnya atau <b>Multi Titik</b> untuk menambahkan beberapa outlet.</p>
+          <label>Koordinat <span class="muted-inline">(Lintang, Bujur)</span>
+            <input id="coordinateInput" type="text" spellcheck="false" inputmode="text" placeholder="DD atau DMS" autocomplete="off" aria-describedby="coordinateHint" />
+          </label>
+          <div id="coordinateHint" class="coordinate-example">Contoh DD: <code>-7.388059, 109.742619</code><br>Contoh DMS: <code>7°23'17.0&quot;S 109°44'33.4&quot;E</code></div>
+          <button id="previewCoordinateBtn" class="btn btn-neutral full" type="button"><i data-lucide="map-pin"></i>Tampilkan Titik</button>
+        </section>
+
+        <details class="advanced panel-section">
+          <summary><i data-lucide="sliders-horizontal"></i>Pengaturan lanjutan</summary>
+          <label data-help="Jarak maksimum pencarian dari titik yang dipilih menuju jaringan sungai DEM yang digunakan untuk menentukan titik tuang. Gunakan nilai lebih besar hanya bila titik berada cukup jauh dari alur hasil ekstraksi."><span class="field-label-line">Pencarian sungai terdekat</span>
+            <select id="snapRadius">
+              <option value="100">100 m</option>
+              <option value="300" selected>300 m (bawaan)</option>
+              <option value="500">500 m</option>
+              <option value="1000">1 km</option>
+              <option value="2000">2 km</option>
+            </select>
+          </label>
+          <label data-help="Koridor maksimum antara batas DTA hasil DEM dan Batas DAS. Segmen batas DTA yang berada di dalam koridor ini dapat diselaraskan ke Batas DAS apabila lolos pemeriksaan topologi dan bentuk."><span class="field-label-line">Jarak penyesuaian batas DAS</span>
+            <select id="boundaryMatch">
+              <option value="30">30 m</option><option value="60">60 m</option><option value="90">90 m</option><option value="120" selected>120 m (bawaan)</option><option value="150">150 m</option>
+            </select>
+          </label>
+        </details>
+
+        <div id="status" class="status neutral">Mode Satu Titik. Tekan Mulai Tambah Titik untuk memilih outlet.</div>
+
+        <section class="panel-section outlet-section">
+          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA per pemrosesan</div></div><div class="result-heading-actions"><button id="focusAllDtaBtn" class="text-button focus-all-button result-stack-button" type="button" aria-label="Fokus semua DTA" disabled><i data-lucide="scan-search"></i><span>Fokus<br>Semua</span></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
+          <div id="pointList" class="point-list"><div class="empty-state">Belum ada hasil delineasi.</div></div>
+          <div class="point-input-control-row spaced-add-point" role="group" aria-label="Kontrol penambahan titik">
+            <button id="addPointSessionBtn" class="btn btn-neutral add-point-session" type="button" aria-pressed="false"><i data-lucide="crosshair"></i>Mulai Tambah Titik</button>
+            <button id="pointModeBtn" class="btn btn-neutral point-mode-toggle" type="button" aria-pressed="false" aria-label="Ubah ke mode multi titik"><i data-lucide="map-pin"></i>Satu Titik</button>
+          </div>
+        </section>
+
+        <section id="relationshipPanel" class="panel-section hidden"><h2>Hubungan Antar Titik</h2><div id="relationshipContent" class="relationship-content"></div></section>
+
+        <div class="sidebar-actions">
+          <button id="downloadBtn" class="btn btn-download full" type="button" disabled><i data-lucide="download"></i>Unduh Hasil</button>
+        </div>
+
+      </div>
+    </aside>
+
+    <section id="mapWrap" class="map-wrap">
+      <div id="map"></div>
+
+      <form id="mapSearchForm" class="map-search maplibregl-ctrl hidden" autocomplete="off">
+        <button id="sidebarSearchToggle" class="search-sidebar-toggle" type="button" title="Tampilkan/sembunyikan panel" aria-label="Tampilkan atau sembunyikan panel"><i data-lucide="panel-left-close"></i></button>
+        <input id="searchInput" type="search" placeholder="Cari" aria-label="Cari" />
+        <button type="submit" class="search-submit" title="Cari"><i data-lucide="search"></i></button>
+        <div id="mapModeIndicator" class="map-mode-indicator single" role="status" aria-live="polite"><span class="mode-dot"></span><span id="mapModeIndicatorText">Satu titik</span></div>
+        <div id="searchResults" class="map-search-results hidden"></div>
+      </form>
+      <div id="mapToolbarControl" class="map-toolbar-control maplibregl-ctrl maplibregl-ctrl-group hidden" role="toolbar" aria-label="Alat peta">
+        <button id="zoomInBtn" type="button" title="Perbesar" aria-label="Perbesar"><i data-lucide="plus"></i></button>
+        <button id="zoomOutBtn" type="button" title="Perkecil" aria-label="Perkecil"><i data-lucide="minus"></i></button>
+        <button id="resetNorthBtn" type="button" title="Atur ulang arah" aria-label="Atur ulang arah"><i data-lucide="compass"></i></button>
+        <button id="fullscreenBtn" type="button" title="Layar penuh" aria-label="Layar penuh"><i data-lucide="maximize"></i></button>
+        <button id="homeBtn" type="button" title="Tampilkan seluruh wilayah" aria-label="Tampilkan seluruh wilayah"><i data-lucide="house"></i></button>
+        <button id="basemapBtn" type="button" title="Peta Dasar" aria-label="Peta Dasar"><i data-lucide="map"></i></button>
+        <button id="layerBtn" type="button" title="Layer dan tampilan" aria-label="Layer dan tampilan"><i data-lucide="layers-3"></i></button>
+        <button id="measureBtn" type="button" title="Penggaris" aria-label="Penggaris"><i data-lucide="ruler"></i></button>
+      </div>
+
+      <div id="coordReadout" class="coord-readout maplibregl-ctrl hidden">—</div>
+
+      <div id="dtaColorPickerPanel" class="dta-colorpicker-panel hidden" aria-label="Pilih warna DTA">
+        <div class="dta-colorpicker-head"><strong>Warna DTA</strong><button id="closeDtaColorPicker" type="button" aria-label="Tutup pemilih warna"><i data-lucide="x"></i></button></div>
+        <div class="dta-colorpicker-body">
+          <div class="layer-row dta-color-inline-row"><label for="dtaColorNativeInput">Pilih warna</label><input id="dtaColorNativeInput" class="color-input" type="color" value="#d94841" aria-label="Pilih warna DTA" /></div>
+          <label class="dta-color-hex-label">HEX
+            <input id="dtaColorHexInput" type="text" value="#d94841" maxlength="7" autocomplete="off" spellcheck="false" inputmode="text" aria-label="Kode HEX warna DTA">
+          </label>
+          <div id="dtaColorInputMessage" class="dta-color-input-message">Gunakan pemilih warna atau masukkan HEX #RRGGBB.</div>
+        </div>
+      </div>
+
+      <div id="layerPanel" class="map-panel layer-panel hidden">
+        <div class="panel-title-row"><strong>Layer & Tampilan</strong><button id="closeLayerPanel" class="panel-close" type="button"><i data-lucide="x"></i></button></div>
+        <div class="layer-group">
+          <label class="check-row"><input id="showHillshade" type="checkbox" /> Esri Hillshade</label>
+          <label class="range-row">Opasitas <input id="hillshadeOpacity" type="range" min="0" max="100" value="100" /><span id="hillshadeOpacityValue">100%</span></label>
+        </div>
+        <div class="layer-group">
+          <div class="layer-row"><label class="check-row"><input id="showBasins" type="checkbox" checked /> Batas DAS <button id="basinSourceBtn" class="inline-info" type="button" title="Sumber Batas DAS"><i data-lucide="info"></i></button></label><input id="basinColor" class="color-input" type="color" value="#9b7300" /></div>
+          <label class="check-row child-row"><input id="showBasinLabels" type="checkbox" checked /> Nama DAS</label>
+        </div>
+        <div class="layer-group">
+          <div class="layer-row"><label class="check-row"><input id="showRivers" type="checkbox" checked /> Jaringan Sungai</label><input id="riverColor" class="color-input" type="color" value="#0083d7" /></div>
+          <label class="check-row child-row"><input id="autoRiverZoom" type="checkbox" checked /> Otomatis sesuai zoom</label>
+          <div class="river-orders">
+            <label class="check-row"><input class="river-order-toggle" data-order="1" type="checkbox" checked /> Orde 1</label>
+            <label class="check-row"><input class="river-order-toggle" data-order="2" type="checkbox" checked /> Orde 2</label>
+            <label class="check-row"><input class="river-order-toggle" data-order="3" type="checkbox" checked /> Orde 3</label>
+            <label class="check-row"><input class="river-order-toggle" data-order="other" type="checkbox" checked /> Orde &gt; 3</label>
+          </div>
+          <label class="check-row child-row"><input id="showRiverLabels" type="checkbox" checked /> Label sungai</label>
+        </div>
+        <div class="layer-group">
+          <div class="small-title">DTA hasil delineasi</div>
+          <label class="check-row"><input id="showHatch" type="checkbox" /> Arsiran</label>
+          <label class="range-row">Opasitas <input id="hatchOpacity" type="range" min="5" max="70" value="22" /><span id="hatchOpacityValue">22%</span></label>
+        </div>
+        <div class="layer-group">
+          <label class="range-row strong-range">Ketebalan garis <input id="lineWidth" type="range" min="0.8" max="5" step="0.2" value="2" /><span id="lineWidthValue">2.0 px</span></label>
+        </div>
+        <div class="layer-group layer-actions">
+          <button id="resetColorsBtn" class="btn btn-neutral full reset-colors-btn" type="button"><i data-lucide="rotate-ccw"></i>Reset</button>
+        </div>
+      </div>
+
+      <div id="basemapModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="basemapModalTitle">
+        <div class="modal-card basemap-modal">
+          <div class="modal-head"><div><span class="eyebrow">TAMPILAN PETA</span><h2 id="basemapModalTitle">Peta Dasar</h2></div><button id="closeBasemapModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
+          <button id="noBasemapBtn" class="no-basemap-option" type="button"><i data-lucide="layers-2"></i><span><b>Tanpa Peta Dasar</b></span></button>
+          <div id="basemapGallery" class="basemap-gallery">
+            <button class="basemap-card active" type="button" data-basemap="world-topo" aria-pressed="true"><span class="basemap-thumb basemap-thumb-world-topo"></span><span class="basemap-card-label">Esri World Topographic</span></button>
+            <button class="basemap-card" type="button" data-basemap="esri-satellite" aria-pressed="false"><span class="basemap-thumb basemap-thumb-esri-satellite"></span><span class="basemap-card-label">Esri Satellite</span></button>
+            <button class="basemap-card" type="button" data-basemap="osm" aria-pressed="false"><span class="basemap-thumb basemap-thumb-osm"></span><span class="basemap-card-label">OpenStreetMap</span></button>
+            <button class="basemap-card" type="button" data-basemap="google-maps" aria-pressed="false"><span class="basemap-thumb basemap-thumb-google-maps"></span><span class="basemap-card-label">Google Maps</span></button>
+            <button class="basemap-card" type="button" data-basemap="google-satellite" aria-pressed="false"><span class="basemap-thumb basemap-thumb-google-satellite"></span><span class="basemap-card-label">Google Satellite</span></button>
+            <button class="basemap-card" type="button" data-basemap="rbi" aria-pressed="false"><span class="basemap-thumb basemap-thumb-rbi"></span><span class="basemap-card-label">Peta Rupabumi Indonesia</span></button>
+            <button class="basemap-card" type="button" data-basemap="esri-dark-gray" aria-pressed="false"><span class="basemap-thumb basemap-thumb-esri-dark"></span><span class="basemap-card-label">Esri Dark Gray Canvas</span></button>
+            <button class="basemap-card" type="button" data-basemap="esri-light-gray" aria-pressed="false"><span class="basemap-thumb basemap-thumb-esri-light"></span><span class="basemap-card-label">Esri Light Gray Canvas</span></button>
+            <button class="basemap-card" type="button" data-basemap="opentopomap" aria-pressed="false"><span class="basemap-thumb basemap-thumb-opentopo"></span><span class="basemap-card-label">OpenTopoMap</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div id="measurePanel" class="map-panel measure-panel hidden"><strong>Penggaris</strong><div id="measureText">Klik titik pertama pada peta.</div><button id="clearMeasureBtn" type="button"><i data-lucide="trash-2"></i>Hapus pengukuran</button></div>
+
+      <div id="usageNoticeModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="usageNoticeTitle">
+        <div class="modal-card warning-modal usage-notice-modal"><div class="warning-icon neutral-icon"><i data-lucide="info"></i></div><span class="eyebrow">PEMBERITAHUAN PENGGUNAAN</span><h2 id="usageNoticeTitle">Batas DTA Bersifat Indikatif</h2><p>Batas Daerah Tangkapan Air yang dihasilkan sistem ini digunakan sebagai acuan awal dan tidak menggantikan verifikasi kondisi hidrologi di lapangan. Survei dan/atau validasi lapangan tetap direkomendasikan untuk memastikan arah aliran aktual, kondisi mikro-topografi, bangunan air, perubahan morfologi, serta kondisi lokal lain yang mungkin belum terwakili dalam model elevasi dan data jaringan sungai.</p><button id="acceptUsageNotice" class="btn btn-primary" type="button">Mengerti</button></div>
+      </div>
+
+      <div id="karstModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card warning-modal"><div class="warning-icon"><i data-lucide="triangle-alert"></i></div><h2>Kawasan Bentang Alam Karst Terdeteksi</h2><h3>Delineasi Otomatis Tidak Dapat Diproses</h3><p id="karstMessage"></p><div id="karstBasin" class="modal-meta"></div><button id="closeKarstModal" class="btn btn-primary" type="button">Mengerti</button></div>
+      </div>
+
+      <div id="outsideModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card warning-modal"><div class="warning-icon neutral-icon"><i data-lucide="map-pinned"></i></div><h2>Berada di luar wilayah BBWS Serayu Opak</h2><p>Titik yang dipilih berada di luar cakupan wilayah aplikasi.</p><button id="closeOutsideModal" class="btn btn-primary" type="button">Mengerti</button></div>
+      </div>
+
+      <div id="confirmClearModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card confirm-modal"><div class="modal-head"><div><span class="eyebrow">KONFIRMASI</span><h2>Hapus seluruh DTA?</h2></div><button id="closeClearModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div><p>Semua titik dan hasil delineasi akan dihapus dari peta.</p><div class="modal-actions"><button id="cancelClearBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmClearBtn" class="btn btn-danger" type="button"><i data-lucide="trash-2"></i>Hapus Semua</button></div></div>
+      </div>
+
+      <div id="downloadModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card download-modal">
+          <div class="modal-head"><div><span class="eyebrow">EKSPOR DATA</span><h2>Unduh Hasil DTA</h2></div><button id="closeDownloadModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <div class="download-section"><strong>Geometri DTA</strong>
+            <label class="choice-card"><input class="geometry-mode" type="checkbox" value="smoothed" checked /><span><b>Diperhalus</b><small>Direkomendasikan untuk peta, laporan, dan penggunaan GIS.</small></span></label>
+            <label class="choice-card"><input class="geometry-mode" type="checkbox" value="raw" /><span><b>Asli</b><small>Batas hasil perhitungan sebelum perapihan.</small></span></label>
+          </div>
+          <div class="download-section"><strong>Format</strong><div class="format-grid">
+            <label class="check-card"><input class="download-format" type="checkbox" value="gpkg" checked /> GeoPackage</label>
+            <label class="check-card"><input class="download-format" type="checkbox" value="shp" /> Shapefile</label>
+            <label class="check-card"><input class="download-format" type="checkbox" value="geojson" /> GeoJSON</label>
+            <label class="check-card"><input class="download-format" type="checkbox" value="kml" /> KML</label>
+          </div></div>
+          <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" checked /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
+          <div id="downloadSummary" class="download-summary" aria-live="polite"></div>
+          <div id="downloadStatus" class="download-status"></div>
+          <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh ZIP</button></div>
+        </div>
+      </div>
+
+      <div id="definitionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card definition-modal">
+          <div class="modal-head"><div><span class="eyebrow">REFERENSI</span><h2>Istilah & Definisi</h2></div><button id="closeDefinitionModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <article><h3>Daerah Aliran Sungai (DAS)</h3><p>Daerah Aliran Sungai yang selanjutnya disebut DAS adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan dan mengalirkan air yang berasal dari curah hujan ke danau atau ke laut secara alami, yang batas di darat merupakan pemisah topografis dan batas di laut sampai dengan daerah perairan yang masih terpengaruh aktivitas daratan.</p><cite>Peraturan Pemerintah Nomor 37 Tahun 2012 tentang Pengelolaan Daerah Aliran Sungai</cite></article>
+          <article><h3>Daerah Tangkapan Air (DTA)</h3><p>Daerah Tangkapan Air adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan, dan mengalirkan Air yang berasal dari curah hujan ke titik bangunan pengambilan debit sungai yang ditinjau, yang batas di darat merupakan pemisah topografis dan batas di hilir sampai dengan bangunan bendung atau bendungan.</p><cite>Peraturan Pemerintah Nomor 30 Tahun 2024 tentang Pengelolaan Sumber Daya Air</cite><div class="app-definition-note"><b>Penerapan dalam aplikasi:</b> DTA digunakan untuk menyatakan wilayah yang berkontribusi aliran pada titik tinjau yang dipilih pengguna.</div></article>
+          <article><h3>Sub DAS</h3><p>Sub DAS adalah bagian DAS yang menerima air hujan dan mengalirkannya melalui anak sungai ke sungai utama. Setiap DAS terbagi habis kedalam Sub DAS-Sub DAS.</p><cite>Keputusan Menteri Kehutanan Nomor 52/KPTS-II/2001 Tahun 2001 tentang Pedoman Penyelenggaraan Pengelolaan Daerah Aliran Sungai</cite></article>
+          <div class="definition-example">
+            <h3>Contoh Hubungan DAS, Sub DAS, dan DTA</h3>
+            <p>Hubungan DAS, Sub DAS, dan DTA dapat dipahami sebagai himpunan yang saling berada di dalam. Posisi outlet menentukan apakah DTA berada di dalam satu Sub DAS atau mewakili gabungan beberapa Sub DAS dan tangkapan langsung dalam satu DAS.</p>
+
+            <div class="definition-example-grid">
+              <section class="definition-example-case compact">
+                <div class="definition-example-head">
+                  <h4>Bendung Pleret</h4>
+                  <span class="definition-example-formula">DTA Bendung Pleret ⊂ Sub DAS Elo ⊂ DAS Progo</span>
+                </div>
+                <p>Bendung Pleret berada di Kali Elo. Karena outlet berada pada anak sungai Elo, maka DTA-nya berada di dalam Sub DAS Elo, dan Sub DAS Elo berada di dalam DAS Progo.</p>
+                <div class="set-visual set-visual-single" aria-label="Visual himpunan Bendung Pleret">
+                  <div class="set-circle set-circle-outer">
+                    <span>DAS Progo</span>
+                    <div class="set-circle set-circle-middle">
+                      <span>Sub DAS Elo</span>
+                      <div class="set-circle set-circle-inner">
+                        <span>DTA Bendung Pleret</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="definition-example-case compact">
+                <div class="definition-example-head">
+                  <h4>Waduk Mrica</h4>
+                  <span class="definition-example-formula">{Sub DAS ...} ⊂ DTA Waduk Mrica ⊂ DAS Serayu</span>
+                </div>
+                <p>Waduk Mrica berada di Kali Serayu. DTA Waduk Mrica dapat mencakup beberapa Sub DAS dan tangkapan langsung yang seluruh alirannya menuju waduk, sehingga DTA-nya merupakan bagian dari DAS Serayu.</p>
+                <div class="set-visual set-visual-multi" aria-label="Visual himpunan Waduk Mrica">
+                  <div class="set-circle set-circle-outer">
+                    <span>DAS Serayu</span>
+                    <div class="set-circle set-circle-middle large">
+                      <span>DTA Waduk Mrica</span>
+                      <div class="set-node-group set-node-group-five">
+                        <div class="set-circle set-circle-node"><span>Sub DAS<br>Merawu</span></div>
+                        <div class="set-circle set-circle-node"><span>Sub DAS<br>Begaluh</span></div>
+                        <div class="set-circle set-circle-node"><span>Sub DAS<br>Tulis</span></div>
+                        <div class="set-circle set-circle-node"><span>Sub DAS<br>Lainnya</span></div>
+                        <div class="set-circle set-circle-node"><span>Tangkapan<br>Langsung</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section class="definition-example-case compact definition-concept">
+              <h4>Inti Konsep</h4>
+              <ul class="definition-bullets">
+                <li><b>DAS</b> = wilayah sistem sungai secara keseluruhan.</li>
+                <li><b>Sub DAS</b> = bagian dari DAS yang mengalir melalui suatu anak sungai.</li>
+                <li><b>DTA</b> = wilayah yang berkontribusi ke titik tinjau tertentu.</li>
+              </ul>
+            </section>
+          </div>
+        </div>
+      </div>
+
+      <div id="methodologyModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card definition-modal">
+          <div class="modal-head"><div><span class="eyebrow">INFORMASI TEKNIS</span><h2>Metodologi & Sumber Data</h2></div><button id="closeMethodologyModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <article><h3>Model Elevasi Digital (DEM)</h3><p>Delineasi Daerah Tangkapan Air (DTA) pada sistem ini dilakukan berbasis <i>Digital Elevation Model</i> (DEM) menggunakan sumber data <b>FABDEM</b> (<i>Forest And Buildings removed Cop-DEM</i>) dengan resolusi spasial <b>1 arc-second</b> (setara ≈30 meter). FABDEM merupakan model elevasi permukaan tanah digital (<i>bare-earth Digital Elevation Model</i>) yang diturunkan dari Copernicus DEM (COP-DEM) dengan mengeliminasi artefak vegetasi, seperti tajuk hutan, dan bangunan menggunakan algoritma <i>machine learning</i>, sehingga menghasilkan elevasi permukaan tanah yang lebih sesuai untuk pemodelan hidrologi.</p></article>
+          <article><h3>Koreksi Hidrologi DEM</h3><p>Untuk memastikan kontinuitas dan presisi pengaliran air (<i>flow routing</i>), DEM terlebih dahulu melalui tahap pra-pemrosesan koreksi hidrologi (<i>DEM reconditioning</i>). Tahap ini menerapkan dua pendekatan utama:</p><ol><li><b>Stream Burning:</b> Mereduksi nilai elevasi sel DEM secara rasional di sepanjang alur vektor jaringan sungai acuan untuk mengunci jalur aliran (<i>flow path</i>) agar konsisten dengan jaringan drainase eksisting.</li><li><b>Build Walls:</b> Meningkatkan nilai elevasi sel DEM di sepanjang garis Batas DAS yang mengacu pada <b>Keputusan Menteri Kehutanan Nomor 150 Tahun 2025 tentang Penetapan Batas Daerah Aliran Sungai</b>. Langkah ini bertujuan mencegah kebocoran aliran (<i>spillover</i>) melintasi batas DAS selama pembentukan arah dan akumulasi aliran.</li></ol></article>
+          <article><h3>Delineasi Hybrid D8</h3><p>Sistem menggunakan pendekatan hybrid: unit DTA hulu yang telah terdefinisi ditelusuri melalui topologi jaringan, sedangkan bagian lokal pada subbasin tempat titik tuang berada didelineasi dari raster arah aliran D8. Batas hasil DEM kemudian diperhalus dan, bila berada dalam koridor penyesuaian serta lolos pemeriksaan topologi, dapat diselaraskan dengan Batas DAS. Sistem juga membuang komponen polygon terpisah yang merupakan artefak dan mengisi lubang interior berukuran kurang dari 6,25 hektare.</p></article>
+          <article><h3>Perhitungan Luas</h3><p>Luas DTA pada antarmuka dihitung dari <b>geometri DTA final</b> setelah penghalusan batas dan penyesuaian Batas DAS. Perhitungan luas menggunakan proyeksi <b>World Cylindrical Equal Area</b>. Nilai yang tampil di antarmuka merupakan hasil pembulatan untuk meningkatkan keterbacaan. Nilai luas dengan presisi penuh tersedia pada atribut <code>LUAS_KM2</code> di data spasial hasil unduhan. Geometri <b>Diperhalus</b> menyimpan luas geometri final, sedangkan geometri <b>Asli</b> menyimpan hasil delineasi hidrologis sebelum smoothing dan boundary stitching, setelah pembersihan topologi dasar.</p></article>
+        </div>
+      </div>
+
+      <div id="undoToast" class="undo-toast hidden" role="status" aria-live="polite"><span id="undoToastText">Titik dihapus.</span><button id="undoDeleteBtn" type="button">Urungkan</button></div>
+      <div id="appToast" class="app-toast hidden" role="status" aria-live="polite"><i data-lucide="info"></i><span id="appToastText"></span></div>
+
+      <div id="basinSourceModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card source-modal"><div class="modal-head"><div><span class="eyebrow">SUMBER DATA</span><h2>Batas DAS</h2></div><button id="closeBasinSourceModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div><p>Batas DAS mengacu pada <b>Keputusan Menteri Kehutanan Nomor 150 Tahun 2025 tentang Penetapan Batas Daerah Aliran Sungai</b>.</p></div>
+      </div>
+    </section>
+  </main>
+{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
+<script src="/static/js/spatial.js?v=1.0.0.0-p33"></script>
+{% endblock %}

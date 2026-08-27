@@ -1,0 +1,3451 @@
+:root{
+  --pu-navy:#223468;--pu-yellow:#fcb717;--text:#27364b;--strong:#15243b;--muted:#6d7888;
+  --border:#dfe4ea;--panel:#fff;--bg:#eef2f6;--danger:#b42318;--success:#18794e;
+  --sidebar-w:350px;--sidebar-collapsed:44px;--shadow-sm:0 4px 14px rgba(24,39,70,.10);--shadow-md:0 16px 40px rgba(20,33,62,.18);
+}
+*{box-sizing:border-box}html,body{height:100%;margin:0}body{font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;color:var(--text);background:var(--bg);overflow:hidden}button,input,select,textarea{font:inherit}button{touch-action:manipulation}svg{display:block}.hidden{display:none!important}
+
+.app-header{position:fixed;z-index:70;top:0;left:0;right:0;height:68px;background:#fff;border-bottom:1px solid var(--border);box-shadow:0 4px 16px rgba(20,32,60,.08);transform:translateY(0);transition:transform .24s ease}.app-header.is-hidden{transform:translateY(-100%)}.header-inner{width:min(1500px,calc(100% - 28px));height:100%;margin:auto;display:grid;grid-template-columns:minmax(310px,1fr) auto minmax(190px,1fr);align-items:center;gap:18px}.official-brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit;min-width:0}.official-logo{width:37px;height:37px;flex:0 0 auto}.agency-copy{display:flex;flex-direction:column;line-height:1.25;white-space:nowrap}.agency-copy span{font-size:8px;font-weight:700;color:#6d7685}.agency-copy strong{font-size:9px;color:var(--pu-navy);letter-spacing:.015em}.header-nav{display:flex;align-items:center;gap:4px}.nav-link{height:38px;padding:0 13px;border:0;border-radius:8px;background:transparent;color:#5e6877;font-size:11px;font-weight:700;display:flex;align-items:center;gap:7px;cursor:pointer}.nav-link svg{width:15px}.nav-link.active{background:#edf1fb;color:var(--pu-navy)}.nav-link:disabled{opacity:.45;cursor:not-allowed}.header-actions{display:flex;justify-content:flex-end;align-items:center;gap:7px}.icon-btn{width:34px;height:34px;border:1px solid var(--border);background:#fff;border-radius:8px;display:grid;place-items:center;color:var(--pu-navy);cursor:pointer}.icon-btn svg{width:16px}.header-handle{position:fixed;z-index:71;top:0;left:50%;transform:translateX(-50%);height:24px;border:0;border-radius:0 0 8px 8px;background:var(--pu-navy);color:#fff;padding:0 10px;display:flex;align-items:center;gap:5px;font-size:8px;font-weight:800;letter-spacing:.08em;box-shadow:var(--shadow-sm);cursor:pointer}.header-handle svg{width:12px;height:12px}
+
+.webgis-shell{position:relative;width:100%;height:100%;overflow:hidden}.map-wrap,#map{position:absolute;inset:0}.map-wrap{background:#dfe6ec}.sidebar{position:absolute;z-index:25;top:12px;bottom:12px;left:12px;width:var(--sidebar-w);background:rgba(255,255,255,.985);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow-md);transition:width .22s ease;overflow:hidden}.sidebar.collapsed{width:var(--sidebar-collapsed)}.sidebar-scroll{height:100%;overflow:auto;padding:18px 16px 16px;scrollbar-width:thin}.sidebar.collapsed .sidebar-scroll{display:none}.sidebar-toggle{position:absolute;z-index:3;right:10px;top:12px;width:30px;height:30px;border:1px solid var(--border);background:#fff;color:var(--pu-navy);border-radius:8px;display:grid;place-items:center;cursor:pointer}.sidebar-toggle svg{width:16px}.sidebar.collapsed .sidebar-toggle{right:6px;top:10px}.sidebar-title{display:grid;grid-template-columns:38px 1fr;gap:10px;align-items:start;padding-right:36px}.section-icon{width:36px;height:36px;border-radius:10px;background:#e9eefb;color:var(--pu-navy);display:grid;place-items:center}.section-icon svg{width:18px}.eyebrow{display:block;font-size:8px;font-weight:800;letter-spacing:.12em;color:#8791a0}.sidebar-title h1{font-size:17px;line-height:1.2;margin:2px 0 4px;color:var(--strong)}.sidebar-title p{margin:0;font-size:10px;line-height:1.5;color:var(--muted)}
+.panel-section{border-top:1px solid var(--border);margin-top:14px;padding-top:13px}.panel-section h2{font-size:11px;margin:0;color:var(--strong)}.section-heading,.section-heading-row{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px}.step-badge{font-size:8px;padding:4px 7px;border-radius:999px;background:#edf1fb;color:var(--pu-navy);font-weight:800}.help{font-size:9px;line-height:1.55;color:var(--muted);margin:0 0 10px}.muted-inline{font-weight:500;color:var(--muted)}label{display:block;font-size:9px;font-weight:700;color:#536174;margin:8px 0}input[type=text],input[type=search],input[type=number],textarea,select{width:100%;border:1px solid #d8dee6;background:#fff;color:var(--strong);border-radius:8px;padding:8px 9px;outline:0;transition:border-color .15s,box-shadow .15s}textarea{resize:vertical;line-height:1.45;font-size:10px}input:focus,textarea:focus,select:focus{border-color:#8393bf;box-shadow:0 0 0 3px rgba(34,52,104,.09)}.input-note{font-size:8px;line-height:1.55;color:#7b8594;background:#f6f8fa;border-radius:7px;padding:7px 8px;margin:6px 0 9px}.btn{min-height:36px;border-radius:8px;border:1px solid var(--border);padding:8px 12px;font-size:10px;font-weight:800;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px}.btn svg{width:15px;height:15px}.btn-primary{background:var(--pu-navy);color:#fff;border-color:var(--pu-navy)}.btn-neutral{background:#fff;color:var(--pu-navy)}.btn-danger{background:#b42318;color:#fff;border-color:#b42318}.btn:disabled{opacity:.45;cursor:not-allowed}.full{width:100%}.advanced summary{font-size:10px;font-weight:800;color:#4c5a6d;cursor:pointer;display:flex;align-items:center;gap:6px;list-style:none}.advanced summary::-webkit-details-marker{display:none}.advanced summary svg{width:14px}.field-help,.inline-info{border:0;background:transparent;color:#788499;padding:0;display:inline-grid;place-items:center;vertical-align:middle;cursor:pointer}.field-help svg,.inline-info svg{width:13px;height:13px}.status{margin-top:12px;border-radius:8px;padding:8px 9px;font-size:9px;line-height:1.5}.status.neutral{background:#f4f6f8;color:#657183}.status.busy{background:#edf1fb;color:var(--pu-navy)}.status.success{background:#edf8f2;color:#24704e}.status.error{background:#fff0ee;color:#9e2b24}.text-button{border:0;background:transparent;color:#7b4650;padding:4px 0;font-size:8px;font-weight:800;display:flex;align-items:center;gap:4px;cursor:pointer}.text-button svg{width:12px}.point-list{display:grid;gap:7px}.empty-state{border:1px dashed #d8dee6;border-radius:9px;padding:14px 9px;text-align:center;font-size:9px;color:#8b95a3}.add-point.active{background:var(--pu-navy);color:#fff;border-color:var(--pu-navy)}
+.point-card{border:1px solid var(--border);border-left:4px solid var(--point-color);border-radius:10px;background:#fff;overflow:hidden}.point-card>summary{list-style:none;display:flex;align-items:center;gap:8px;padding:9px;cursor:pointer}.point-card>summary::-webkit-details-marker{display:none}.point-chip{width:28px;height:24px;border-radius:6px;background:var(--point-color);color:#fff;display:grid;place-items:center;font-size:8px;font-weight:800;flex:0 0 auto}.point-summary-main{min-width:0;flex:1}.point-summary-main strong{display:block;font-size:9px;color:var(--strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.point-summary-main span{font-size:8px;color:var(--muted)}.point-summary-area{font-size:10px;font-weight:800;color:var(--strong);white-space:nowrap}.point-chevron{color:#8b94a1}.point-chevron svg{width:14px;transition:transform .15s}.point-card[open] .point-chevron svg{transform:rotate(180deg)}.point-body{border-top:1px solid #edf0f3;padding:9px}.point-actions{display:flex;gap:5px;justify-content:flex-end}.small-icon-btn{width:28px;height:28px;border:1px solid var(--border);background:#fff;color:#596779;border-radius:7px;display:grid;place-items:center;cursor:pointer}.small-icon-btn svg{width:14px}.point-name-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px}.point-name-grid input{height:31px;padding:6px 8px;font-size:9px}.mini-button{border:1px solid var(--border);background:#f6f8fa;color:#45546a;border-radius:7px;padding:0 9px;font-size:8px;font-weight:800;cursor:pointer}.point-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.meta-box{padding:7px;background:#f6f8fa;border-radius:7px}.meta-box span{display:block;font-size:7px;color:#7b8594}.meta-box b{display:block;margin-top:2px;font-size:8px;color:#334258}.point-color-row{display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid #edf0f3;font-size:8px;font-weight:700;color:#657183}.color-input{width:34px!important;height:25px!important;padding:0!important;border:0!important;background:transparent!important}.relationship-content{font-size:9px}.chain-box{padding:8px;background:#eef7f3;border:1px solid #d6e9df;border-radius:8px;color:#385d4d;line-height:1.5}.segment-list{display:grid;gap:4px;margin-top:6px}.segment-list>div{display:flex;justify-content:space-between;gap:8px;padding:5px 6px;background:#fff;border-radius:6px}.sidebar-actions{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}.sidebar-footer{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:grid;gap:5px}.definition-link{border:0;background:transparent;color:#536174;padding:4px 0;text-align:left;font-size:8px;font-weight:700;display:flex;align-items:center;gap:6px;cursor:pointer}.definition-link svg{width:13px}
+
+/* MapLibre native-control placement */
+.maplibregl-ctrl-top-left,.maplibregl-ctrl-bottom-left{left:calc(var(--sidebar-w) + 18px);transition:left .22s ease}.sidebar-is-collapsed .maplibregl-ctrl-top-left,.sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:calc(var(--sidebar-collapsed) + 18px)}.maplibregl-ctrl-top-right{top:28px}.maplibregl-ctrl-group{border-radius:9px!important;overflow:hidden;box-shadow:var(--shadow-sm)!important}.maplibregl-ctrl-group button{width:36px;height:36px}.maplibregl-ctrl button .maplibregl-ctrl-icon{background-size:18px}.maplibregl-ctrl-scale{font-family:"Plus Jakarta Sans",sans-serif;font-size:8px;background:rgba(255,255,255,.92);border-color:#687487}.maplibregl-ctrl-attrib{font-size:9px!important}.maplibregl-ctrl-bottom-right{bottom:0!important}
+.map-search{width:min(400px,calc(100vw - var(--sidebar-w) - 180px));min-width:260px;height:42px;display:grid;grid-template-columns:28px minmax(0,1fr) 36px;align-items:center;background:#fff;border:1px solid var(--border);border-radius:10px!important;box-shadow:var(--shadow-sm);padding:3px;position:relative;margin:10px!important}.sidebar-is-collapsed .map-search{width:min(400px,calc(100vw - 180px))}.map-search>svg{width:16px;margin:auto;color:#7a8594}.map-search input{height:34px;border:0!important;box-shadow:none!important;padding:0 3px;margin:0}.search-submit{height:34px;border:0;border-radius:7px;background:var(--pu-navy);color:#fff;display:grid;place-items:center;cursor:pointer}.search-submit svg{width:15px}.map-search-results{position:absolute;left:0;right:0;top:46px;max-height:300px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow-md)}.search-result{display:block;width:100%;border:0;border-bottom:1px solid #edf0f3;background:#fff;text-align:left;padding:9px 10px;cursor:pointer}.search-result:hover{background:#f6f8fa}.search-result strong{display:block;font-size:9px}.search-result span{display:block;font-size:8px;color:var(--muted);line-height:1.4;margin-top:2px}.search-loading,.search-empty{padding:10px;font-size:9px;color:var(--muted)}.map-tools-control button{display:grid!important;place-items:center}.map-tools-control svg{width:17px;height:17px;color:#34455f}.map-tools-control button.active{background:var(--pu-navy)}.map-tools-control button.active svg{color:#fff}.coord-readout{font:9px ui-monospace,SFMono-Regular,Menlo,monospace;color:#435066;background:rgba(255,255,255,.94);border:1px solid var(--border);border-radius:6px;padding:5px 7px!important;margin:0 0 10px 10px!important;box-shadow:none!important;pointer-events:none}
+.map-panel{position:absolute;z-index:35;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow-md);padding:12px}.layer-panel{right:58px;top:36px;width:290px;max-height:calc(100% - 70px);overflow:auto}.panel-title-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--strong)}.panel-close,.modal-close{width:29px;height:29px;border:0;border-radius:7px;background:#f1f3f6;color:#687486;display:grid;place-items:center;cursor:pointer}.panel-close svg,.modal-close svg{width:14px}.layer-group{border-top:1px solid var(--border);padding-top:8px;margin-top:9px}.layer-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.check-row{display:flex;align-items:center;gap:7px;font-weight:600;margin:5px 0;line-height:1.35}.check-row input[type=checkbox],.choice-card input,.check-card input{width:15px;height:15px;margin:0;accent-color:var(--pu-navy)}.child-row{padding-left:22px;color:var(--muted)}.river-orders{display:grid;grid-template-columns:1fr 1fr;padding-left:22px}.small-title{font-size:8px;font-weight:800;letter-spacing:.08em;color:#687486}.range-row{display:grid;grid-template-columns:auto 1fr 42px;align-items:center;gap:7px}.range-row input{margin:0;height:auto}.range-row span{text-align:right;font-size:8px;color:var(--muted)}.strong-range{font-weight:700}.measure-panel{left:calc(var(--sidebar-w) + 18px);bottom:64px;min-width:235px;font-size:9px;transition:left .22s ease}.sidebar-is-collapsed .measure-panel{left:calc(var(--sidebar-collapsed) + 18px)}.measure-panel strong{display:block;margin-bottom:6px}.measure-panel button{margin-top:7px;border:0;background:#f1f3f6;color:#536174;border-radius:6px;padding:6px 8px;font-size:8px;font-weight:700;display:flex;align-items:center;gap:5px;cursor:pointer}.measure-panel button svg{width:13px}
+.maplibregl-popup-content{font-family:"Plus Jakarta Sans",sans-serif;border-radius:11px;padding:12px;box-shadow:var(--shadow-md);min-width:245px}.point-popup{display:grid;gap:7px}.point-popup>strong{font-size:11px;color:var(--strong)}.point-coords{font:9px ui-monospace,SFMono-Regular,Menlo,monospace;color:#7a8494}.point-basin{padding:5px 7px;border-radius:6px;background:#f4f6f8;color:#566376;font-size:8px}.point-popup label{font-size:8px;margin:0}.point-popup input{height:32px;font-size:9px}.point-actions-popup{display:flex;gap:6px}.point-actions-popup button{flex:1;border:0;border-radius:7px;padding:7px;font-size:8px;font-weight:800;cursor:pointer}.point-confirm{background:var(--pu-navy);color:#fff}.point-cancel{background:#f0f2f5;color:#526071}
+
+.modal-backdrop{position:absolute;inset:0;z-index:80;background:rgba(13,22,42,.46);display:grid;place-items:center;padding:20px}.modal-card{width:min(510px,100%);max-height:calc(100% - 30px);overflow:auto;background:#fff;border-radius:16px;padding:18px;box-shadow:0 24px 70px rgba(12,21,43,.28)}.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:13px}.modal-head h2{font-size:15px;color:var(--strong);margin:2px 0 0}.warning-modal{text-align:center}.warning-icon{width:46px;height:46px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;background:#fff1d6;color:#8a5a00}.warning-icon svg{width:23px}.neutral-icon{background:#edf1fb;color:var(--pu-navy)}.warning-modal h2{font-size:15px;color:#684b08;margin:0}.warning-modal h3{font-size:10px;color:#936b16;margin:5px 0 10px}.warning-modal p,.confirm-modal p,.source-modal p{font-size:10px;line-height:1.65;color:#5e6877}.modal-meta{margin:10px 0;padding:8px;border-radius:8px;background:#fff6dc;color:#76570b;font-size:9px}.download-section{border-top:1px solid var(--border);padding-top:11px;margin-top:10px}.download-section>strong{font-size:10px;color:var(--strong)}.choice-card{display:flex;align-items:flex-start;gap:9px;padding:9px;border:1px solid var(--border);border-radius:9px;margin:7px 0;cursor:pointer}.choice-card span{display:flex;flex-direction:column;gap:2px}.choice-card b{font-size:9px}.choice-card small{font-size:8px;line-height:1.45;color:var(--muted)}.format-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.check-card{display:flex;align-items:center;gap:7px;padding:8px;border:1px solid var(--border);border-radius:8px;margin:0;font-size:9px}.modal-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:14px}.download-status{min-height:18px;margin-top:8px;font-size:9px;color:var(--muted)}.definition-modal{width:min(740px,100%)}.definition-modal article{border-top:1px solid var(--border);padding:12px 0}.definition-modal article:first-of-type{border-top:0}.definition-modal h3{font-size:11px;color:var(--pu-navy);margin:0 0 6px}.definition-modal p,.definition-modal li{font-size:9px;line-height:1.7;color:#4f5d70}.definition-modal ol{padding-left:20px}.definition-modal cite{font-size:8px;line-height:1.45;color:#778192}.app-definition-note{margin-top:8px;padding:8px 9px;border-left:3px solid var(--pu-yellow);background:#fff9e7;border-radius:5px;font-size:9px;line-height:1.55;color:#66572b}.source-modal{width:min(470px,100%)}
+
+@media(max-width:900px){:root{--sidebar-w:320px}.agency-copy span{font-size:7px}.agency-copy strong{font-size:8px}.header-nav{display:none}.header-inner{grid-template-columns:1fr auto}.map-search{width:min(350px,calc(100vw - var(--sidebar-w) - 150px))}}
+@media(max-width:700px){.agency-copy span{display:none}.agency-copy strong{font-size:8px}.sidebar{top:8px;bottom:8px;left:8px;width:min(320px,calc(100% - 60px))}.sidebar.collapsed{width:44px}.maplibregl-ctrl-top-left,.maplibregl-ctrl-bottom-left{left:10px}.sidebar:not(.collapsed)~.map-wrap .maplibregl-ctrl-top-left{opacity:0;pointer-events:none}.map-search{width:min(360px,calc(100vw - 90px));min-width:220px}.layer-panel{right:52px;width:min(290px,calc(100% - 68px))}.measure-panel{left:12px}.header-inner{width:calc(100% - 18px)}.format-grid{grid-template-columns:1fr}.point-meta{grid-template-columns:1fr}}
+
+/* ============================================================
+   v7 shared-shell alignment + WebGIS stabilization
+   ============================================================ */
+:root{--sidebar-collapsed:0px}
+html,body{height:100%;overflow:hidden}
+body.spatial-page{background:var(--bg-main);color:var(--text-main);font-family:'Plus Jakarta Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+/* Shared header from olah-data-hidrologi-bbwsso, kept as map overlay. */
+.spatial-header{position:fixed;top:0;left:0;right:0;z-index:70;width:100%;height:auto;background:var(--card-bg);border-bottom:1px solid var(--border-color);box-shadow:var(--shadow-sm);transform:translateY(0);transition:transform .24s ease}
+.spatial-header.is-hidden{transform:translateY(-100%)}
+.spatial-header .app-header-main{min-height:74px}
+.spatial-header-actions{justify-self:start;margin-left:0}
+.spatial-header 
+[data-theme="dark"] .spatial-header 
+.header-menu-handle{position:absolute;z-index:2;left:50%;bottom:-25px;transform:translateX(-50%);height:25px;padding:0 11px;border:1px solid var(--pu-navy);border-top:0;border-radius:0 0 8px 8px;background:#223468;color:#fff;display:flex;align-items:center;gap:5px;font-size:.52rem;font-weight:800;letter-spacing:.08em;box-shadow:var(--shadow-sm);cursor:pointer}
+.header-menu-handle svg{width:12px;height:12px}.header-reveal-zone{position:fixed;z-index:69;top:0;left:0;right:0;height:10px;pointer-events:none}
+[data-theme="dark"] .official-logo path:last-child{fill:#b7c8ee}
+
+.webgis-shell{position:relative;width:100%;height:100%;overflow:hidden}.map-wrap,#map{position:absolute;inset:0}
+.sidebar{background:color-mix(in srgb,var(--card-bg) 98%,transparent);border-color:var(--border-color);color:var(--text-main)}
+.sidebar.collapsed{width:0;opacity:0;visibility:hidden;pointer-events:none;border:0;box-shadow:none;transform:translateX(-20px)}
+.sidebar-toggle{background:var(--card-bg);border-color:var(--border-color);color:var(--component-icon)}
+.sidebar-expand-floating{position:absolute;z-index:30;top:12px;left:12px;width:42px;height:42px;border:1px solid var(--border-color);border-radius:11px;background:var(--card-bg);color:var(--component-icon);display:grid;place-items:center;box-shadow:var(--shadow-sm);cursor:pointer}
+.sidebar-expand-floating svg{width:19px;height:19px}.sidebar-expand-floating.hidden{display:none!important}
+.sidebar-scroll{background:transparent}
+.sidebar-title h1,.panel-section h2,.point-popup>strong,.panel-title-row,.modal-head h2{color:var(--text-strong)}
+.sidebar-title p,.help,.input-note,.empty-state,.point-summary-main span,.point-coords,.download-status{color:var(--text-muted)}
+.panel-section,.sidebar-actions,.sidebar-footer,.point-body,.download-section,.layer-group{border-color:var(--border-color)}
+input[type=text],input[type=search],input[type=number],textarea,select{background:var(--input-bg);color:var(--text-main);border-color:var(--border-strong)}
+#coordinateInput{height:38px;min-height:38px;line-height:38px;padding-top:0;padding-bottom:0;white-space:nowrap}
+.btn-primary,.search-submit,.point-confirm,.add-point.active{background:#223468;color:#fff;border-color:#223468}.btn-primary:hover,.search-submit:hover{background:#17244c}
+.btn-neutral,.icon-btn,.small-icon-btn,.mini-button{background:var(--card-bg);color:var(--text-main);border-color:var(--border-color)}
+.status.neutral,.meta-box,.point-basin,.input-note{background:var(--bg-soft)}
+.point-card,.search-result,.map-search-results,.map-panel,.maplibregl-popup-content,.modal-card{background:var(--card-bg);color:var(--text-main);border-color:var(--border-color)}
+.search-result{border-color:var(--border-color)}.search-result:hover{background:var(--bg-soft)}
+.point-body{background:var(--card-bg)}.point-card{background:var(--card-bg)}.meta-box b{color:var(--text-main)}
+
+/* One native MapLibre toolbar in the top-right. */
+.map-toolbar-control{display:flex!important;flex-direction:column!important;margin:10px!important;border:1px solid var(--border-color)!important;background:var(--card-bg)!important}
+.map-toolbar-control button{width:38px!important;height:38px!important;display:grid!important;place-items:center!important;background:var(--card-bg)!important;color:var(--text-main)!important;border:0!important;border-bottom:1px solid var(--border-color)!important}
+.map-toolbar-control button:last-child{border-bottom:0!important}.map-toolbar-control button:hover{background:var(--bg-soft)!important}.map-toolbar-control button.active{background:#223468!important;color:#fff!important}.map-toolbar-control svg{width:17px;height:17px}
+.maplibregl-ctrl-top-right{top:28px;right:0}.maplibregl-ctrl-group{background:var(--card-bg)!important}
+.maplibregl-ctrl-top-left,.maplibregl-ctrl-bottom-left{left:calc(var(--sidebar-w) + 18px);transition:left .22s ease}
+.sidebar-is-collapsed .maplibregl-ctrl-top-left,.sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:56px}
+.sidebar-is-collapsed .measure-panel{left:12px}.measure-panel{left:calc(var(--sidebar-w) + 18px)}
+.map-search{background:var(--card-bg);border-color:var(--border-color);width:min(400px,calc(100vw - var(--sidebar-w) - 160px))}.sidebar-is-collapsed .map-search{width:min(400px,calc(100vw - 125px))}
+.coord-readout,.maplibregl-ctrl-scale{background:color-mix(in srgb,var(--card-bg) 92%,transparent)!important;color:var(--text-main)!important;border-color:var(--border-strong)!important}
+.maplibregl-ctrl-attrib{background:color-mix(in srgb,var(--card-bg) 88%,transparent)!important;color:var(--text-muted)!important}.maplibregl-ctrl-attrib a{color:var(--primary)!important}
+.layer-panel{right:58px;top:38px}.panel-close,.modal-close,.measure-panel button{background:var(--bg-soft);color:var(--text-muted)}
+
+/* Dark mode for application chrome. The map itself changes to Esri Dark Gray Canvas in JS. */
+[data-theme="dark"] body.spatial-page{--text:#edf1f8;--strong:#fff;--muted:#aab4c7;--border:#2b3850;--panel:#182236;--bg:#101625}
+[data-theme="dark"] .section-icon,[data-theme="dark"] .step-badge{background:var(--pu-blue-soft);color:var(--primary)}
+[data-theme="dark"] .status.neutral,[data-theme="dark"] .input-note,[data-theme="dark"] .meta-box,[data-theme="dark"] .point-basin{background:#151d2e;color:var(--text-muted)}
+[data-theme="dark"] .status.busy{background:#1b2945;color:#c8d6f3}[data-theme="dark"] .status.success{background:#1d3428;color:#8bd3a5}[data-theme="dark"] .status.error{background:#3a2328;color:#f2a0a0}
+[data-theme="dark"] .chain-box{background:#1d3428;border-color:#315844;color:#bde0c9}[data-theme="dark"] .segment-list>div{background:#182236}
+[data-theme="dark"] .warning-icon{background:#393118;color:#f1bb5a}[data-theme="dark"] .neutral-icon{background:#1b2945;color:#b7c8ee}[data-theme="dark"] .warning-modal h2{color:#f2cf6c}[data-theme="dark"] .warning-modal h3{color:#d9b45d}[data-theme="dark"] .modal-meta{background:#393118;color:#f2cf6c}
+[data-theme="dark"] .app-definition-note{background:#2d2b24;color:#e5d59c}
+[data-theme="dark"] .check-row input[type=checkbox],[data-theme="dark"] .choice-card input,[data-theme="dark"] .check-card input{accent-color:#9db5e8}
+
+/* Mobile: preserve functionality before density. */
+@media(max-width:780px){
+  .spatial-header .app-header-main{width:calc(100% - 18px);min-height:62px;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"brand actions" "nav nav";row-gap:4px;padding:7px 0}
+  .spatial-header .official-brand{grid-area:brand}.spatial-header .header-actions{grid-area:actions}.spatial-header .app-nav{grid-area:nav;display:none}
+  .agency-copy .agency-overline,.agency-copy .agency-subline{display:none}.agency-copy strong{font-size:.58rem}.official-logo{width:36px;height:36px;flex-basis:36px}
+  .sidebar{top:8px;bottom:8px;left:8px;width:min(340px,calc(100% - 16px));max-width:calc(100% - 16px)}.sidebar-toggle{width:36px;height:36px}
+  .sidebar-expand-floating{top:10px;left:10px;width:40px;height:40px}
+  .maplibregl-ctrl-top-left{left:8px}.sidebar-is-collapsed .maplibregl-ctrl-top-left{left:52px}.map-search{width:min(330px,calc(100vw - 112px));min-width:0;margin:10px 6px!important}
+  .sidebar:not(.collapsed)~.map-wrap .maplibregl-ctrl-top-left{opacity:0;pointer-events:none}
+  .map-toolbar-control button{width:42px!important;height:42px!important}.maplibregl-ctrl-top-right{top:24px}
+  .layer-panel{right:58px;top:34px;width:min(290px,calc(100% - 70px));max-height:calc(100% - 80px)}
+  .coord-readout{display:none!important}.measure-panel{left:10px;right:58px;bottom:58px;min-width:0}
+  .modal-backdrop{padding:12px}.modal-card{max-height:calc(100% - 20px);border-radius:13px}.point-meta{grid-template-columns:1fr}.format-grid{grid-template-columns:1fr}
+}
+@media(max-width:430px){
+  .spatial-header-actions .theme-toggle-btn{width:34px;height:34px}.spatial-header-actions .theme-toggle-btn:nth-of-type(1){display:none}
+  .map-search{width:calc(100vw - 112px)}.map-toolbar-control button{width:40px!important;height:40px!important}
+  .sidebar-title{grid-template-columns:32px 1fr}.section-icon{width:32px;height:32px}.sidebar-title h1{font-size:15px}
+}
+
+/* ============================================================
+   Visual stabilization
+   - shared palette/typography with olah-data-hidrologi-bbwsso
+   - native control offsets that collapse cleanly
+   - visual Peta Dasar gallery
+   ============================================================ */
+.sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+
+/* Preserve the official PU logo exactly in light and dark modes. */
+.official-logo{filter:none!important;opacity:1!important;mix-blend-mode:normal!important}
+.official-logo path:first-child{fill:#FCB717!important}
+.official-logo path:last-child{fill:#223468!important}
+[data-theme="dark"] .official-logo path:first-child{fill:#FCB717!important}
+[data-theme="dark"] .official-logo path:last-child{fill:#223468!important}
+
+/* Header typography mirrors the shared repo instead of the older compact WebGIS overrides. */
+.spatial-header .agency-copy{line-height:1.22;gap:1px}
+.spatial-header .agency-copy span,.spatial-header .agency-copy strong{color:var(--pu-navy);font-size:.67rem;letter-spacing:.018em;font-weight:700}
+.spatial-header .agency-copy strong{font-weight:800}
+.spatial-header .app-nav-link{font-size:.78rem}
+.spatial-header .theme-toggle-btn{background:var(--card-bg);border-color:var(--border-color);color:var(--text-muted)}
+.spatial-header .theme-toggle-btn:hover{border-color:var(--primary);color:var(--primary);background:var(--pu-blue-soft)}
+.header-menu-handle{background:#223468!important;color:#fff!important;border-color:#223468!important}
+
+/* WebGIS content uses the same semantic colors and text scale as the shared UI. */
+body.spatial-page{--text:var(--text-main);--strong:var(--text-strong);--muted:var(--text-muted);--border:var(--border-color);--panel:var(--card-bg);--bg:var(--bg-main)}
+.sidebar{background:color-mix(in srgb,var(--card-bg) 98%,transparent);border-color:var(--border-color)}
+.sidebar-title .eyebrow{font-size:.63rem;color:var(--primary)}
+.sidebar-title h1{font-size:1.05rem;color:var(--text-strong)}
+.sidebar-title p{font-size:.68rem;color:var(--text-muted)}
+.panel-section h2,.panel-title-row{font-size:.76rem;color:var(--text-strong)}
+.help{font-size:.66rem;color:var(--text-muted);line-height:1.55}
+label{font-size:.67rem;color:var(--text-label);font-weight:750}
+input[type=text],input[type=search],input[type=number],textarea,select{font-size:.71rem;font-weight:600;background:var(--input-bg);color:var(--text-main);border-color:var(--border-strong)}
+#coordinateInput{height:38px!important;min-height:38px!important;padding:0 11px!important;line-height:38px!important}
+.btn{font-size:.7rem;min-height:38px}
+.status{font-size:.66rem}
+.step-badge{font-size:.58rem;background:var(--pu-blue-soft);color:var(--primary)}
+.point-summary-main strong{font-size:.68rem;color:var(--text-strong)}
+.point-summary-main span,.point-summary-area{font-size:.62rem}
+.point-summary-area{color:var(--text-strong)}
+.point-body,.point-card,.meta-box,.search-result,.map-search-results,.map-panel,.maplibregl-popup-content,.modal-card{background:var(--card-bg);color:var(--text-main);border-color:var(--border-color)}
+.meta-box span{font-size:.58rem;color:var(--text-muted)}.meta-box b{font-size:.66rem;color:var(--text-main)}
+.definition-link,.text-button,.small-title,.input-note,.download-status{font-size:.62rem}
+
+/* Yellow PU download action requested for this application. */
+.btn-download{background:var(--secondary-action-bg)!important;color:var(--secondary-action-text)!important;border-color:var(--secondary-action-bg)!important}
+.btn-download:hover:not(:disabled){background:var(--secondary-action-hover)!important;color:var(--secondary-action-text)!important;border-color:var(--secondary-action-hover)!important}
+.btn-download svg{color:currentColor!important}
+
+/* Sidebar collapsed = no residual white rail; only the floating button remains. */
+.sidebar.collapsed{width:0!important;opacity:0!important;visibility:hidden!important;pointer-events:none!important;border:0!important;box-shadow:none!important;transform:translateX(-24px)!important}
+.sidebar-expand-floating{background:var(--card-bg);border-color:var(--border-color);color:var(--component-icon)}
+
+/* Native MapLibre placement. Bottom-left returns to the true screen edge when collapsed. */
+.maplibregl-ctrl-top-left{left:calc(var(--sidebar-w) + 18px)!important;transition:left .22s ease!important}
+.maplibregl-ctrl-bottom-left{left:calc(var(--sidebar-w) + 18px)!important;transition:left .22s ease!important}
+.sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:0!important}
+.sidebar-is-collapsed .maplibregl-ctrl-top-left{left:52px!important}
+.sidebar-is-collapsed .measure-panel{left:12px!important}
+.maplibregl-ctrl-bottom-left .maplibregl-ctrl{margin-left:10px!important}
+.maplibregl-ctrl-bottom-left .coord-readout{margin-left:10px!important}
+.maplibregl-ctrl-bottom-right{right:0!important;bottom:0!important}
+
+/* Single right-side toolbar. No MapLibre controls are stacked outside this group. */
+.maplibregl-ctrl-top-right{top:0!important;right:0!important}
+.map-toolbar-control{display:flex!important;flex-direction:column!important;margin:10px!important;border:1px solid var(--border-color)!important;border-radius:10px!important;overflow:hidden!important;background:var(--card-bg)!important;box-shadow:var(--shadow-sm)!important}
+.map-toolbar-control button{width:38px!important;height:38px!important;min-width:38px!important;min-height:38px!important;margin:0!important;padding:0!important;border:0!important;border-bottom:1px solid var(--border-color)!important;border-radius:0!important;background:var(--card-bg)!important;color:var(--text-main)!important}
+.map-toolbar-control button:last-child{border-bottom:0!important}
+.map-toolbar-control button:hover{background:var(--bg-soft)!important;color:var(--primary)!important}
+.map-toolbar-control button.active{background:#223468!important;color:#fff!important}
+
+/* Basemap is a dedicated visual gallery, separate from Layer & Tampilan. */
+.basemap-modal{width:min(760px,100%)}
+.basemap-gallery{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.basemap-card{position:relative;min-width:0;padding:0;overflow:hidden;border:1px solid var(--border-color);border-radius:11px;background:var(--card-bg);color:var(--text-main);cursor:pointer;text-align:left;box-shadow:var(--shadow-xs);transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease}
+.basemap-card:hover{border-color:var(--control-hover-border);box-shadow:var(--shadow-sm);transform:translateY(-1px)}
+.basemap-card.active{border:2px solid #223468;box-shadow:0 0 0 3px rgba(34,52,104,.10)}
+[data-theme="dark"] .basemap-card.active{border-color:#b7c8ee;box-shadow:0 0 0 3px rgba(183,200,238,.12)}
+.basemap-thumb{display:block;width:100%;aspect-ratio:16/9;background-position:center;background-size:cover;background-color:var(--bg-soft)}
+.basemap-card-label{display:block;padding:9px 10px;border-top:1px solid var(--border-color);background:var(--card-bg);font-size:.67rem;font-weight:650;line-height:1.3;white-space:normal}
+.basemap-card.active .basemap-card-label{font-weight:800;color:var(--text-strong)}
+.basemap-thumb-world-topo{background-image:url('https://www.arcgis.com/sharing/rest/content/items/7dc6cea0b1764a1f9af2e679f642f0f5/info/thumbnail/thumbnail.png')}
+.basemap-thumb-esri-satellite{background-image:url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/8/133/206')}
+.basemap-thumb-osm{background-image:url('https://tile.openstreetmap.org/8/206/133.png')}
+.basemap-thumb-google-maps{background-image:url('https://mt1.google.com/vt/lyrs=m&x=206&y=133&z=8')}
+.basemap-thumb-google-satellite{background-image:url('https://mt1.google.com/vt/lyrs=s&x=206&y=133&z=8')}
+.basemap-thumb-rbi{background-image:url('https://geoservices.big.go.id/rbi/rest/services/BASEMAP/Rupabumi_Indonesia/MapServer/tile/8/133/206')}
+.basemap-thumb-esri-dark{background-image:url('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/8/133/206')}
+
+/* Basemap/layer popups remain above the map but below the auto-hidden header. */
+.layer-panel{top:10px!important;right:58px!important}
+.map-search{background:var(--card-bg);border-color:var(--border-color)}
+.coord-readout,.maplibregl-ctrl-scale{background:color-mix(in srgb,var(--card-bg) 94%,transparent)!important;color:var(--text-main)!important;border-color:var(--border-strong)!important}
+.maplibregl-ctrl-attrib{background:color-mix(in srgb,var(--card-bg) 90%,transparent)!important;color:var(--text-muted)!important}
+
+/* Mobile is functional first: the sidebar becomes an overlay and galleries reflow. */
+@media(max-width:780px){
+  .spatial-header .app-header-main{min-height:62px}
+  .spatial-header .agency-copy span{display:none}.spatial-header .agency-copy strong{font-size:.58rem}
+  .sidebar{top:8px!important;bottom:8px!important;left:8px!important;width:min(340px,calc(100% - 16px))!important;max-width:calc(100% - 16px)!important}
+  .sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:0!important}
+  .sidebar-is-collapsed .maplibregl-ctrl-top-left{left:50px!important}
+  .map-search{width:min(330px,calc(100vw - 108px))!important;min-width:0!important}
+  .map-toolbar-control button{width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important}
+  .basemap-gallery{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .modal-backdrop{padding:10px}.basemap-modal{max-height:calc(100% - 12px)}
+  .layer-panel{top:8px!important;right:58px!important;width:min(290px,calc(100% - 70px))!important}
+}
+@media(max-width:430px){
+  .basemap-gallery{grid-template-columns:1fr 1fr;gap:8px}
+  .basemap-card-label{font-size:.62rem;padding:8px}
+  .map-search{width:calc(100vw - 108px)!important}
+  .sidebar-title h1{font-size:.96rem}
+}
+
+/* ============================================================
+   Minor polish & persistence-ready controls
+   ============================================================ */
+/* Header identity: preserve PU logo and keep agency copy legible in both themes. */
+.spatial-header .agency-copy span,
+.spatial-header .agency-copy strong{color:#223468!important}
+[data-theme="dark"] .spatial-header .agency-copy span,
+[data-theme="dark"] .spatial-header .agency-copy strong{color:#c8d6f3!important}
+[data-theme="dark"] .spatial-header .agency-copy strong{color:#e7eefc!important}
+
+/* Secondary information links are now placed before point selection. */
+.sidebar-info-links{display:grid;grid-template-columns:1fr;gap:4px;margin:2px 0 10px;padding:0 0 10px;border-bottom:1px solid var(--border-color)}
+.sidebar-info-links .definition-link{min-height:30px;padding:6px 8px;border:1px solid transparent;border-radius:8px;color:var(--text-muted);background:transparent;font-size:.63rem;font-weight:700}
+.sidebar-info-links .definition-link:hover{color:var(--primary);background:var(--pu-blue-soft);border-color:var(--border-color)}
+.sidebar-info-links .definition-link svg{width:14px;height:14px;color:var(--component-icon)}
+[data-theme="dark"] .sidebar-info-links .definition-link{color:#cbd5e5}
+[data-theme="dark"] .sidebar-info-links .definition-link:hover{color:#f4f7fc}
+
+/* Improve advanced settings and technical content contrast. */
+.advanced summary{color:var(--text-strong)!important;background:var(--surface-soft)!important;border-color:var(--border-color)!important}
+.advanced summary svg{color:var(--component-icon)!important}
+.advanced[open] summary{color:var(--component-heading)!important}
+.definition-modal h3{color:var(--component-heading)!important}
+.definition-modal p,.definition-modal li,.source-modal p,.confirm-modal p,.warning-modal p{color:var(--text-main)!important}
+.definition-modal cite{color:var(--text-muted)!important}
+.app-definition-note{background:var(--accent-soft)!important;color:var(--text-main)!important;border-left-color:var(--pu-yellow)!important}
+[data-theme="dark"] .app-definition-note{background:var(--accent-soft)!important;color:#f0e4b8!important}
+
+/* Point/DTA color controls remain readable on dark surfaces. */
+.point-color-row{color:var(--text-label)!important;font-weight:750}
+[data-theme="dark"] .point-color-row{color:#d8e0ed!important}
+.point-chip{color:#fff!important}
+
+/* Destructive and add/cancel actions. */
+.text-button#clearAllBtn,.small-icon-btn.remove-point{background:var(--danger)!important;color:#fff!important;border-color:var(--danger)!important}
+.text-button#clearAllBtn{min-height:30px;padding:6px 9px;border:1px solid var(--danger);border-radius:8px;display:inline-flex;align-items:center;gap:5px;font-size:.61rem;font-weight:800}
+.text-button#clearAllBtn:hover,.small-icon-btn.remove-point:hover{filter:brightness(.94)}
+.text-button#clearAllBtn svg,.small-icon-btn.remove-point svg{color:#fff!important}
+.add-point{background:#223468!important;color:#fff!important;border-color:#223468!important}
+.add-point:hover:not(:disabled){background:#17244c!important;color:#fff!important;border-color:#17244c!important}
+.add-point.active{background:var(--card-bg)!important;color:var(--primary)!important;border-color:var(--primary)!important}
+.add-point.active svg{color:currentColor!important}
+
+/* Reset color action. */
+.layer-actions{padding-bottom:1px}.reset-colors-btn{justify-content:center}
+
+/* Basemap gallery: 12 maps, 3 columns desktop. */
+.basemap-modal{width:min(820px,100%)}
+.basemap-gallery{grid-template-columns:repeat(3,minmax(0,1fr))}
+.basemap-thumb-world-topo{background-image:url('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/8/133/206')!important}
+.basemap-thumb-esri-light{background-image:url('https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/8/133/206')}
+.basemap-thumb-opentopo{background-image:url('https://a.tile.opentopomap.org/8/206/133.png')}
+
+/* Hillshade is an overlay above the selected base map. */
+.layer-group:has(#showHillshade){background:var(--surface-soft);border:1px solid var(--border-color);border-radius:9px;padding:8px;margin-top:9px}
+
+/* More explicit point edit fields. */
+.point-name-grid{align-items:end}
+.point-name-grid .rename-point{color:var(--text-main)!important;background:var(--input-bg)!important;border-color:var(--border-strong)!important}
+
+/* Mobile: preserve tap targets and avoid a too-tall sidebar. */
+@media(max-width:780px){
+  .sidebar-info-links{grid-template-columns:1fr 1fr;gap:5px}
+  .sidebar-info-links .definition-link{font-size:.58rem;line-height:1.35;align-items:flex-start}
+  .basemap-gallery{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:390px){
+  .sidebar-info-links{grid-template-columns:1fr}
+  .basemap-gallery{grid-template-columns:1fr 1fr!important}
+}
+.point-chip{width:auto!important;min-width:28px;max-width:92px;padding:0 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.point-edit-label{display:block;color:var(--text-label)!important;font-size:.61rem!important;font-weight:750!important}
+.point-edit-label .point-name-grid{margin-top:5px}
+[data-theme="dark"] .meta-box{background:var(--surface-raised)!important}.meta-box span{color:var(--text-muted)!important}.meta-box b{color:var(--text-main)!important}
+
+/* ============================================================
+   Topology-safe + fluid UX
+   ============================================================ */
+.indicative-notice{display:grid;grid-template-columns:20px minmax(0,1fr);gap:7px;align-items:start;margin:2px 0 9px;padding:8px 9px;border:1px solid var(--warning-border,#ead9a5);border-radius:9px;background:var(--accent-soft);color:var(--text-main);font-size:.59rem;line-height:1.5}
+.indicative-notice svg{width:15px;height:15px;margin-top:1px;color:#9b7300}.indicative-notice b{color:var(--text-strong)}
+[data-theme="dark"] .indicative-notice{border-color:#6b5b2a;background:#2a261a;color:#e8edf6}[data-theme="dark"] .indicative-notice svg{color:#ffd65d}
+.point-limit-note{margin-top:2px;color:var(--text-muted);font-size:.54rem;font-weight:600;line-height:1.35}.section-heading-row>div>h2{display:flex;align-items:center;gap:5px}.section-heading-row #pointCount{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:999px;background:var(--pu-blue-soft);color:var(--primary);font-size:.58rem;font-weight:800}
+.spaced-add-point{margin-top:11px}
+.danger-text-button,.danger-icon-btn{background:var(--danger)!important;color:#fff!important;border-color:var(--danger)!important}.danger-icon-btn svg,.danger-text-button svg{color:#fff!important}.danger-icon-btn:hover,.danger-text-button:hover{filter:brightness(.94)}
+.map-search{grid-template-columns:36px minmax(0,1fr) 36px!important}.search-sidebar-toggle{width:34px;height:34px;border:0;border-radius:7px;background:transparent;color:var(--pu-navy);display:grid;place-items:center;cursor:pointer}.search-sidebar-toggle:hover{background:var(--surface-soft)}.search-sidebar-toggle svg{width:17px;height:17px}[data-theme="dark"] .search-sidebar-toggle{color:#d8e6ff}
+.modal-subtitle{margin:3px 0 0;max-width:560px;color:var(--text-muted);font-size:.62rem;line-height:1.45}.no-basemap-option{width:100%;display:flex;align-items:center;gap:10px;margin:0 0 12px;padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--surface-soft);color:var(--text-main);text-align:left;cursor:pointer;transition:border-color .16s ease,background .16s ease,box-shadow .16s ease}.no-basemap-option>svg{width:18px;height:18px;color:var(--component-icon);flex:0 0 auto}.no-basemap-option span{display:grid;gap:2px}.no-basemap-option b{font-size:.67rem}.no-basemap-option small{font-size:.57rem;color:var(--text-muted);line-height:1.35}.no-basemap-option.active{border-color:var(--primary);box-shadow:0 0 0 3px rgba(34,52,104,.10);background:var(--pu-blue-soft)}[data-theme="dark"] .no-basemap-option.active{border-color:#b7c8ee;box-shadow:0 0 0 3px rgba(183,200,238,.12)}
+.point-summary-main{display:grid!important;gap:1px}.point-summary-main strong{font-size:.63rem!important;color:var(--text-strong)!important}.point-summary-main span{display:block;font-size:.56rem!important;color:var(--text-muted)!important}.point-chip{max-width:115px!important}
+.point-card>summary{transition:background .16s ease}.point-card>summary:hover{background:var(--surface-soft)}.point-card[open] .point-body{animation:pointBodyIn .18s ease both}@keyframes pointBodyIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
+.result-skeleton{display:block;border-radius:999px;background:linear-gradient(90deg,var(--surface-soft),var(--border-color),var(--surface-soft));background-size:220% 100%;animation:skeletonSweep 1.15s linear infinite}.skeleton-wide{width:90px;height:8px}.skeleton-short{width:64px;height:7px}.skeleton-area{width:42px;height:10px}@keyframes skeletonSweep{to{background-position:-220% 0}}
+.undo-toast{position:absolute;z-index:90;left:50%;bottom:28px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;max-width:min(430px,calc(100% - 24px));padding:10px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--card-bg);color:var(--text-main);box-shadow:var(--shadow-md);font-size:.64rem;font-weight:650;animation:toastIn .18s ease both}.undo-toast button{border:0;background:transparent;color:var(--primary);font-size:.63rem;font-weight:800;cursor:pointer;padding:3px 4px}.undo-toast.hidden{display:none}@keyframes toastIn{from{opacity:0;transform:translate(-50%,7px)}to{opacity:1;transform:translate(-50%,0)}}
+.usage-notice-modal{max-width:520px}.usage-notice-modal .eyebrow{display:block;text-align:center;margin-bottom:3px}.usage-notice-modal .btn{margin-top:4px;min-width:140px}
+/* Keep map controls and scale flush to the viewport when the sidebar is collapsed. */
+.sidebar-is-collapsed .maplibregl-ctrl-bottom-left{margin-left:0!important}.sidebar-is-collapsed .coord-readout{margin-left:10px!important}.sidebar-is-collapsed .map-search{margin-left:10px!important}
+/* Context help follows the shared olah-data-hidrologi interaction pattern. */
+.advanced label[data-help]{display:flex!important;flex-wrap:wrap;align-items:center;gap:5px;width:100%;max-width:none}.advanced label[data-help] select{flex:1 0 100%;margin-top:2px}
+/* Esri Hillshade uses the source raster styling directly; default opacity is 100%. */
+.layer-group:has(#showHillshade) .range-row{margin-bottom:1px}
+/* Header navigation stays balanced with the standalone Spasial app. */
+.spatial-header .app-nav{justify-content:center}
+/* Fluid interaction transitions without altering the established visual language. */
+.sidebar,.map-panel,.modal-card,.basemap-card,.btn,.small-icon-btn,.definition-link{transition-property:transform,opacity,background-color,border-color,color,box-shadow;transition-duration:.16s;transition-timing-function:ease}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}.maplibregl-canvas{transition:none!important}}
+@media(max-width:780px){.indicative-notice{font-size:.57rem}.undo-toast{bottom:18px}.point-chip{max-width:92px!important}.modal-subtitle{font-size:.58rem}}
+.advanced .field-help{position:static!important;flex:0 0 17px!important;width:17px!important;height:17px!important;display:inline-grid!important;place-items:center!important;border:0!important;border-radius:50%!important;color:var(--component-icon)!important;background:var(--icon-soft)!important;cursor:help!important;padding:0!important}.advanced .field-help:hover{background:var(--surface-soft)!important}.advanced .field-help svg{width:11px!important;height:11px!important;stroke-width:2.2!important}
+/* No legacy sidebar offset remains when the panel is collapsed. */
+.sidebar-is-collapsed .maplibregl-ctrl-top-left,
+.sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:0!important}
+@media(max-width:700px){
+  .sidebar-is-collapsed .maplibregl-ctrl-top-left,
+  .sidebar-is-collapsed .maplibregl-ctrl-bottom-left{left:0!important}
+}
+.point-chip{width:auto!important;min-width:28px;max-width:115px!important;padding:0 7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:780px){.point-chip{max-width:92px!important}}
+
+
+/* ============================================================
+   Local toponym + multi-point topology + compact result UI
+   ============================================================ */
+.coordinate-example{
+  margin:5px 0 8px;
+  color:var(--text-muted);
+  font-size:.54rem;
+  font-weight:550;
+  line-height:1.55;
+}
+.coordinate-example code{
+  color:var(--text-main);
+  font-size:.53rem;
+  background:var(--surface-soft);
+  border-radius:4px;
+  padding:1px 3px;
+}
+.field-label-line{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  width:max-content;
+  max-width:100%;
+}
+.advanced label[data-help]{
+  display:block!important;
+}
+.advanced label[data-help] select{
+  width:100%;
+  margin-top:4px;
+}
+.advanced .field-label-line .field-help{
+  flex:0 0 17px!important;
+  margin:0!important;
+}
+
+/* Result editor follows the rounded input language used by the point popup. */
+.point-name-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 31px;
+  gap:6px;
+  align-items:center;
+}
+.point-name-grid .rename-point{
+  height:32px!important;
+  border-radius:9px!important;
+  padding:6px 9px!important;
+}
+.save-icon-button{
+  width:31px;
+  height:31px;
+  min-width:31px;
+  padding:0!important;
+  border-radius:8px!important;
+  border-color:#223468!important;
+  background:#223468!important;
+  color:#fff!important;
+  display:grid!important;
+  place-items:center;
+}
+.save-icon-button:hover{background:#17244c!important;border-color:#17244c!important}
+.save-icon-button svg{width:14px!important;height:14px!important;color:#fff!important}
+.point-style-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 34px 28px 28px;
+  align-items:center;
+  gap:6px;
+  margin-top:9px;
+  padding-top:8px;
+  border-top:1px solid var(--border-color);
+  color:var(--text-label);
+  font-size:.60rem;
+  font-weight:750;
+}
+.point-style-row .color-input{justify-self:end}
+.point-style-row .small-icon-btn{width:28px;height:28px}
+.point-toponym-note{
+  margin-top:-2px;
+  color:var(--text-muted);
+  font-size:.53rem;
+  line-height:1.4;
+}
+
+/* Search clearly distinguishes the local toponym database from OSM fallback. */
+.search-result-head{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+.search-result-head strong{
+  flex:1;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.search-source{
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:2px 5px;
+  font-size:.48rem;
+  font-style:normal;
+  font-weight:800;
+  line-height:1.2;
+}
+.search-source.local-source{background:var(--pu-blue-soft);color:var(--primary)}
+.search-source.osm-source{background:var(--surface-soft);color:var(--text-muted)}
+[data-theme="dark"] .search-source.local-source{background:#253654;color:#dce8ff}
+
+/* Compact conceptual example in Istilah & Definisi. */
+.definition-example{
+  margin-top:12px;
+  padding:11px 12px;
+  border:1px solid var(--border-color);
+  border-radius:10px;
+  background:var(--surface-soft);
+}
+.definition-example h3{margin-top:0!important}
+.definition-example p{margin-bottom:9px!important}
+.definition-flow{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr);
+  gap:4px 8px;
+  align-items:center;
+  font-size:.58rem;
+}
+.definition-flow span{
+  min-width:48px;
+  padding:3px 6px;
+  border-radius:999px;
+  background:var(--pu-blue-soft);
+  color:var(--primary);
+  font-weight:800;
+  text-align:center;
+}
+.definition-flow b{color:var(--text-main);font-weight:650}
+
+/* Small rendering hints only; no geometry simplification is introduced. */
+.point-card,.map-panel{contain:layout paint}
+.maplibregl-canvas{outline:none}
+@media(max-width:420px){
+  .point-style-row{grid-template-columns:minmax(0,1fr) 32px 28px 28px}
+  .search-source{font-size:.45rem}
+}
+
+/* Interaction feedback ----------------------------------------------------- */
+.map-mode-indicator{
+  position:absolute;z-index:24;left:calc(var(--sidebar-w) + 20px);top:64px;
+  display:inline-flex;align-items:center;gap:6px;min-height:27px;padding:5px 9px;
+  border:1px solid var(--border-color);border-radius:999px;background:rgba(255,255,255,.94);
+  color:var(--text-muted);box-shadow:var(--shadow-sm);font-size:.56rem;font-weight:800;
+  pointer-events:none;backdrop-filter:blur(8px);transition:left .22s ease,background-color .16s ease,color .16s ease,border-color .16s ease;
+}
+.sidebar-is-collapsed .map-mode-indicator{left:18px}
+.map-mode-indicator .mode-dot{width:7px;height:7px;border-radius:50%;background:#7d8795;box-shadow:0 0 0 3px rgba(125,135,149,.12)}
+.map-mode-indicator.multi{color:var(--primary);border-color:rgba(34,52,104,.22);background:rgba(239,243,252,.96)}
+.map-mode-indicator.multi .mode-dot{background:var(--primary);box-shadow:0 0 0 3px rgba(34,52,104,.12)}
+[data-theme="dark"] .map-mode-indicator{background:rgba(25,34,50,.95)}
+[data-theme="dark"] .map-mode-indicator.multi{background:rgba(37,54,84,.96);color:#dce8ff;border-color:#40587e}
+
+/* Point name is the primary identity; river and DAS are secondary metadata. */
+.point-chip{
+  min-height:28px!important;height:auto!important;max-width:142px!important;padding:5px 8px!important;
+  font-size:.70rem!important;line-height:1.1!important;font-weight:850!important;letter-spacing:.005em;
+}
+.point-summary-main strong{font-size:.63rem!important;font-weight:750!important}
+.point-summary-main span{font-size:.56rem!important}
+@media(max-width:780px){.point-chip{max-width:112px!important;font-size:.65rem!important}}
+
+.result-state-badge{display:inline-flex;width:max-content;align-items:center;margin-top:3px;padding:2px 5px;border-radius:999px;font-size:.47rem!important;font-style:normal;font-weight:800;line-height:1.25}
+.result-state-badge.success{background:#e9f6ef;color:#277052}.result-state-badge.processing{background:var(--pu-blue-soft);color:var(--primary)}.result-state-badge.pending{background:var(--surface-soft);color:var(--text-muted)}.result-state-badge.warning{background:#fff4d7;color:#87650a}
+[data-theme="dark"] .result-state-badge.success{background:#183d31;color:#a8e0c8}[data-theme="dark"] .result-state-badge.warning{background:#493d1d;color:#f7d979}
+
+.point-edit-label-row{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.unsaved-indicator{display:none;padding:2px 5px;border-radius:999px;background:#fff4d7;color:#87650a;font-size:.47rem;font-weight:800}
+.point-edit-label.is-dirty .unsaved-indicator{display:inline-flex}
+.point-edit-label.is-dirty .rename-point{border-color:#d7a928!important;box-shadow:0 0 0 3px rgba(215,169,40,.10)!important}
+
+.point-coordinate-row{display:flex;align-items:center;gap:6px}.point-coordinate-row .point-coords{flex:1;min-width:0}
+.copy-coordinate-btn{width:27px;height:27px;display:grid;place-items:center;border:1px solid var(--border-color);border-radius:7px;background:var(--card-bg);color:var(--component-icon);cursor:pointer;padding:0}
+.copy-coordinate-btn svg{width:13px;height:13px}.point-snapped-coord{font:8px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--text-muted)}
+.point-basin{display:grid!important;gap:1px}.point-basin b{font-size:.59rem;color:var(--text-strong)}.point-basin span{font-size:.52rem;color:var(--text-muted)}
+.snap-info-row,.point-inline-warning{display:flex;align-items:flex-start;gap:6px;padding:7px 8px;border-radius:8px;font-size:.53rem;line-height:1.45}
+.snap-info-row{background:var(--surface-soft);color:var(--text-muted)}.point-inline-warning{background:#fff7df;color:#775b13;border:1px solid #f0dda5}
+.snap-info-row svg,.point-inline-warning svg{width:13px;height:13px;flex:0 0 auto;margin-top:1px}.point-confirm:disabled{opacity:.45;cursor:not-allowed}
+[data-theme="dark"] .point-inline-warning{background:#44391f;border-color:#62512a;color:#f0d681}
+
+.dta-hover-popup .maplibregl-popup-content{min-width:0!important;padding:8px 10px!important;border-radius:9px!important;pointer-events:none}
+.dta-hover-tooltip{display:grid;gap:1px;min-width:120px}.dta-hover-tooltip strong{font-size:.66rem;color:var(--text-strong)}.dta-hover-tooltip span{font-size:.51rem;color:var(--text-muted)}.dta-hover-tooltip b{margin-top:3px;font-size:.58rem;color:var(--primary)}
+
+.download-summary{display:grid;gap:5px;margin-top:9px;padding:9px 10px;border:1px solid var(--border-color);border-radius:9px;background:var(--surface-soft)}
+.download-summary>div{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;font-size:.55rem;line-height:1.4}.download-summary b{color:var(--text-strong);font-weight:800}.download-summary span{color:var(--text-muted);text-align:right}
+
+.app-toast{position:fixed;z-index:110;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;max-width:min(460px,calc(100vw - 28px));padding:9px 12px;border:1px solid var(--border-color);border-radius:10px;background:var(--card-bg);color:var(--text-main);box-shadow:var(--shadow-md);font-size:.58rem;font-weight:650}
+.app-toast svg{width:14px;height:14px;color:var(--primary);flex:0 0 auto}.app-toast.hidden{display:none}
+
+/* Interaction patch -------------------------------------------------------- */
+/* Mode indicator is anchored to the search control so it always stays on the
+   same row instead of overlapping the search field. */
+.map-search{overflow:visible!important}
+.map-search .map-mode-indicator{
+  position:absolute!important;
+  z-index:24!important;
+  left:calc(100% + 8px)!important;
+  top:50%!important;
+  transform:translateY(-50%)!important;
+  min-height:28px!important;
+  margin:0!important;
+  white-space:nowrap;
+  pointer-events:none;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:5px 9px;
+  border:1px solid var(--border-color);
+  border-radius:999px;
+  background:rgba(255,255,255,.94);
+  color:var(--text-muted);
+  box-shadow:var(--shadow-sm);
+  font-size:.56rem;
+  font-weight:800;
+  backdrop-filter:blur(8px);
+}
+.sidebar-is-collapsed .map-search .map-mode-indicator{left:calc(100% + 8px)!important}
+.map-search .map-mode-indicator.multi{color:var(--primary);border-color:rgba(34,52,104,.22);background:rgba(239,243,252,.96)}
+[data-theme="dark"] .map-search .map-mode-indicator{background:rgba(25,34,50,.95)}
+[data-theme="dark"] .map-search .map-mode-indicator.multi{background:rgba(37,54,84,.96);color:#dce8ff;border-color:#40587e}
+
+.result-heading-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.focus-all-button{background:var(--pu-yellow)!important;border:1px solid #dfa313!important;border-radius:7px!important;color:#223468!important;padding:5px 8px!important}
+.focus-all-button:hover{background:#f2ad10!important;border-color:#d79a09!important;color:#223468!important}
+.focus-all-button:disabled{opacity:.38;cursor:not-allowed}
+.focus-all-button svg{width:12px;height:12px;color:#223468!important}
+
+/* River/DAS metadata are slightly more prominent, but still subordinate to
+   the larger point name. */
+.point-summary-main strong{font-size:.66rem!important;font-weight:760!important}
+.point-summary-main span{font-size:.60rem!important;line-height:1.25!important}
+
+.point-action-label{margin-top:9px;padding-top:8px;border-top:1px solid var(--border-color);font-size:.55rem;font-weight:800;color:var(--text-label)}
+.point-action-row{display:grid;grid-template-columns:repeat(6,28px);justify-content:end;align-items:center;gap:6px;margin-top:6px}
+.point-action-row .small-icon-btn{width:28px;height:28px}
+.point-action-row .point-action-color{width:28px!important;height:28px!important;border:1px solid var(--border-color)!important;border-radius:7px!important;overflow:hidden!important;cursor:pointer!important;background:var(--card-bg)!important}
+.point-action-row .point-action-color::-webkit-color-swatch-wrapper{padding:3px}.point-action-row .point-action-color::-webkit-color-swatch{border:0;border-radius:4px}
+
+.existing-point-popup .maplibregl-popup-content{padding:10px!important;border-radius:11px!important;min-width:235px!important}
+.existing-point-menu{display:grid;gap:9px}
+.existing-point-menu-head{display:flex;align-items:center;gap:8px;min-width:0;padding-right:16px}
+.existing-point-menu-head>div{display:grid;gap:1px;min-width:0}
+.existing-point-menu-head strong{font-size:.68rem;color:var(--text-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.existing-point-menu-head span:not(.existing-point-swatch){font-size:.51rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.existing-point-swatch{width:10px;height:28px;border-radius:999px;flex:0 0 auto}
+.existing-point-menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.existing-point-menu-grid button{min-height:31px;border:1px solid var(--border-color);border-radius:8px;background:var(--card-bg);color:var(--text-main);display:flex;align-items:center;gap:6px;padding:6px 7px;font-size:.52rem;font-weight:750;cursor:pointer;text-align:left}
+.existing-point-menu-grid button:hover{background:var(--surface-soft);border-color:var(--control-hover-border)}
+.existing-point-menu-grid button svg{width:13px;height:13px;color:var(--component-icon);flex:0 0 auto}
+.existing-point-menu-grid button.danger{color:#fff;background:var(--danger);border-color:var(--danger)}
+.existing-point-menu-grid button.danger svg{color:#fff}
+.popup-point-color{position:absolute;width:1px!important;height:1px!important;opacity:0;pointer-events:none}
+
+/* Search has a single source (OSM), so results return to the simpler original
+   presentation without a source badge. */
+.search-result>strong{display:block;font-size:.60rem;color:var(--text-strong);font-weight:800;line-height:1.25}
+.search-result>span{display:block;margin-top:2px}
+
+@media(max-width:780px){
+  .map-search{width:min(280px,calc(100vw - 190px))!important;min-width:175px!important}
+  .map-search .map-mode-indicator{font-size:.50rem!important;padding:5px 7px!important;gap:5px!important}
+  .point-action-row{grid-template-columns:repeat(6,28px);gap:5px}
+  .result-heading-actions{gap:5px}.result-heading-actions .text-button{font-size:.49rem}
+}
+@media(max-width:430px){
+  .map-search{width:max(150px,calc(100vw - 180px))!important}
+  .map-search .map-mode-indicator{left:calc(100% + 5px)!important;font-size:.47rem!important;padding:5px 6px!important}
+  .result-heading-actions .text-button{gap:2px}
+}
+.point-action-row{grid-template-columns:repeat(6,28px)!important}
+@media(max-width:780px){.point-action-row{grid-template-columns:repeat(6,28px)!important;gap:4px}}
+
+/* Inline point-name editor in outlet popup, matching result-card editor. */
+.popup-point-name-editor{display:grid;gap:4px;color:var(--text-label);font-size:.55rem;font-weight:750}
+.popup-point-name-editor .point-name-grid{grid-template-columns:minmax(0,1fr) 31px}
+.popup-point-name-editor input{height:32px!important;border-radius:9px!important;padding:6px 9px!important;font-size:.60rem!important}
+
+/* ============================================================
+   Mobile search/sidebar stacking fix
+   Search is the primary mobile map control because it also owns the
+   sidebar show/hide button. It must stay visible above the sidebar/panels.
+   ============================================================ */
+@media (max-width:780px){
+  /* Never hide the top-left control when the sidebar is open. */
+  .sidebar:not(.collapsed)~.map-wrap .maplibregl-ctrl-top-left,
+  .maplibregl-ctrl-top-left{
+    left:8px!important;
+    top:0!important;
+    z-index:60!important;
+    opacity:1!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+  }
+
+  /* Search/control stays above both the analysis sidebar (z25) and map
+     panels (z35), so its sidebar toggle remains reachable at all times. */
+  .maplibregl-ctrl-top-left .map-search{
+    position:relative!important;
+    z-index:61!important;
+    margin:8px 6px!important;
+  }
+  .map-search-results{z-index:62!important}
+
+  /* Reserve the first row for Search. The sidebar starts underneath it
+     rather than visually covering the search/toggle control. */
+  .sidebar{
+    top:60px!important;
+    bottom:8px!important;
+    z-index:25!important;
+    max-height:calc(100% - 68px)!important;
+  }
+
+  /* Layer panel follows the same vertical hierarchy: Search first, then
+     map-side panels. */
+  .layer-panel{
+    top:60px!important;
+    z-index:35!important;
+    max-height:calc(100% - 70px)!important;
+  }
+}
+
+@media (max-width:430px){
+  .sidebar{top:58px!important;max-height:calc(100% - 66px)!important}
+  .layer-panel{top:58px!important;max-height:calc(100% - 68px)!important}
+}
+
+
+
+
+/* ============================================================
+   Production UI + DTA card consistency patch (v1.0.0.0-p2)
+   ============================================================ */
+html,body{width:100%;height:100%;margin:0}
+body.spatial-page{height:100vh;height:100svh;height:100dvh;min-height:0;overflow:hidden;overscroll-behavior:none}
+.webgis-shell{position:relative;width:100%;height:100vh;height:100svh;height:100dvh;min-width:0;min-height:0;overflow:hidden}
+#spatialWorkspace:fullscreen{width:100vw;height:100vh;height:100dvh;background:var(--bg-main,#eef2f6)}
+#spatialWorkspace:fullscreen .sidebar{z-index:2000}
+#spatialWorkspace:fullscreen .maplibregl-ctrl-top-left{z-index:2100}
+#spatialWorkspace:fullscreen .maplibregl-ctrl-top-right{z-index:2050}
+#spatialWorkspace:fullscreen .map-panel{z-index:2200}
+#spatialWorkspace:fullscreen .modal-backdrop{z-index:5000}
+
+/* Header toggle is an icon-only tab on the right edge; it never occupies the search row. */
+.header-menu-handle{left:auto!important;right:12px!important;transform:none!important;width:30px!important;height:26px!important;padding:0!important;justify-content:center!important;letter-spacing:0!important}
+.header-menu-handle svg{width:15px!important;height:15px!important}
+
+.sidebar-scroll{overflow-y:auto!important;overscroll-behavior:contain;padding-bottom:calc(20px + env(safe-area-inset-bottom))!important}
+.maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{bottom:env(safe-area-inset-bottom)}
+
+/* One visual identity for a DTA across sidebar, map marker and popup. */
+.point-summary-swatch{width:5px;height:32px;border-radius:999px;background:var(--point-color);flex:0 0 auto}
+.point-summary-main strong{font-size:.68rem!important;font-weight:800!important;color:var(--text-strong)!important}
+.point-summary-main>span{display:block;font-size:.56rem!important;color:var(--text-muted)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.point-summary-main .result-state-badge{display:inline-flex!important;width:max-content;margin-top:3px}
+.point-summary-area{font-size:.62rem!important;font-weight:800!important}
+
+.point-edit-label-row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:16px}
+.unsaved-indicator,.point-name-state{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;background:#fff3cd;color:#8a6500;font-size:.48rem;font-weight:750;white-space:nowrap}
+.point-name-state.hidden,.unsaved-indicator.hidden{display:none!important}
+.point-name-editor input.is-dirty{border-color:#d49a00!important;box-shadow:0 0 0 3px rgba(212,154,0,.08)!important}
+.save-icon-button:disabled{opacity:.38;cursor:not-allowed}
+.spin-icon{animation:dta-spin .8s linear infinite}
+@keyframes dta-spin{to{transform:rotate(360deg)}}
+.hidden-color-input{position:absolute!important;width:1px!important;height:1px!important;opacity:0!important;pointer-events:none!important}
+
+.existing-point-menu-head{align-items:flex-start!important}
+.existing-point-identity{display:grid!important;gap:2px!important;min-width:0;flex:1}
+.existing-point-title-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
+.existing-point-title-row strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.existing-point-title-row b{font-size:.61rem;color:var(--text-strong);white-space:nowrap}
+.existing-point-menu-head .existing-point-identity>span{font-size:.51rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.popup-point-name-editor .point-edit-label-row{margin-bottom:1px}
+
+/* Mobile drawer + dynamic viewport. Search/toggle remains accessible above it. */
+@media(max-width:780px){
+  .header-menu-handle{right:8px!important}
+  .sidebar{top:60px!important;bottom:calc(8px + env(safe-area-inset-bottom))!important;left:8px!important;width:min(340px,calc(100% - 16px))!important;max-width:calc(100% - 16px)!important;max-height:none!important;transform:translateX(0);transition:transform .22s ease,box-shadow .22s ease!important;overflow:hidden!important}
+  .sidebar.collapsed{width:min(340px,calc(100% - 16px))!important;transform:translateX(calc(-100% - 20px));pointer-events:none}
+  .sidebar.collapsed .sidebar-scroll{display:block!important}
+  .maplibregl-ctrl-top-left{left:8px!important;top:0!important;z-index:2100!important;opacity:1!important;visibility:visible!important;pointer-events:auto!important}
+  .maplibregl-ctrl-top-left .map-search{z-index:2101!important;margin:8px 6px!important}
+  .map-search-results{z-index:2102!important}
+  .layer-panel{top:60px!important;bottom:calc(8px + env(safe-area-inset-bottom));max-height:none!important;overflow-y:auto;overscroll-behavior:contain}
+  .maplibregl-ctrl-bottom-left,.maplibregl-ctrl-bottom-right{bottom:calc(4px + env(safe-area-inset-bottom))}
+}
+@media(max-width:430px){
+  .sidebar{top:58px!important;bottom:calc(6px + env(safe-area-inset-bottom))!important}
+  .layer-panel{top:58px!important;bottom:calc(6px + env(safe-area-inset-bottom))!important}
+}
+
+/* ============================================================
+   UI hotfix p3 — map click + always-reachable header toggle
+   ============================================================ */
+.header-menu-handle{
+  position:fixed!important;
+  top:0;
+  bottom:auto!important;
+  left:auto!important;
+  right:12px!important;
+  transform:none!important;
+  z-index:5200!important;
+  width:32px!important;
+  height:27px!important;
+  padding:0!important;
+  justify-content:center!important;
+  border-radius:0 0 8px 8px!important;
+  transition:top .24s ease,background-color .16s ease!important;
+}
+.header-menu-handle svg{width:15px!important;height:15px!important}
+@media(max-width:780px){
+  .header-menu-handle{right:8px!important}
+}
+
+/* ============================================================
+   UI refinement p5
+   ============================================================ */
+
+/* Header toggle: same visual family as the sidebar/search toggle,
+   fixed at the top-right and aligned vertically with the 42 px search box. */
+.header-menu-handle{
+  position:fixed!important;
+  top:10px!important;
+  right:10px!important;
+  bottom:auto!important;
+  left:auto!important;
+  transform:none!important;
+  z-index:5200!important;
+  width:42px!important;
+  height:42px!important;
+  padding:0!important;
+  display:grid!important;
+  place-items:center!important;
+  border:1px solid var(--border-color)!important;
+  border-radius:10px!important;
+  background:var(--card-bg)!important;
+  color:var(--pu-navy)!important;
+  box-shadow:var(--shadow-sm)!important;
+  transition:background-color .16s ease,border-color .16s ease!important;
+}
+.header-menu-handle:hover{background:var(--surface-soft)!important;border-color:var(--control-hover-border)!important}
+.header-menu-handle svg{width:17px!important;height:17px!important}
+[data-theme="dark"] .header-menu-handle{color:#d8e6ff!important}
+/* Reserve the toggle footprint when the header itself is visible. */
+.spatial-header .app-header-main{padding-right:54px}
+
+/* Result heading buttons: same height, compact two-line labels. */
+.result-heading-actions{align-items:stretch!important;gap:6px!important}
+.result-heading-actions .result-stack-button{
+  width:55px!important;
+  height:40px!important;
+  min-height:40px!important;
+  padding:4px 6px!important;
+  margin:0!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:5px!important;
+  border-radius:7px!important;
+  line-height:1.02!important;
+  text-align:left!important;
+}
+.result-heading-actions .result-stack-button span{display:block;font-size:.50rem;font-weight:800;line-height:1.05}
+.result-heading-actions .result-stack-button svg{width:13px!important;height:13px!important;flex:0 0 auto}
+.danger-text-button.result-stack-button{border:1px solid var(--danger)!important}
+
+/* DTA identity hierarchy: colored location name -> bold river -> DAS. */
+.point-card{border-left:1px solid var(--border-color)!important}
+.point-card>summary{gap:7px!important;align-items:center!important}
+.point-summary-main{display:grid!important;grid-template-columns:minmax(0,1fr)!important;align-items:start!important;gap:1px!important}
+.point-name-chip{
+  display:inline-flex!important;
+  align-items:center!important;
+  width:max-content!important;
+  max-width:100%!important;
+  min-height:24px!important;
+  padding:4px 8px!important;
+  border-radius:6px!important;
+  font-size:.62rem!important;
+  font-weight:800!important;
+  line-height:1.1!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.point-summary-river{display:block!important;margin-top:2px;font-size:.56rem!important;font-weight:800!important;color:var(--text-strong)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.point-summary-basin{display:block!important;font-size:.50rem!important;font-weight:500!important;color:var(--text-muted)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.point-summary-area{align-self:center!important}
+.point-summary-swatch{display:none!important}
+
+/* Result-card actions are explicit, short, and left aligned. */
+.point-action-label{margin-top:9px!important;text-align:left!important}
+.point-action-row{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  justify-content:start!important;
+  align-items:stretch!important;
+  gap:5px!important;
+  width:100%!important;
+  margin-top:6px!important;
+}
+.point-action-row .dta-action-button{
+  width:100%!important;
+  height:31px!important;
+  min-width:0!important;
+  padding:0 7px!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:flex-start!important;
+  gap:5px!important;
+  font-size:.50rem!important;
+  font-weight:750!important;
+  white-space:nowrap!important;
+}
+.point-action-row .dta-action-button svg{width:12px!important;height:12px!important;flex:0 0 auto}
+.point-action-row .dta-action-button span{overflow:hidden;text-overflow:ellipsis}
+
+/* Popup uses the exact same information hierarchy. */
+.existing-point-menu-head{padding-right:16px!important}
+.existing-point-title-row{align-items:center!important}
+.existing-point-name-chip{
+  display:inline-flex!important;
+  align-items:center!important;
+  width:max-content!important;
+  max-width:150px!important;
+  min-height:24px!important;
+  padding:4px 8px!important;
+  border-radius:6px!important;
+  font-size:.64rem!important;
+  font-weight:800!important;
+  line-height:1.1!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.existing-point-river{display:block!important;margin-top:2px;font-size:.57rem!important;font-weight:800!important;color:var(--text-strong)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.existing-point-basin{display:block!important;font-size:.51rem!important;font-weight:500!important;color:var(--text-muted)!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.existing-point-swatch{display:none!important}
+.existing-point-menu-grid button span{line-height:1.05}
+
+/* Map navigation toolbar at bottom-right, always above attribution and never overlapping it. */
+.maplibregl-ctrl-bottom-right{
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:flex-end!important;
+  justify-content:flex-end!important;
+  right:0!important;
+  bottom:calc(0px + env(safe-area-inset-bottom))!important;
+}
+.maplibregl-ctrl-bottom-right .map-toolbar-control{
+  order:1!important;
+  float:none!important;
+  margin:0 10px 8px 0!important;
+}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{
+  order:2!important;
+  float:none!important;
+  margin:0 10px 10px 0!important;
+}
+
+/* Shared Bootstrap Colorpicker. It is inline inside our own floating panel,
+   so it does not depend on Bootstrap's popover component. */
+.dta-colorpicker-panel{
+  position:fixed;
+  z-index:6500;
+  width:238px;
+  padding:9px;
+  border:1px solid var(--border-color);
+  border-radius:11px;
+  background:var(--card-bg);
+  box-shadow:var(--shadow-md);
+}
+.dta-colorpicker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px;color:var(--text-strong);font-size:.62rem}
+.dta-colorpicker-head button{width:27px;height:27px;border:0;border-radius:7px;background:var(--bg-soft);color:var(--text-muted);display:grid;place-items:center;cursor:pointer}
+.dta-colorpicker-head button svg{width:13px;height:13px}
+.dta-colorpicker-input{height:31px!important;margin:0 0 7px!important;padding:5px 8px!important;font-size:.58rem!important}
+.dta-colorpicker-panel>.colorpicker,.dta-colorpicker-panel .colorpicker-inline{position:relative!important;display:block!important;float:none!important;left:auto!important;top:auto!important;z-index:auto!important;margin:0 auto!important;box-shadow:none!important}
+.dta-colorpicker-panel .colorpicker:before,.dta-colorpicker-panel .colorpicker:after{display:none!important}
+
+/* Custom hover-tip features are removed. Native aria labels remain available. */
+.dta-hover-popup,.dta-hover-tooltip,.field-help-tooltip,.field-help{display:none!important}
+
+@media(max-width:780px){
+  .header-menu-handle{top:8px!important;right:8px!important;width:42px!important;height:42px!important}
+  .spatial-header .app-header-main{padding-right:52px}
+  .point-action-row{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:4px!important}
+  .maplibregl-ctrl-bottom-right .map-toolbar-control{margin-right:8px!important;margin-bottom:7px!important}
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{margin-right:8px!important;margin-bottom:8px!important}
+}
+
+/* Header toggle shell mirrors the search control: 42 px frame with the same 34 px
+   sidebar-toggle button inside it. */
+.header-handle-shell{
+  position:fixed;
+  top:10px;
+  right:10px;
+  z-index:5200;
+  width:42px;
+  height:42px;
+  padding:3px;
+  border:1px solid var(--border-color);
+  border-radius:10px;
+  background:var(--card-bg);
+  box-shadow:var(--shadow-sm);
+}
+.header-handle-shell .header-menu-handle{
+  position:static!important;
+  width:34px!important;
+  height:34px!important;
+  border:0!important;
+  border-radius:7px!important;
+  background:transparent!important;
+  box-shadow:none!important;
+  color:var(--pu-navy)!important;
+}
+.header-handle-shell .header-menu-handle:hover{background:var(--surface-soft)!important}
+[data-theme="dark"] .header-handle-shell .header-menu-handle{color:#d8e6ff!important}
+@media(max-width:780px){.header-handle-shell{top:8px;right:8px}}
+
+/* p5 identity alignment — match the reference card: colored point name at left,
+   river/DAS immediately to its right, area and chevron at the far right. */
+.point-card>summary{display:flex!important;align-items:center!important}
+.point-card>summary>.point-name-chip{flex:0 1 auto!important;max-width:105px!important}
+.point-card>summary>.point-summary-main{flex:1 1 auto!important;min-width:0!important}
+.point-card>summary>.point-summary-area{flex:0 0 auto!important}
+.existing-point-menu-head{display:flex!important;align-items:center!important;gap:8px!important;min-width:0!important}
+.existing-point-menu-head>.existing-point-name-chip{flex:0 1 auto!important;max-width:105px!important}
+.existing-point-menu-head>.existing-point-identity{flex:1 1 auto!important;min-width:0!important}
+.existing-point-area{flex:0 0 auto;font-size:.61rem;color:var(--text-strong);white-space:nowrap}
+
+
+/* ============================================================
+   UI hotfix p6 — antisipasi nama titik panjang pada kartu DTA
+   ============================================================ */
+
+/* Sidebar result cards: use a 2-row grid so long location names
+   stay inside the colored chip, while river/DAS move below cleanly. */
+.point-card > summary{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto auto!important;
+  grid-template-areas:
+    "chip area chevron"
+    "meta meta meta"!important;
+  align-items:start!important;
+  column-gap:8px!important;
+  row-gap:4px!important;
+}
+
+.point-card > summary > .point-name-chip{
+  grid-area:chip!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  align-self:start!important;
+  justify-self:start!important;
+  max-width:100%!important;
+  min-width:0!important;
+  min-height:28px!important;
+  padding:6px 10px!important;
+  border-radius:8px!important;
+  line-height:1.18!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+  text-align:left!important;
+  /* clamp visually to 2 lines so the chip never collides with area */
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  overflow:hidden!important;
+}
+
+.point-card > summary > .point-summary-main{
+  grid-area:meta!important;
+  width:100%!important;
+  min-width:0!important;
+  margin-top:0!important;
+}
+
+.point-card > summary > .point-summary-area{
+  grid-area:area!important;
+  align-self:start!important;
+  justify-self:end!important;
+  white-space:nowrap!important;
+  text-align:right!important;
+  padding-top:2px!important;
+}
+
+.point-card > summary > .point-chevron{
+  grid-area:chevron!important;
+  align-self:start!important;
+  justify-self:end!important;
+  padding-top:1px!important;
+}
+
+.point-summary-river{
+  display:block!important;
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+.point-summary-basin{
+  display:block!important;
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+/* Popup header: same hierarchy, but resilient when the saved point name is long. */
+.existing-point-popup .maplibregl-popup-content{
+  min-width:260px!important;
+  width:min(320px, calc(100vw - 28px))!important;
+}
+
+.existing-point-menu-head{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:
+    "chip area"
+    "meta meta"!important;
+  align-items:start!important;
+  column-gap:8px!important;
+  row-gap:4px!important;
+  min-width:0!important;
+  padding-right:18px!important; /* keep distance from popup close button */
+}
+
+.existing-point-menu-head > .existing-point-name-chip{
+  grid-area:chip!important;
+  justify-self:start!important;
+  align-self:start!important;
+  max-width:100%!important;
+  min-width:0!important;
+  min-height:28px!important;
+  padding:6px 10px!important;
+  border-radius:8px!important;
+  line-height:1.18!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:break-word!important;
+  text-align:left!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  overflow:hidden!important;
+}
+
+.existing-point-menu-head > .existing-point-identity{
+  grid-area:meta!important;
+  width:100%!important;
+  min-width:0!important;
+}
+
+.existing-point-area{
+  grid-area:area!important;
+  align-self:start!important;
+  justify-self:end!important;
+  white-space:nowrap!important;
+  text-align:right!important;
+  padding-top:2px!important;
+  max-width:96px!important;
+}
+
+.existing-point-river,
+.existing-point-basin{
+  min-width:0!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+/* Small screens: let the popup breathe slightly more and allow chip wrap. */
+@media (max-width: 640px){
+  .existing-point-popup .maplibregl-popup-content{
+    width:min(340px, calc(100vw - 18px))!important;
+  }
+  .point-card > summary{
+    column-gap:6px!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p7
+   - long point names remain left of river/DAS and wrap downward
+   - popup typography matches sidebar
+   - compact result actions and ~10% narrower desktop sidebar
+   - system palette + RGB + HEX DTA color editor
+   ============================================================ */
+
+/* Desktop sidebar is ~10% narrower than the previous 350 px baseline. */
+@media (min-width: 901px){
+  :root{--sidebar-w:315px!important}
+}
+@media (min-width: 701px) and (max-width: 900px){
+  :root{--sidebar-w:288px!important}
+}
+
+/* Slightly reduce the two bulk buttons while keeping identical heights. */
+.result-heading-actions .result-stack-button{
+  width:52px!important;
+  height:36px!important;
+  min-height:36px!important;
+  padding:3px 5px!important;
+  gap:4px!important;
+}
+.result-heading-actions .result-stack-button span{
+  font-size:.48rem!important;
+  line-height:1!important;
+}
+.result-heading-actions .result-stack-button svg{
+  width:12px!important;
+  height:12px!important;
+}
+
+/* Sidebar header: location chip stays on the left, river/DAS stay on the right.
+   A long location name grows downward instead of moving metadata to a second row. */
+.point-card > summary{
+  display:flex!important;
+  align-items:flex-start!important;
+  gap:7px!important;
+  padding:9px!important;
+}
+.point-card > summary > .point-name-chip{
+  flex:0 1 42%!important;
+  width:auto!important;
+  min-width:0!important;
+  max-width:42%!important;
+  min-height:27px!important;
+  padding:6px 8px!important;
+  border-radius:7px!important;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+  font-size:.61rem!important;
+  font-weight:800!important;
+  line-height:1.17!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:normal!important;
+  text-align:left!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  overflow:hidden!important;
+}
+.point-card > summary > .point-summary-main{
+  flex:1 1 72px!important;
+  width:auto!important;
+  min-width:0!important;
+  margin-top:2px!important;
+  display:block!important;
+}
+.point-summary-river,
+.point-summary-basin{
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+}
+.point-summary-river{
+  display:block!important;
+  font-size:.57rem!important;
+  font-weight:800!important;
+  line-height:1.18!important;
+  color:var(--text-strong)!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.point-summary-basin{
+  display:block!important;
+  margin-top:2px!important;
+  font-size:.51rem!important;
+  font-weight:500!important;
+  line-height:1.18!important;
+  color:var(--text-muted)!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.point-card > summary > .point-summary-area{
+  flex:0 0 auto!important;
+  align-self:flex-start!important;
+  padding-top:5px!important;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+  font-size:.60rem!important;
+  white-space:nowrap!important;
+}
+.point-card > summary > .point-chevron{
+  flex:0 0 auto!important;
+  align-self:flex-start!important;
+  padding-top:4px!important;
+}
+
+/* Popup uses the exact same font and the same horizontal hierarchy as sidebar. */
+.existing-point-popup .maplibregl-popup-content,
+.existing-point-menu,
+.existing-point-menu button,
+.existing-point-menu input{
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+}
+.existing-point-popup .maplibregl-popup-content{
+  min-width:270px!important;
+  width:min(330px,calc(100vw - 28px))!important;
+}
+.existing-point-menu-head{
+  display:flex!important;
+  align-items:flex-start!important;
+  gap:7px!important;
+  min-width:0!important;
+  padding-right:22px!important;
+}
+.existing-point-menu-head > .existing-point-name-chip{
+  flex:0 1 42%!important;
+  width:auto!important;
+  min-width:0!important;
+  max-width:42%!important;
+  min-height:27px!important;
+  padding:6px 8px!important;
+  border-radius:7px!important;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+  font-size:.61rem!important;
+  font-weight:800!important;
+  line-height:1.17!important;
+  white-space:normal!important;
+  overflow-wrap:anywhere!important;
+  word-break:normal!important;
+  text-align:left!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  overflow:hidden!important;
+}
+.existing-point-menu-head > .existing-point-identity{
+  flex:1 1 72px!important;
+  width:auto!important;
+  min-width:0!important;
+  padding-top:2px!important;
+  display:block!important;
+}
+.existing-point-river{
+  display:block!important;
+  font-size:.57rem!important;
+  font-weight:800!important;
+  line-height:1.18!important;
+  color:var(--text-strong)!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.existing-point-basin{
+  display:block!important;
+  margin-top:2px!important;
+  font-size:.51rem!important;
+  font-weight:500!important;
+  line-height:1.18!important;
+  color:var(--text-muted)!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.existing-point-area{
+  flex:0 0 auto!important;
+  align-self:flex-start!important;
+  padding-top:5px!important;
+  max-width:none!important;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif!important;
+  font-size:.60rem!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+
+/* Name-length feedback. */
+.point-name-limit-warning{
+  display:block;
+  margin-top:4px;
+  font-size:.49rem;
+  font-weight:700;
+  line-height:1.3;
+  color:#9a6500;
+}
+.point-name-limit-warning.hidden{display:none!important}
+
+/* System DTA color palette. */
+.dta-colorpicker-panel{
+  width:286px!important;
+  max-height:min(520px,calc(100dvh - 20px));
+  overflow:auto;
+  padding:10px!important;
+}
+.dta-colorpicker-head{
+  margin-bottom:9px!important;
+  font-size:.64rem!important;
+}
+.dta-color-section{
+  display:grid;
+  gap:6px;
+  padding-top:8px;
+  margin-top:8px;
+  border-top:1px solid var(--border-color);
+}
+.dta-color-section:first-of-type{
+  padding-top:0;
+  margin-top:0;
+  border-top:0;
+}
+.dta-color-section-title{
+  font-size:.53rem;
+  font-weight:800;
+  color:var(--text-muted);
+  letter-spacing:.02em;
+}
+.dta-system-color-palette{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:5px;
+}
+.dta-system-color-token{
+  min-width:0;
+  min-height:45px;
+  padding:5px 4px;
+  border:1px solid var(--border-color);
+  border-radius:8px;
+  background:var(--card-bg);
+  color:var(--text-main);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+  cursor:pointer;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;
+  font-size:.46rem;
+  font-weight:700;
+}
+.dta-system-color-token.active{
+  border-color:var(--pu-navy);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--pu-navy) 14%,transparent);
+}
+.dta-system-swatch{
+  width:27px;
+  height:17px;
+  border-radius:5px;
+  border:1px solid rgba(0,0,0,.12);
+}
+.dta-preset-color-palette{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:6px;
+}
+.dta-preset-swatch{
+  aspect-ratio:1.45;
+  min-width:0;
+  border:2px solid transparent;
+  border-radius:7px;
+  background:var(--swatch);
+  cursor:pointer;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);
+}
+.dta-preset-swatch.active{
+  border-color:var(--text-strong);
+  box-shadow:0 0 0 2px var(--card-bg),0 0 0 4px var(--pu-navy);
+}
+.dta-hex-row{
+  display:grid;
+  grid-template-columns:34px minmax(0,1fr);
+  gap:7px;
+  align-items:end;
+}
+.dta-color-preview{
+  width:34px;
+  height:31px;
+  border:1px solid var(--border-color);
+  border-radius:7px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
+}
+.dta-hex-row label,
+.dta-rgb-grid label{
+  margin:0!important;
+  font-size:.48rem!important;
+  font-weight:800!important;
+  color:var(--text-muted)!important;
+}
+.dta-hex-row input,
+.dta-rgb-grid input{
+  height:31px!important;
+  margin-top:3px!important;
+  padding:5px 7px!important;
+  font-size:.56rem!important;
+}
+.dta-rgb-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:6px;
+}
+.dta-colorpicker-panel input.is-invalid{
+  border-color:#c33!important;
+  box-shadow:0 0 0 2px rgba(195,51,51,.08)!important;
+}
+.dta-color-input-message{
+  font-size:.46rem;
+  line-height:1.35;
+  color:var(--text-muted);
+}
+.dta-color-input-message.error{color:#a42b24}
+
+/* The old Bootstrap Colorpicker nodes are no longer used. */
+.dta-colorpicker-input,
+.dta-colorpicker-panel>.colorpicker,
+.dta-colorpicker-panel .colorpicker-inline{display:none!important}
+
+@media(max-width:700px){
+  /* Keep mobile drawer width usable even though desktop sidebar is narrower. */
+  .sidebar{width:min(340px,calc(100% - 16px))!important}
+  .existing-point-popup .maplibregl-popup-content{
+    width:min(340px,calc(100vw - 18px))!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p8
+   ============================================================ */
+.help,
+.input-note,
+.coordinate-example,
+.definition-modal p,
+.definition-modal li,
+.definition-meaning,
+.source-modal p,
+.confirm-modal p,
+.warning-modal p,
+.usage-notice-modal p,
+.app-definition-note,
+.modal-subtitle{
+  text-align:justify!important;
+  text-justify:inter-word;
+  hyphens:auto;
+}
+
+.sidebar-title{
+  grid-template-columns:38px minmax(0,1fr) 28px!important;
+  gap:9px!important;
+  padding-right:0!important;
+}
+.sidebar-title-copy{min-width:0}
+.sidebar-title-info{
+  width:26px;height:26px;margin-top:1px;padding:0;
+  border:1px solid var(--border-color);border-radius:50%;
+  background:var(--card-bg);color:var(--primary);
+  display:grid;place-items:center;cursor:pointer;
+}
+.sidebar-title-info svg{width:13px;height:13px}
+.sidebar-title-info:hover{background:var(--surface-soft)}
+.indicative-notice{display:none!important}
+
+.header-handle-shell{transition:opacity .14s ease,visibility .14s ease!important}
+.header-handle-shell.is-blocked{
+  opacity:0!important;visibility:hidden!important;pointer-events:none!important;
+}
+.header-handle-shell.is-blocked .header-menu-handle{pointer-events:none!important}
+
+html:fullscreen,
+html:-webkit-full-screen{
+  width:100vw;height:100vh;height:100dvh;overflow:hidden;
+  background:var(--bg-main,#eef2f6);
+}
+html:fullscreen body,
+html:-webkit-full-screen body{width:100%;height:100%;overflow:hidden}
+html:fullscreen #spatialWorkspace,
+html:-webkit-full-screen #spatialWorkspace{
+  width:100vw!important;height:100vh!important;height:100dvh!important;
+}
+html:fullscreen .app-header,
+html:-webkit-full-screen .app-header{z-index:6200!important}
+html:fullscreen .header-handle-shell,
+html:-webkit-full-screen .header-handle-shell{z-index:6300!important}
+
+.definition-example{border-top:1px solid var(--border-color);padding-top:13px}
+.definition-example>h3{margin-bottom:7px}
+.definition-example-case{
+  margin-top:12px;padding:11px;border:1px solid var(--border-color);
+  border-radius:10px;background:var(--surface-soft);
+}
+.definition-example-case h4{
+  margin:0 0 7px;color:var(--text-strong);font-size:.66rem;
+}
+.definition-relation-title{
+  display:block;margin:8px 0 5px;font-size:.55rem;color:var(--text-strong);
+}
+.definition-relation,
+.definition-ascii{
+  margin:5px 0 8px;padding:8px 9px;border:1px solid var(--border-color);
+  border-radius:8px;background:var(--card-bg);color:var(--text-main);
+  font:500 .53rem/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre;overflow:auto;
+}
+.definition-ascii{font-size:.49rem}
+.definition-meaning{
+  margin-top:7px;padding:7px 8px;border-left:3px solid var(--pu-yellow);
+  border-radius:5px;background:var(--accent-soft);color:var(--text-main);
+  font-size:.54rem;line-height:1.55;
+}
+.definition-concept{background:var(--card-bg)}
+
+.dta-hover-popup{display:block!important;pointer-events:none!important}
+.dta-hover-popup .maplibregl-popup-content{
+  min-width:0!important;max-width:220px!important;padding:8px 9px!important;
+  border-radius:9px!important;pointer-events:none!important;
+}
+.dta-hover-popup .maplibregl-popup-tip{pointer-events:none!important}
+.dta-hover-card{
+  display:grid;grid-template-columns:auto auto;
+  grid-template-areas:"chip value" "meta meta";
+  align-items:center;gap:4px 7px;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;
+}
+.dta-hover-chip{
+  grid-area:chip;min-width:0;max-width:130px;padding:4px 6px;border-radius:6px;
+  font-size:.50rem;font-weight:800;line-height:1.2;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dta-hover-card>strong{
+  grid-area:value;justify-self:end;font-size:.52rem;color:var(--text-strong);white-space:nowrap;
+}
+.dta-hover-card>span:last-child{
+  grid-area:meta;min-width:0;font-size:.46rem;color:var(--text-muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.point-hover-card>strong{font-size:.49rem}
+.field-help-tooltip{display:none!important}
+
+.point-card{touch-action:pan-y}
+.point-list.is-drag-arming .point-card{cursor:grab}
+.point-list.is-dragging{user-select:none}
+.point-card-drag-chosen{
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 24%,transparent),var(--shadow-sm)!important;
+}
+.point-card-drag-ghost{opacity:.36!important}
+.point-card-dragging{
+  cursor:grabbing!important;
+  box-shadow:0 12px 30px rgba(20,32,60,.18)!important;
+  transform:scale(1.01);
+}
+
+@media(max-width:780px){
+  .sidebar-title{grid-template-columns:32px minmax(0,1fr) 27px!important}
+  .definition-ascii{font-size:.43rem}
+}
+
+
+
+/* ============================================================
+   UI refinement p9
+   ============================================================ */
+
+/* Search box label trimmed and sidebar title simplified. */
+.sidebar-title-copy p{display:none!important}
+
+/* Compact and simpler example section with circular set visuals. */
+.definition-example-case.compact{
+  padding:10px 11px;
+}
+.definition-example-head{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:6px 10px;
+  margin-bottom:6px;
+}
+.definition-example-formula{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 8px;
+  border-radius:999px;
+  background:var(--card-bg);
+  border:1px solid var(--border-color);
+  font-size:.50rem;
+  line-height:1.25;
+  color:var(--text-strong);
+}
+.definition-bullets{
+  margin:0;
+  padding-left:16px;
+  display:grid;
+  gap:5px;
+}
+.set-visual{
+  margin-top:9px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.set-circle{
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  text-align:center;
+}
+.set-circle > span{
+  display:block;
+  font-weight:800;
+  line-height:1.2;
+}
+.set-visual-single .set-circle-outer,
+.set-visual-multi .set-circle-outer{
+  width:min(100%, 290px);
+  aspect-ratio:1/1;
+  border:2px solid color-mix(in srgb,var(--primary) 25%, var(--border-color));
+  background:color-mix(in srgb,var(--card-bg) 92%, var(--primary) 8%);
+}
+.set-circle-outer > span{
+  position:absolute;
+  top:12px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:.58rem;
+  white-space:nowrap;
+}
+.set-circle-middle{
+  width:68%;
+  aspect-ratio:1/1;
+  border:2px solid color-mix(in srgb,var(--pu-yellow) 45%, var(--border-color));
+  background:color-mix(in srgb,var(--card-bg) 86%, var(--pu-yellow) 14%);
+}
+.set-circle-middle > span{
+  position:absolute;
+  top:18px;
+  left:50%;
+  transform:translateX(-50%);
+  font-size:.54rem;
+  max-width:80%;
+}
+.set-circle-middle.large{
+  width:76%;
+}
+.set-circle-inner{
+  width:53%;
+  aspect-ratio:1/1;
+  border:2px solid color-mix(in srgb,var(--success) 34%, var(--border-color));
+  background:color-mix(in srgb,var(--card-bg) 84%, var(--success) 16%);
+}
+.set-circle-inner > span{
+  font-size:.50rem;
+  max-width:78%;
+}
+.set-node-group{
+  position:absolute;
+  inset:34% 12% 12%;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:8px;
+  align-items:end;
+}
+.set-circle-node{
+  width:100%;
+  aspect-ratio:1/1;
+  border:1.6px solid color-mix(in srgb,var(--primary) 22%, var(--border-color));
+  background:var(--card-bg);
+  padding:4px;
+}
+.set-circle-node span{
+  font-size:.42rem;
+  font-weight:700;
+}
+
+/* Sidebar/popup headers: chip autofit, river text adaptive, area fixed. */
+.point-card > summary{
+  display:grid!important;
+  grid-template-columns:fit-content(44%) minmax(0,1fr) auto auto!important;
+  align-items:start!important;
+  gap:7px!important;
+}
+.point-card > summary > .point-name-chip{
+  width:fit-content!important;
+  max-width:min(44%, 175px)!important;
+  justify-self:start!important;
+  padding-inline:9px!important;
+}
+.point-card > summary > .point-summary-main{
+  min-width:0!important;
+}
+.point-summary-river{
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.point-summary-basin{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.existing-point-menu-head{
+  display:grid!important;
+  grid-template-columns:fit-content(44%) minmax(0,1fr) auto!important;
+  align-items:start!important;
+  gap:7px!important;
+  padding-right:18px!important;
+}
+.existing-point-menu-head > .existing-point-name-chip{
+  width:fit-content!important;
+  max-width:min(44%, 168px)!important;
+  justify-self:start!important;
+  padding-inline:9px!important;
+}
+.existing-point-menu-head > .existing-point-identity{
+  min-width:0!important;
+}
+.existing-point-river{
+  display:-webkit-box!important;
+  -webkit-line-clamp:2!important;
+  -webkit-box-orient:vertical!important;
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+.existing-point-basin{
+  white-space:nowrap!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+}
+
+/* Existing DTA popup width follows the compact add/move popup scale. */
+.existing-point-popup .maplibregl-popup-content{
+  min-width:246px!important;
+  width:min(286px, calc(100vw - 24px))!important;
+}
+
+/* Hover tip remains, plus visible halo on hovered DTA / point. */
+.dta-hover-popup .maplibregl-popup-content{
+  box-shadow:0 14px 32px rgba(20,32,60,.16), 0 0 0 1px rgba(255,255,255,.68)!important;
+}
+
+/* Keep field-help tooltip disabled. */
+.field-help-tooltip{display:none!important}
+
+@media(max-width:720px){
+  .set-visual-single .set-circle-outer,
+  .set-visual-multi .set-circle-outer{
+    width:min(100%, 248px);
+  }
+  .point-card > summary{
+    grid-template-columns:minmax(0,1fr) auto auto!important;
+    grid-template-areas:
+      "chip area chevron"
+      "meta meta meta"!important;
+  }
+  .point-card > summary > .point-name-chip{
+    grid-area:chip!important;
+    max-width:100%!important;
+  }
+  .point-card > summary > .point-summary-main{
+    grid-area:meta!important;
+  }
+  .point-card > summary > .point-summary-area{
+    grid-area:area!important;
+  }
+  .point-card > summary > .point-chevron{
+    grid-area:chevron!important;
+  }
+}
+
+
+/* ============================================================
+   UI refinement p10
+   ============================================================ */
+
+.definition-example-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  align-items:start;
+}
+.set-node-group-five{
+  inset:31% 10% 12%;
+  grid-template-columns:repeat(3,1fr);
+  grid-template-rows:repeat(2,1fr);
+  align-items:center;
+}
+.set-node-group-five .set-circle-node:nth-child(4){grid-column:1 / span 1;justify-self:center}
+.set-node-group-five .set-circle-node:nth-child(5){grid-column:3 / span 1;justify-self:center}
+.set-node-group-five .set-circle-node span{font-size:.39rem}
+
+.point-card > summary{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto auto!important;
+  grid-template-areas:
+    "point area chevron"
+    "meta meta chevron"!important;
+  align-items:start!important;
+  column-gap:10px!important;
+  row-gap:6px!important;
+}
+.point-card > summary > .point-name-chip{
+  grid-area:point!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-self:start!important;
+  width:auto!important;
+  max-width:100%!important;
+  min-width:0!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere!important;
+  line-height:1.15!important;
+  padding:6px 9px!important;
+}
+.point-card > summary > .point-summary-area{
+  grid-area:area!important;
+  white-space:nowrap!important;
+  align-self:center!important;
+}
+.point-card > summary > .point-chevron{grid-area:chevron!important;align-self:center!important}
+.point-card > summary > .point-summary-main{
+  grid-area:meta!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:"river basin" "warning warning"!important;
+  gap:2px 10px!important;
+  min-width:0!important;
+}
+.point-summary-river{grid-area:river!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.point-summary-basin{grid-area:basin!important;justify-self:end!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.point-summary-main .result-state-badge{grid-area:warning!important;justify-self:start!important}
+
+.existing-point-menu-head{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:
+    "point area"
+    "meta meta"!important;
+  align-items:start!important;
+  column-gap:10px!important;
+  row-gap:6px!important;
+  padding-right:18px!important;
+}
+.existing-point-menu-head > .existing-point-name-chip{
+  grid-area:point!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-self:start!important;
+  width:auto!important;
+  max-width:100%!important;
+  min-width:0!important;
+  white-space:normal!important;
+  overflow:visible!important;
+  text-overflow:clip!important;
+  overflow-wrap:anywhere!important;
+  line-height:1.15!important;
+  padding:6px 9px!important;
+}
+.existing-point-menu-head > .existing-point-area{grid-area:area!important;white-space:nowrap!important;align-self:center!important}
+.existing-point-menu-head > .existing-point-identity{
+  grid-area:meta!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  gap:2px 10px!important;
+  min-width:0!important;
+}
+.existing-point-river{white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.existing-point-basin{justify-self:end!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+.existing-point-popup .maplibregl-popup-content{
+  min-width:240px!important;
+  width:min(274px, calc(100vw - 24px))!important;
+}
+
+.dta-hover-popup .maplibregl-popup-content{
+  box-shadow:0 14px 32px rgba(20,32,60,.16), 0 0 0 1px rgba(255,255,255,.68)!important;
+}
+
+/* Simplified native DTA color picker */
+.dta-colorpicker-panel{width:min(248px,calc(100vw - 20px))!important}
+.dta-colorpicker-body{display:grid;gap:11px;padding:2px 0 0}
+.dta-color-inline-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dta-color-inline-row>label{font-size:.58rem;font-weight:700;color:var(--text-strong)}
+.dta-color-hex-label{display:grid;gap:5px;font-size:.54rem;color:var(--text-muted)}
+.dta-color-hex-label input{
+  width:100%;border:1px solid var(--border-color);border-radius:10px;background:var(--card-bg);
+  padding:9px 10px;font:600 .60rem/1.2 "Plus Jakarta Sans",system-ui,sans-serif;color:var(--text-strong)
+}
+
+@media (max-width: 980px){
+  .definition-example-grid{grid-template-columns:1fr}
+}
+@media (max-width: 720px){
+  .point-card > summary{
+    grid-template-columns:minmax(0,1fr) auto auto!important;
+    grid-template-areas:
+      "point area chevron"
+      "meta meta chevron"!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p11 — finishing / responsive polish
+   ============================================================ */
+
+:root{
+  --ui-card-radius:10px;
+  --ui-control-radius:8px;
+  --ui-gap-xs:4px;
+  --ui-gap-sm:6px;
+  --ui-gap-md:9px;
+}
+
+/* Sidebar spacing: a little denser, but retain enough touch space. */
+.sidebar-scroll{
+  padding:14px 13px calc(18px + env(safe-area-inset-bottom))!important;
+}
+.sidebar-title{
+  margin-bottom:10px!important;
+}
+.status{
+  margin-top:10px!important;
+  margin-bottom:10px!important;
+}
+.result-section{
+  margin-top:12px!important;
+}
+.result-heading{
+  margin-bottom:7px!important;
+}
+.result-heading h2{
+  line-height:1.15!important;
+}
+.point-list{
+  display:grid!important;
+  gap:7px!important;
+}
+
+/* Result cards: normalize radius, border and vertical rhythm. */
+.point-card{
+  border-radius:var(--ui-card-radius)!important;
+}
+.point-card > summary{
+  padding:8px 9px!important;
+  min-height:48px!important;
+  column-gap:9px!important;
+  row-gap:5px!important;
+}
+.point-card > summary > .point-name-chip{
+  min-height:25px!important;
+  padding:5px 8px!important;
+  border-radius:7px!important;
+  font-size:.59rem!important;
+}
+.point-summary-river{
+  font-size:.57rem!important;
+  line-height:1.18!important;
+}
+.point-summary-basin{
+  font-size:.50rem!important;
+  line-height:1.18!important;
+}
+.point-summary-area{
+  font-size:.59rem!important;
+  line-height:1.2!important;
+}
+.point-chevron{
+  width:16px!important;
+  height:22px!important;
+  display:grid!important;
+  place-items:center!important;
+}
+.point-chevron svg{
+  width:13px!important;
+  height:13px!important;
+}
+.point-body{
+  padding:9px!important;
+}
+.point-edit-label-row{
+  margin-bottom:4px!important;
+}
+.point-name-grid{
+  gap:6px!important;
+}
+.point-name-grid input{
+  height:32px!important;
+  border-radius:8px!important;
+}
+.save-icon-button{
+  width:32px!important;
+  height:32px!important;
+  min-width:32px!important;
+  border-radius:8px!important;
+}
+.point-action-label{
+  margin-top:10px!important;
+  margin-bottom:5px!important;
+}
+.point-action-row{
+  gap:5px!important;
+  margin-top:0!important;
+}
+.point-action-row .dta-action-button{
+  height:31px!important;
+  min-height:31px!important;
+  border-radius:8px!important;
+  padding:0 7px!important;
+}
+
+/* Bulk actions: visually balanced with the denser result heading. */
+.result-heading-actions{
+  gap:5px!important;
+}
+.result-heading-actions .result-stack-button{
+  width:50px!important;
+  height:35px!important;
+  min-height:35px!important;
+  border-radius:8px!important;
+}
+.result-heading-actions .result-stack-button span{
+  font-size:.47rem!important;
+}
+
+/* Existing-result popup: same rhythm as sidebar and compact add/move popup. */
+.existing-point-popup .maplibregl-popup-content{
+  padding:9px!important;
+  border-radius:10px!important;
+}
+.existing-point-menu{
+  display:grid!important;
+  gap:9px!important;
+}
+.existing-point-menu-head{
+  min-height:43px!important;
+  column-gap:9px!important;
+  row-gap:5px!important;
+}
+.existing-point-menu-head > .existing-point-name-chip{
+  min-height:25px!important;
+  padding:5px 8px!important;
+  border-radius:7px!important;
+  font-size:.59rem!important;
+}
+.existing-point-river{
+  font-size:.57rem!important;
+  line-height:1.18!important;
+}
+.existing-point-basin{
+  font-size:.50rem!important;
+  line-height:1.18!important;
+}
+.existing-point-area{
+  font-size:.59rem!important;
+}
+.popup-point-name-editor{
+  padding-top:8px!important;
+  border-top:1px solid var(--border-color)!important;
+}
+.popup-point-name-editor .point-name-grid{
+  margin-top:5px!important;
+}
+.existing-point-menu .point-action-label{
+  margin-top:1px!important;
+}
+.existing-point-menu-grid{
+  gap:5px!important;
+}
+.existing-point-menu-grid button{
+  min-height:30px!important;
+  border-radius:8px!important;
+  padding:6px 7px!important;
+}
+
+/* DTA color selector: compact, matching Batas DAS/Jaringan Sungai controls. */
+.dta-colorpicker-panel{
+  padding:9px!important;
+  border-radius:10px!important;
+}
+.dta-colorpicker-head{
+  min-height:25px!important;
+  margin-bottom:8px!important;
+}
+.dta-colorpicker-head button{
+  width:26px!important;
+  height:26px!important;
+}
+.dta-color-inline-row .color-input{
+  width:38px!important;
+  height:27px!important;
+}
+.dta-color-input-message{
+  font-size:.47rem!important;
+  line-height:1.4!important;
+}
+
+/* Definition examples remain 2 columns when room permits. */
+.definition-example-grid{
+  gap:10px!important;
+}
+.definition-example-case.compact{
+  padding:10px!important;
+  min-width:0!important;
+}
+.definition-example-head{
+  gap:5px 8px!important;
+}
+.definition-example-formula{
+  font-size:.47rem!important;
+}
+.set-visual-single .set-circle-outer,
+.set-visual-multi .set-circle-outer{
+  width:min(100%,260px)!important;
+}
+
+/* Map bottom-right controls: explicitly reserve space above attribution. */
+.maplibregl-ctrl-bottom-right{
+  gap:0!important;
+}
+.maplibregl-ctrl-bottom-right .map-toolbar-control{
+  margin:0 8px 6px 0!important;
+}
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{
+  margin:0 8px 8px 0!important;
+  max-width:min(62vw,460px)!important;
+}
+.map-toolbar-control{
+  border-radius:9px!important;
+}
+.map-toolbar-control button{
+  width:36px!important;
+  height:36px!important;
+  min-width:36px!important;
+  min-height:36px!important;
+}
+.map-toolbar-control svg{
+  width:16px!important;
+  height:16px!important;
+}
+
+/* Search and header toggle maintain predictable stacking in normal/fullscreen. */
+.maplibregl-ctrl-top-left .map-search{
+  margin-top:8px!important;
+}
+.header-handle-shell{
+  top:8px!important;
+  right:8px!important;
+}
+.header-menu-handle{
+  width:34px!important;
+  height:34px!important;
+  border-radius:9px!important;
+}
+html:fullscreen .header-handle-shell,
+html:-webkit-full-screen .header-handle-shell{
+  top:8px!important;
+  right:8px!important;
+}
+
+/* Visible keyboard focus without changing mouse appearance. */
+.point-card button:focus-visible,
+.existing-point-menu button:focus-visible,
+.map-toolbar-control button:focus-visible,
+.sidebar-title-info:focus-visible,
+.header-menu-handle:focus-visible{
+  outline:2px solid color-mix(in srgb,var(--primary) 70%,white)!important;
+  outline-offset:2px!important;
+}
+
+/* Tablet: keep two-column examples until space actually becomes tight. */
+@media(max-width:860px){
+  .definition-example-grid{
+    grid-template-columns:1fr!important;
+  }
+}
+
+/* Mobile finishing: drawer/search/control spacing and safe areas. */
+@media(max-width:780px){
+  .sidebar{
+    top:56px!important;
+    bottom:calc(7px + env(safe-area-inset-bottom))!important;
+    left:7px!important;
+    width:min(326px,calc(100% - 14px))!important;
+    max-width:calc(100% - 14px)!important;
+    border-radius:13px!important;
+  }
+  .sidebar.collapsed{
+    width:min(326px,calc(100% - 14px))!important;
+    transform:translateX(calc(-100% - 18px))!important;
+  }
+  .sidebar-scroll{
+    padding:13px 12px calc(18px + env(safe-area-inset-bottom))!important;
+  }
+  .maplibregl-ctrl-top-left{
+    left:7px!important;
+  }
+  .maplibregl-ctrl-top-left .map-search{
+    margin:7px 5px!important;
+  }
+  .map-toolbar-control button{
+    width:37px!important;
+    height:37px!important;
+    min-width:37px!important;
+    min-height:37px!important;
+  }
+  .maplibregl-ctrl-bottom-right .map-toolbar-control{
+    margin-right:7px!important;
+    margin-bottom:5px!important;
+  }
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib{
+    margin-right:7px!important;
+    margin-bottom:7px!important;
+    max-width:calc(100vw - 14px)!important;
+  }
+  .existing-point-popup .maplibregl-popup-content{
+    width:min(274px,calc(100vw - 18px))!important;
+  }
+}
+
+@media(max-width:430px){
+  .sidebar{
+    top:54px!important;
+  }
+  .point-card > summary{
+    min-height:46px!important;
+  }
+  .result-heading-actions .result-stack-button{
+    width:47px!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p12 — outlet-only hover popup
+   ============================================================ */
+
+/* Polygon DTA hover uses outline emphasis only; popup is reserved for outlet. */
+.point-hover-card{
+  min-width:138px;
+}
+.point-hover-card > strong{
+  font-size:.52rem!important;
+  font-weight:800!important;
+  white-space:nowrap!important;
+}
+
+
+/* ============================================================
+   UI refinement p13
+   ============================================================ */
+
+/* Sidebar cards: remove excess whitespace and keep compact two-line header. */
+.point-card > summary{
+  padding:7px 9px!important;
+  row-gap:4px!important;
+}
+.point-card > summary > .point-name-chip{
+  padding:5px 8px!important;
+}
+.point-card > summary > .point-summary-main{
+  margin-top:0!important;
+}
+.point-summary-river,.point-summary-basin,.point-summary-area{
+  line-height:1.12!important;
+}
+.point-body{
+  padding:6px 9px 8px!important;
+}
+.point-edit-label{
+  margin:0!important;
+}
+.point-edit-label-row{
+  margin-bottom:3px!important;
+}
+.point-name-grid input,.save-icon-button{
+  height:31px!important;
+}
+.point-action-label{
+  margin-top:7px!important;
+  margin-bottom:3px!important;
+}
+.point-action-row{
+  gap:4px!important;
+}
+.point-action-row .dta-action-button{
+  height:30px!important;
+  min-height:30px!important;
+}
+
+/* Popup card: slimmer width and tighter vertical rhythm. */
+.existing-point-popup .maplibregl-popup-content{
+  min-width:232px!important;
+  width:min(246px, calc(100vw - 18px))!important;
+  padding:7px!important;
+  border-radius:10px!important;
+}
+.existing-point-menu{
+  gap:6px!important;
+}
+.existing-point-menu-head{
+  min-height:38px!important;
+  row-gap:3px!important;
+  padding-right:16px!important;
+}
+.existing-point-menu-head > .existing-point-name-chip{
+  padding:5px 8px!important;
+}
+.existing-point-river,.existing-point-basin,.existing-point-area{
+  line-height:1.12!important;
+}
+.popup-point-name-editor{
+  padding-top:5px!important;
+  margin-top:0!important;
+}
+.popup-point-name-editor .point-edit-label-row{
+  margin-bottom:3px!important;
+}
+.existing-point-menu .point-action-label{
+  margin-top:2px!important;
+  margin-bottom:2px!important;
+}
+.existing-point-menu-grid{
+  gap:4px!important;
+}
+.existing-point-menu-grid button{
+  min-height:29px!important;
+  padding:5px 7px!important;
+}
+
+/* Example cards: no numbering; 2-column stays but a bit tighter. */
+.definition-example-head h4{margin:0!important}
+.definition-example-grid{gap:10px!important}
+.definition-example-case.compact{padding:9px 10px!important}
+
+
+
+/* ============================================================
+   UI refinement p14 — final visual cleanup
+   ============================================================ */
+
+/* ---------- Global visual rhythm ---------- */
+.webgis-shell,
+.sidebar,
+.map-panel,
+.modal-card,
+.maplibregl-popup-content,
+.map-search,
+.point-card,
+.btn,
+.small-icon-btn,
+.mini-button,
+.save-icon-button,
+.result-stack-button{
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+.sidebar-scroll{
+  scrollbar-width:thin;
+  scrollbar-color:rgba(100,115,135,.34) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar{width:7px}
+.sidebar-scroll::-webkit-scrollbar-track{background:transparent}
+.sidebar-scroll::-webkit-scrollbar-thumb{
+  background:rgba(100,115,135,.28);
+  border-radius:999px;
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb:hover{
+  background:rgba(100,115,135,.42);
+  border:2px solid transparent;
+  background-clip:padding-box;
+}
+
+/* ---------- Sidebar heading ---------- */
+.sidebar-title{
+  align-items:center!important;
+}
+.sidebar-title .section-icon{
+  width:34px!important;
+  height:34px!important;
+  border-radius:9px!important;
+}
+.sidebar-title .section-icon svg{
+  width:17px!important;
+  height:17px!important;
+}
+.sidebar-title .eyebrow{
+  line-height:1.05!important;
+  margin-bottom:2px!important;
+}
+.sidebar-title h1{
+  margin:0!important;
+  line-height:1.08!important;
+}
+.sidebar-title-info{
+  margin-top:0!important;
+  align-self:center!important;
+}
+
+/* ---------- Section headings ---------- */
+.panel-section{
+  margin-top:12px!important;
+  padding-top:11px!important;
+}
+.section-heading,
+.section-heading-row,
+.result-heading{
+  align-items:center!important;
+}
+.panel-section h2,
+.result-heading h2{
+  letter-spacing:-.01em!important;
+}
+.help{
+  margin-top:3px!important;
+  margin-bottom:8px!important;
+}
+.result-heading .help{
+  margin-bottom:0!important;
+}
+
+/* ---------- Status ---------- */
+.status{
+  border:1px solid transparent!important;
+  font-weight:650!important;
+}
+.status.success{border-color:color-mix(in srgb,#24704e 14%,transparent)!important}
+.status.busy{border-color:color-mix(in srgb,var(--primary) 12%,transparent)!important}
+.status.error{border-color:color-mix(in srgb,#9e2b24 13%,transparent)!important}
+
+/* ---------- Result card header ---------- */
+.point-card{
+  border-width:1px!important;
+  border-left-width:1px!important;
+  box-shadow:0 1px 0 rgba(24,36,55,.025)!important;
+}
+.point-card > summary{
+  transition:background-color .14s ease!important;
+}
+.point-card > summary:hover{
+  background:color-mix(in srgb,var(--surface-soft) 58%,transparent)!important;
+}
+.point-card[open] > summary{
+  background:color-mix(in srgb,var(--surface-soft) 38%,transparent)!important;
+}
+.point-name-chip{
+  font-weight:800!important;
+  letter-spacing:-.015em!important;
+}
+.point-summary-river{
+  font-weight:800!important;
+  letter-spacing:-.008em!important;
+}
+.point-summary-basin{
+  font-weight:520!important;
+}
+.point-summary-area{
+  font-variant-numeric:tabular-nums!important;
+  letter-spacing:-.015em!important;
+}
+.point-chevron{
+  color:var(--text-muted)!important;
+}
+
+/* ---------- Card editor ---------- */
+.point-body{
+  border-top-color:color-mix(in srgb,var(--border-color) 72%,transparent)!important;
+}
+.point-edit-label{
+  font-weight:750!important;
+  line-height:1.15!important;
+}
+.point-name-grid input{
+  font-size:.57rem!important;
+}
+.point-name-grid input::placeholder{
+  color:var(--text-muted)!important;
+}
+.save-icon-button svg,
+.point-action-row .dta-action-button svg,
+.existing-point-menu-grid button svg{
+  width:12px!important;
+  height:12px!important;
+}
+.point-action-row .dta-action-button,
+.existing-point-menu-grid button{
+  font-size:.50rem!important;
+  font-weight:750!important;
+  transition:background-color .13s ease,border-color .13s ease,transform .08s ease!important;
+}
+.point-action-row .dta-action-button:active,
+.existing-point-menu-grid button:active{
+  transform:translateY(1px)!important;
+}
+
+/* ---------- Bulk actions ---------- */
+.result-heading-actions .result-stack-button{
+  box-shadow:none!important;
+  transition:filter .13s ease,transform .08s ease!important;
+}
+.result-heading-actions .result-stack-button:hover{
+  filter:brightness(.97)!important;
+}
+.result-heading-actions .result-stack-button:active{
+  transform:translateY(1px)!important;
+}
+.result-heading-actions .result-stack-button svg{
+  margin:0!important;
+}
+
+/* ---------- Existing DTA popup ---------- */
+.existing-point-popup .maplibregl-popup-content{
+  box-shadow:0 10px 28px rgba(24,36,55,.14)!important;
+}
+.existing-point-popup .maplibregl-popup-close-button{
+  width:22px!important;
+  height:22px!important;
+  top:3px!important;
+  right:3px!important;
+  display:grid!important;
+  place-items:center!important;
+  border-radius:6px!important;
+  font-size:13px!important;
+  line-height:1!important;
+  color:var(--text-muted)!important;
+}
+.existing-point-popup .maplibregl-popup-close-button:hover{
+  background:var(--surface-soft)!important;
+  color:var(--text-strong)!important;
+}
+.existing-point-menu-head{
+  padding-right:20px!important;
+}
+.existing-point-name-chip{
+  font-weight:800!important;
+  letter-spacing:-.015em!important;
+}
+.existing-point-river{
+  font-weight:800!important;
+  letter-spacing:-.008em!important;
+}
+.existing-point-basin{
+  font-weight:520!important;
+}
+.existing-point-area{
+  font-variant-numeric:tabular-nums!important;
+}
+.existing-point-menu-grid button{
+  justify-content:flex-start!important;
+}
+
+/* ---------- Outlet hover popup ---------- */
+.dta-hover-popup .maplibregl-popup-content{
+  padding:7px 8px!important;
+  border-radius:8px!important;
+  box-shadow:0 8px 22px rgba(24,36,55,.13)!important;
+}
+.dta-hover-card{
+  gap:3px 6px!important;
+}
+.dta-hover-chip{
+  max-width:120px!important;
+  padding:4px 6px!important;
+  font-size:.48rem!important;
+}
+.dta-hover-card>strong{
+  font-size:.50rem!important;
+  font-variant-numeric:tabular-nums!important;
+}
+.dta-hover-card>span:last-child{
+  font-size:.44rem!important;
+}
+
+/* ---------- Search ---------- */
+.map-search{
+  height:40px!important;
+  grid-template-columns:32px minmax(0,1fr) 34px!important;
+  padding:2px!important;
+  border-radius:9px!important;
+}
+.map-search input{
+  height:34px!important;
+  font-size:.61rem!important;
+}
+.map-search>svg{
+  width:15px!important;
+  height:15px!important;
+}
+.search-submit{
+  width:34px!important;
+  height:34px!important;
+  border-radius:7px!important;
+}
+.search-submit svg{
+  width:14px!important;
+  height:14px!important;
+}
+.map-search-results{
+  top:43px!important;
+}
+
+/* ---------- Header toggle ---------- */
+.header-handle-shell{
+  filter:drop-shadow(0 3px 9px rgba(24,36,55,.08));
+}
+.header-menu-handle{
+  box-shadow:none!important;
+}
+.header-menu-handle svg{
+  width:15px!important;
+  height:15px!important;
+}
+
+/* ---------- Map toolbar ---------- */
+.map-toolbar-control{
+  overflow:hidden!important;
+  box-shadow:0 3px 12px rgba(24,36,55,.10)!important;
+}
+.map-toolbar-control button{
+  border-color:color-mix(in srgb,var(--border-color) 88%,transparent)!important;
+}
+.map-toolbar-control button:hover{
+  background:var(--surface-soft)!important;
+}
+.map-toolbar-control button.active{
+  background:var(--primary)!important;
+  color:#fff!important;
+}
+.map-toolbar-control button.active svg{
+  color:#fff!important;
+}
+
+/* ---------- Layer/color panels ---------- */
+.map-panel,
+.dta-colorpicker-panel{
+  box-shadow:0 12px 30px rgba(24,36,55,.13)!important;
+}
+.panel-title-row,
+.dta-colorpicker-head{
+  font-weight:800!important;
+}
+.panel-close,
+.dta-colorpicker-head button{
+  transition:background-color .13s ease,color .13s ease!important;
+}
+.panel-close:hover,
+.dta-colorpicker-head button:hover{
+  background:var(--surface-soft)!important;
+}
+
+/* ---------- Definition modal ---------- */
+.definition-example-grid{
+  align-items:stretch!important;
+}
+.definition-example-case.compact{
+  display:flex!important;
+  flex-direction:column!important;
+}
+.definition-example-case.compact .set-visual{
+  margin-top:auto!important;
+  padding-top:7px!important;
+}
+.definition-example-formula{
+  font-weight:700!important;
+}
+.definition-concept{
+  margin-top:10px!important;
+}
+
+/* ---------- Modal cleanup ---------- */
+.modal-card{
+  box-shadow:0 18px 52px rgba(18,29,46,.18)!important;
+}
+.modal-head{
+  align-items:flex-start!important;
+}
+.modal-head h2{
+  letter-spacing:-.015em!important;
+}
+.modal-close{
+  flex:0 0 auto!important;
+}
+
+/* ---------- Dark-mode cleanup ---------- */
+[data-theme="dark"] .point-card > summary:hover,
+[data-theme="dark"] .point-card[open] > summary{
+  background:rgba(255,255,255,.035)!important;
+}
+[data-theme="dark"] .existing-point-popup .maplibregl-popup-content,
+[data-theme="dark"] .map-panel,
+[data-theme="dark"] .dta-colorpicker-panel{
+  box-shadow:0 12px 30px rgba(0,0,0,.30)!important;
+}
+
+/* ---------- Fullscreen ---------- */
+html:fullscreen .sidebar,
+html:-webkit-full-screen .sidebar{
+  top:8px!important;
+  bottom:8px!important;
+}
+html:fullscreen .maplibregl-ctrl-top-left .map-search,
+html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
+  margin-top:8px!important;
+}
+
+/* ---------- Tablet ---------- */
+@media(max-width:980px){
+  .map-search{
+    max-width:min(330px,calc(100vw - 150px))!important;
+  }
+}
+
+/* ---------- Mobile ---------- */
+@media(max-width:780px){
+  .sidebar{
+    box-shadow:0 12px 30px rgba(24,36,55,.16)!important;
+  }
+  .sidebar-title{
+    gap:7px!important;
+  }
+  .sidebar-title .section-icon{
+    width:31px!important;
+    height:31px!important;
+  }
+  .sidebar-title .section-icon svg{
+    width:15px!important;
+    height:15px!important;
+  }
+  .sidebar-title-info{
+    width:25px!important;
+    height:25px!important;
+  }
+  .map-search{
+    height:40px!important;
+  }
+  .point-card > summary{
+    padding:7px 8px!important;
+  }
+  .point-body{
+    padding:6px 8px 8px!important;
+  }
+  .existing-point-popup .maplibregl-popup-content{
+    min-width:226px!important;
+    width:min(244px,calc(100vw - 16px))!important;
+  }
+  .map-toolbar-control button{
+    width:36px!important;
+    height:36px!important;
+    min-width:36px!important;
+    min-height:36px!important;
+  }
+}
+
+/* ---------- Very small phones ---------- */
+@media(max-width:390px){
+  .sidebar{
+    width:calc(100% - 12px)!important;
+    max-width:calc(100% - 12px)!important;
+    left:6px!important;
+  }
+  .sidebar-scroll{
+    padding-left:10px!important;
+    padding-right:10px!important;
+  }
+  .result-heading-actions .result-stack-button{
+    width:46px!important;
+  }
+  .point-action-row{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p15 — popup/hover/drag interaction hotfix
+   ============================================================ */
+
+/* Hover outline sits above every DTA outline but below the outlet point layer.
+   No halo: only the outline thickness changes. */
+.dta-hover-popup{
+  z-index:430!important;
+}
+
+/* Existing popup — remove the remaining blank vertical space. */
+.existing-point-popup .maplibregl-popup-content{
+  padding:6px 7px!important;
+}
+.existing-point-menu{
+  gap:0!important;
+}
+.existing-point-menu-head{
+  min-height:34px!important;
+  row-gap:2px!important;
+  margin:0!important;
+  padding-bottom:4px!important;
+}
+.popup-point-name-editor{
+  display:block!important;
+  margin:0!important;
+  padding:4px 0 0!important;
+  border-top:1px solid var(--border-color)!important;
+}
+.popup-point-name-editor .point-edit-label-row{
+  margin:0 0 2px!important;
+  min-height:0!important;
+  line-height:1.05!important;
+}
+.popup-point-name-editor .point-name-grid{
+  margin:0!important;
+  gap:5px!important;
+}
+.popup-point-name-editor .point-name-grid input,
+.popup-point-name-editor .save-icon-button{
+  height:30px!important;
+  min-height:30px!important;
+}
+.popup-point-name-editor .point-name-limit-warning.hidden{
+  display:none!important;
+}
+.existing-point-menu .point-action-label{
+  margin:4px 0 2px!important;
+  padding:0!important;
+  min-height:0!important;
+  line-height:1.05!important;
+}
+.existing-point-menu-grid{
+  margin:0!important;
+  gap:3px!important;
+}
+.existing-point-menu-grid button{
+  min-height:28px!important;
+  padding:4px 6px!important;
+}
+
+/* Direct native color picker proxy:
+   the container becomes renderable offscreen for showPicker(), but no custom
+   color panel is shown to the user. */
+.dta-colorpicker-panel.native-picker-proxy{
+  display:block!important;
+  position:fixed!important;
+  left:-9999px!important;
+  top:-9999px!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+}
+
+/* 500 ms hold completed: clearly tell the user that the card can now move. */
+.point-card-drag-ready,
+.point-card.sortable-chosen{
+  position:relative!important;
+  border-color:var(--primary)!important;
+  background:color-mix(in srgb,var(--primary) 7%,var(--card-bg))!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 15%,transparent),0 7px 18px rgba(24,36,55,.10)!important;
+  cursor:grab!important;
+}
+.point-list.is-dragging .point-card-dragging{
+  cursor:grabbing!important;
+}
+
+@media(max-width:780px){
+  .existing-point-popup .maplibregl-popup-content{
+    padding:6px!important;
+  }
+  .point-card-drag-ready::after,
+  .point-card.sortable-chosen::after{
+    right:6px;
+    bottom:5px;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p16 — closed-card drag only
+   ============================================================ */
+
+/* Setelah hold 500 ms, indikator drag hanya berupa perubahan highlight kartu. */
+.point-card-drag-ready,
+.point-card.sortable-chosen{
+  position:relative!important;
+  border-color:var(--primary)!important;
+  background:color-mix(in srgb,var(--primary) 7%,var(--card-bg))!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 15%,transparent),0 7px 18px rgba(24,36,55,.10)!important;
+  cursor:grab!important;
+}
+
+/* Kartu terbuka harus ditutup terlebih dahulu sebelum dapat di-drag. */
+.point-card[open]{
+  cursor:default!important;
+}
+.point-card[open] > summary{
+  cursor:pointer!important;
+}
+
+/* ============================================================
+   UI refinement p17 — drag bounds + stable color picker + slim popup
+   ============================================================ */
+
+/* Sortable fallback clone is painted only inside the Hasil DTA list.
+   It cannot visually cross into the Tambah Titik / Mode Banyak Titik button. */
+.outlet-section{
+  isolation:isolate!important;
+}
+.point-list{
+  position:relative!important;
+  overflow:clip!important;
+  contain:paint!important;
+  transform:translateZ(0);
+  z-index:1;
+}
+.point-list .sortable-fallback,
+.point-list .point-card-dragging{
+  max-width:100%!important;
+  width:100%!important;
+  box-sizing:border-box!important;
+}
+.spaced-add-point{
+  position:relative!important;
+  z-index:2!important;
+  background-clip:padding-box!important;
+}
+
+/* Native color input must remain a real rendered element while showPicker()
+   owns the operating-system dialog. Keep it offscreen and transparent, not
+   visibility:hidden, until the change event finishes. */
+.dta-colorpicker-panel.native-picker-proxy{
+  display:block!important;
+  position:fixed!important;
+  left:-12px!important;
+  top:-12px!important;
+  width:2px!important;
+  height:2px!important;
+  min-width:0!important;
+  padding:0!important;
+  margin:0!important;
+  opacity:.001!important;
+  visibility:visible!important;
+  overflow:hidden!important;
+  pointer-events:none!important;
+  box-shadow:none!important;
+  border:0!important;
+}
+.dta-colorpicker-panel.native-picker-proxy #dtaColorNativeInput{
+  display:block!important;
+  width:1px!important;
+  height:1px!important;
+  min-width:1px!important;
+  min-height:1px!important;
+  opacity:.001!important;
+  pointer-events:none!important;
+}
+
+/* ~80% of the p16/p15 popup width (246 px -> ~198 px). */
+.existing-point-popup .maplibregl-popup-content{
+  min-width:194px!important;
+  width:min(198px,calc(100vw - 16px))!important;
+  max-width:198px!important;
+}
+.existing-point-menu-head{
+  column-gap:6px!important;
+}
+.existing-point-name-chip{
+  max-width:112px!important;
+}
+.existing-point-river,
+.existing-point-basin{
+  max-width:100%!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.existing-point-menu-grid button{
+  min-width:0!important;
+  padding-left:5px!important;
+  padding-right:5px!important;
+}
+
+@media(max-width:780px){
+  .existing-point-popup .maplibregl-popup-content{
+    min-width:190px!important;
+    width:min(198px,calc(100vw - 14px))!important;
+    max-width:198px!important;
+  }
+}
+
+
+
+/* ============================================================
+   UI refinement p18 — strict drag bounds + anchored color picker
+   ============================================================ */
+
+/* The fallback card itself is intentionally transparent.
+   Reordering feedback stays inside Hasil DTA through the real cards/ghost,
+   so no floating clone can overlap Tambah Titik / Mode Banyak Titik. */
+.point-card-drag-fallback,
+.point-list .point-card-drag-fallback,
+.sortable-fallback.point-card-drag-fallback{
+  opacity:0!important;
+  visibility:hidden!important;
+  pointer-events:none!important;
+  box-shadow:none!important;
+}
+
+/* Point list is the only visible reorder canvas. */
+.point-list{
+  position:relative!important;
+  overflow:hidden!important;
+  clip-path:inset(0 round 8px)!important;
+}
+.point-list.is-dragging{
+  isolation:isolate!important;
+}
+.point-list .point-card-drag-ghost{
+  position:relative!important;
+  z-index:1!important;
+}
+
+/* Anchor the invisible native color input to the actual Warna button.
+   This gives Chrome/Edge's system picker a nearby screen coordinate. */
+.dta-colorpicker-panel.native-picker-proxy{
+  display:block!important;
+  position:fixed!important;
+  left:var(--native-picker-left,8px)!important;
+  top:var(--native-picker-top,8px)!important;
+  width:2px!important;
+  height:2px!important;
+  min-width:0!important;
+  padding:0!important;
+  margin:0!important;
+  opacity:.001!important;
+  visibility:visible!important;
+  overflow:visible!important;
+  pointer-events:none!important;
+  box-shadow:none!important;
+  border:0!important;
+  transform:translate(-50%,-50%)!important;
+  z-index:9999!important;
+}
+.dta-colorpicker-panel.native-picker-proxy #dtaColorNativeInput{
+  display:block!important;
+  position:absolute!important;
+  left:0!important;
+  top:0!important;
+  width:2px!important;
+  height:2px!important;
+  min-width:2px!important;
+  min-height:2px!important;
+  opacity:.001!important;
+  pointer-events:auto!important;
+}
+
+
+
+/* ============================================================
+   UI refinement p19 — simple contained reorder mode
+   ============================================================ */
+
+/* Disable all legacy SortableJS visuals. */
+.point-card-drag-ready,
+.point-card-drag-chosen,
+.point-card-drag-ghost,
+.point-card-dragging,
+.point-card-drag-fallback,
+.sortable-chosen,
+.sortable-ghost,
+.sortable-drag,
+.sortable-fallback{
+  all:unset;
+}
+
+/* Cards remain normal until the 5-second hold completes. */
+.point-card{
+  position:relative;
+}
+.point-card:not([open]) > summary{
+  touch-action:pan-y;
+}
+
+/* 5 seconds reached: subtle highlight + move icon only. */
+.point-card-reorder-ready{
+  border-color:var(--primary)!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 13%,transparent)!important;
+  background:color-mix(in srgb,var(--primary) 4%,var(--card-bg))!important;
+}
+.point-card-reorder-ready::after{
+  content:"";
+  position:absolute;
+  top:8px;
+  right:8px;
+  width:24px;
+  height:24px;
+  border-radius:7px;
+  background:
+    var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 2 3 3-3 3'/%3E%3Cpath d='M9 5h6'/%3E%3Cpath d='m12 22-3-3 3-3'/%3E%3Cpath d='M15 19H9'/%3E%3Cpath d='m2 12 3-3 3 3'/%3E%3Cpath d='M5 15V9'/%3E%3Cpath d='m22 12-3 3-3-3'/%3E%3Cpath d='M19 9v6'/%3E%3C/svg%3E")
+    center/14px 14px no-repeat;
+  box-shadow:0 2px 6px rgba(24,36,55,.16);
+  pointer-events:none;
+  z-index:8;
+}
+
+/* During reorder the real card stays in-list; it never floats outside Hasil DTA. */
+.point-card-reordering{
+  opacity:.88;
+  background:color-mix(in srgb,var(--primary) 6%,var(--card-bg))!important;
+  box-shadow:0 5px 14px rgba(24,36,55,.10)!important;
+}
+.point-list.is-reorder-mode{
+  position:relative!important;
+  overflow:hidden!important;
+}
+.point-list.is-reorder-mode .point-card:not(.point-card-reorder-ready){
+  transition:transform .12s ease;
+}
+
+/* Open cards never enter reorder mode. */
+.point-card[open]::after{
+  content:none!important;
+}
+
+
+
+/* ============================================================
+   UI refinement p21 — robust 500 ms reorder gesture
+   ============================================================ */
+
+/* Closed cards accept long-press reorder. No clone or floating element is used. */
+.point-card:not([open]) > summary{
+  position:relative;
+  -webkit-user-select:none;
+  user-select:none;
+}
+.point-list.is-reorder-mode{
+  overflow:hidden!important;
+  overscroll-behavior:contain;
+}
+.point-card-reorder-ready{
+  z-index:3;
+  border-color:var(--primary)!important;
+  background:color-mix(in srgb,var(--primary) 6%,var(--card-bg))!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 14%,transparent),0 5px 14px rgba(24,36,55,.10)!important;
+}
+.point-card-reorder-ready::after{
+  content:"";
+  position:absolute;
+  top:8px;
+  right:8px;
+  width:23px;
+  height:23px;
+  border-radius:7px;
+  background:
+    var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2v20M5 9l7-7 7 7M5 15l7 7 7-7'/%3E%3C/svg%3E")
+    center/13px 13px no-repeat;
+  pointer-events:none;
+  z-index:10;
+}
+.point-card-reordering{
+  opacity:.90;
+  cursor:grabbing!important;
+}
+.point-card-reordering > summary{
+  cursor:grabbing!important;
+}
+
+
+
+/* ============================================================
+   UI refinement p22 — minimal SortableJS reorder
+   ============================================================ */
+
+/* Neutralize legacy custom reorder visuals from p19-p21. */
+.point-card-reorder-ready,
+.point-card-reordering{
+  box-shadow:inherit!important;
+  background:inherit!important;
+  opacity:1!important;
+}
+
+/* Sortable readiness indicator appears after the 500 ms hold. */
+.point-card-sortable-ready{
+  position:relative!important;
+  border-color:var(--primary)!important;
+  background:color-mix(in srgb,var(--primary) 6%,var(--card-bg))!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 14%,transparent)!important;
+}
+.point-card-sortable-ready::after{
+  content:"";
+  position:absolute;
+  top:8px;
+  right:8px;
+  width:22px;
+  height:22px;
+  border-radius:7px;
+  background:
+    var(--primary)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2v20M5 9l7-7 7 7M5 15l7 7 7-7'/%3E%3C/svg%3E")
+    center/13px 13px no-repeat;
+  pointer-events:none;
+  z-index:12;
+}
+
+/* Placeholder stays inside #pointList; no custom floating clone logic. */
+.point-card-sortable-ghost{
+  opacity:.28!important;
+  background:color-mix(in srgb,var(--primary) 8%,var(--card-bg))!important;
+  border:1px dashed color-mix(in srgb,var(--primary) 55%,var(--border-color))!important;
+}
+.point-card-sortable-drag{
+  cursor:grabbing!important;
+}
+.point-list{
+  position:relative!important;
+}
+.point-list.is-sortable-reordering{
+  isolation:isolate!important;
+}
+.point-card[open] > summary{
+  cursor:pointer!important;
+}
+
+
+
+/* ============================================================
+   UI refinement p24 — DTA card consistency + mobile header
+   ============================================================ */
+
+/* ---------- Sidebar/popup point-name editor consistency ---------- */
+/* Use the same flat button treatment in both locations.
+   Explicit border style removes the browser's default 3D/outset button edge. */
+.save-icon-button,
+.popup-point-name-editor .save-icon-button{
+  -webkit-appearance:none!important;
+  appearance:none!important;
+  border:1px solid #223468!important;
+  background:#223468!important;
+  color:#fff!important;
+  box-shadow:none!important;
+  outline:none;
+}
+.save-icon-button:hover,
+.popup-point-name-editor .save-icon-button:hover{
+  border-color:#17244c!important;
+  background:#17244c!important;
+  box-shadow:none!important;
+}
+
+/* Sidebar and popup inputs use exactly the same flat border model. */
+.point-name-grid input,
+.point-name-grid .rename-point,
+.popup-point-name-editor .point-name-grid input,
+.popup-point-name-editor .popup-rename-point{
+  -webkit-appearance:none!important;
+  appearance:none!important;
+  border:1px solid var(--border-strong)!important;
+  background:var(--input-bg)!important;
+  color:var(--text-main)!important;
+  box-shadow:none!important;
+}
+
+/* Keep the unsaved state identical on both editors, without a heavy 3D ring. */
+.point-name-editor.is-dirty .point-name-grid input,
+.point-name-editor .point-name-grid input.is-dirty,
+.point-edit-label.is-dirty .rename-point{
+  border:1px solid #d49a00!important;
+  box-shadow:0 0 0 2px rgba(212,154,0,.10)!important;
+}
+
+/* Popup: a little breathing room above "Aksi". */
+.existing-point-menu .point-action-label{
+  margin-top:7px!important;
+  margin-bottom:2px!important;
+}
+
+/* Align river text with the TEXT inside the colored point-name chip.
+   Chip horizontal padding is 8 px, so only the river text receives the same indent. */
+.point-summary-river,
+.existing-point-river{
+  padding-left:8px!important;
+  box-sizing:border-box!important;
+}
+
+/* ---------- Header agency name ---------- */
+.mobile-brand-break{
+  display:none;
+}
+
+/* ---------- Mobile header/search stacking ---------- */
+@media(max-width:780px){
+  /* Search previously used z-index ~2100 while the normal header was z-index 70,
+     allowing Search + mode badge to paint over the header. */
+  #appHeader.spatial-header{
+    z-index:2300!important;
+  }
+
+  /* Mobile brand contains only these two visible lines. */
+  .spatial-header .agency-copy .agency-overline,
+  .spatial-header .agency-copy .agency-subline{
+    display:none!important;
+  }
+  .spatial-header .agency-copy strong{
+    display:block!important;
+    max-width:min(205px,calc(100vw - 150px))!important;
+    white-space:normal!important;
+    overflow:visible!important;
+    text-overflow:clip!important;
+    font-size:.58rem!important;
+    line-height:1.25!important;
+    letter-spacing:.012em!important;
+  }
+  .spatial-header .agency-copy strong .mobile-brand-break,
+  .mobile-brand-break{
+    display:block!important;
+  }
+
+  /* When the header is visible, reserve its vertical row.
+     Search and its single/multi-point indicator move below it together. */
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .maplibregl-ctrl-top-left{
+    top:66px!important;
+  }
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .sidebar{
+    top:66px!important;
+  }
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .layer-panel{
+    top:66px!important;
+  }
+
+  .maplibregl-ctrl-top-left,
+  .sidebar,
+  .layer-panel{
+    transition:top .20s ease,left .22s ease,transform .22s ease!important;
+  }
+}
+
+@media(max-width:430px){
+  .spatial-header .agency-copy strong{
+    max-width:min(185px,calc(100vw - 142px))!important;
+    font-size:.56rem!important;
+  }
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .maplibregl-ctrl-top-left,
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .sidebar,
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .layer-panel{
+    top:64px!important;
+  }
+}
+
+/* ============================================================
+   UI refinement p32 — explicit add-point session + point mode
+   ============================================================ */
+.point-input-control-row{
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr);
+  gap:7px;
+  align-items:stretch;
+}
+.point-input-control-row .btn{
+  width:100%;
+  min-width:0;
+  padding-inline:8px;
+  line-height:1.2;
+  white-space:normal;
+}
+.add-point-session{
+  background:#223468!important;
+  color:#fff!important;
+  border-color:#223468!important;
+}
+.add-point-session:hover:not(:disabled){background:#17244c!important;border-color:#17244c!important}
+.add-point-session.active{
+  background:var(--card-bg)!important;
+  color:var(--primary)!important;
+  border-color:var(--primary)!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 10%,transparent);
+}
+.point-mode-toggle{
+  background:var(--card-bg)!important;
+  color:var(--text-main)!important;
+  border-color:var(--border-color)!important;
+}
+.point-mode-toggle.active{
+  color:var(--primary)!important;
+  border-color:color-mix(in srgb,var(--primary) 45%,var(--border-color))!important;
+  background:color-mix(in srgb,var(--primary) 6%,var(--card-bg))!important;
+}
+.map-mode-indicator.adding .mode-dot{
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--primary) 15%,transparent)!important;
+}
+.location-preview-popup .maplibregl-popup-content{
+  padding:8px 9px!important;
+}
+.location-preview-card{
+  display:grid;
+  gap:4px;
+  min-width:180px;
+  max-width:245px;
+  color:var(--text-main);
+}
+.location-preview-card>strong{font-size:.62rem;color:var(--text-strong)}
+.location-preview-card>span{font-size:.52rem;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.location-preview-card>p{margin:2px 0 0;font-size:.53rem;line-height:1.45;color:var(--text-muted)}
+
+@media(max-width:430px){
+  .point-input-control-row{grid-template-columns:1fr 1fr;gap:6px}
+  .point-input-control-row .btn{font-size:.55rem;padding-inline:6px}
+}

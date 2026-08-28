@@ -3,7 +3,7 @@
 {% block body_class %}spatial-page{% endblock %}
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.2-r2-performance-v2" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.3-session-notice-action-colors" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -42,7 +42,7 @@
           </label>
           <label data-help="Koridor maksimum antara batas DTA hasil DEM dan Batas DAS. Segmen batas DTA yang berada di dalam koridor ini dapat diselaraskan ke Batas DAS apabila lolos pemeriksaan topologi dan bentuk."><span class="field-label-line">Jarak penyesuaian batas DAS</span>
             <select id="boundaryMatch">
-              <option value="30">30 m</option><option value="60">60 m</option><option value="90">90 m</option><option value="120" selected>120 m (bawaan)</option><option value="150">150 m</option>
+              <option value="30">30 m</option><option value="60">60 m</option><option value="90" selected>90 m (bawaan)</option><option value="120">120 m</option><option value="150">150 m</option>
             </select>
           </label>
         </details>
@@ -285,5 +285,5 @@ window.DTA_CONFIG = {
 </script>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
-<script src="/static/js/spatial.js?v=1.0.0.2-r2-performance-v2"></script>
+<script src="/static/js/spatial.js?v=1.0.0.3-session-notice-action-colors-boundary-race"></script>
 {% endblock %}

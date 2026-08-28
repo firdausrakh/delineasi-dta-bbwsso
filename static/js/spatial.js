@@ -35,6 +35,26 @@ function browserClientId(){
 }
 const DTA_CLIENT_ID = browserClientId();
 
+function hasUsageNoticeBeenShownThisBrowserSession(){
+  try{
+    return document.cookie.split(';').some(cookie=>cookie.trim().startsWith(`${USAGE_NOTICE_KEY}=`));
+  }catch(_){return false;}
+}
+function markUsageNoticeShownThisBrowserSession(){
+  try{
+    const secure=location.protocol==='https:'?'; Secure':'';
+    document.cookie=`${USAGE_NOTICE_KEY}=shown; Path=/; SameSite=Lax${secure}`;
+  }catch(_){}
+}
+function showUsageNoticeOncePerBrowserSession(){
+  if(hasUsageNoticeBeenShownThisBrowserSession())return;
+  // A session cookie survives refreshes and tab closures, but expires when the
+  // browser session ends. Mark it as soon as the notice is shown so reopening a
+  // tab in the same browser session does not show the notice a second time.
+  markUsageNoticeShownThisBrowserSession();
+  openMapModal($('usageNoticeModal'));
+}
+
 function clearLegacyPersistentState(){
   try{
     localStorage.removeItem(APP_STATE_KEY);
@@ -95,8 +115,11 @@ let mapPointerFrame = null;
 let lastMapPointerEvent = null;
 let progressiveMoving = false;
 let appToastTimer = null;
-// Prevent an older slow delineation response from overwriting a newer moved outlet.
+// Prevent an older slow delineation response from overwriting a newer outlet or setting.
 let delineationRequestSerial = 0;
+// A request id identifies a fetch, while an operation id identifies the latest
+// user intent. Reconciliation may create another fetch inside the same operation.
+let delineationOperationSerial = 0;
 const latestDelineationSerialByPoint = new Map();
 let delineationAbortController = null;
 
@@ -993,14 +1016,18 @@ function clearResults(){batchResult=null;clearDtaSources();clearSnapPreview();re
 
 async function reconcileCachedResults({guard=null}={}){
   if(!batchResult?.results?.length){if(!points.length)clearResults();return true;}
+  const ownsOperation=typeof guard!=='function';
+  const operationSerial=ownsOperation?++delineationOperationSerial:null;
+  const operationIsCurrent=()=>ownsOperation?operationSerial===delineationOperationSerial:guard();
   const byId=new Map(batchResult.results.map(r=>[r.point_id,r]));
   const cached=points.map(p=>byId.get(p.point_id)).filter(Boolean);
   if(!cached.length){clearResults();return true;}
   if(delineationAbortController){try{delineationAbortController.abort();}catch(_){}delineationAbortController=null;}
   const reconcileRequestId=`${Date.now()}-reconcile-${++delineationRequestSerial}`;
   const response=await fetch('/api/reconcile-results',{method:'POST',headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':reconcileRequestId},body:JSON.stringify({results:cached})});
-  const payload=await response.json();if(!response.ok)throw parseApiError(payload,'Pembaruan hubungan DTA gagal.');
-  if(typeof guard==='function'&&!guard())return false;
+  const payload=await response.json();
+  if(!operationIsCurrent())return false;
+  if(!response.ok)throw parseApiError(payload,'Pembaruan hubungan DTA gagal.');
   batchResult=payload;renderDtaLayers();renderRequestedPoints();renderPointCards();renderRelationship(payload.network_analysis);$('downloadBtn').disabled=false;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=false;persistState();
   return true;
 }
@@ -1010,22 +1037,25 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
   const target=onlyPointId?points.find(p=>p.point_id===onlyPointId):null;
   const requestPoints=(target?[target]:points).map(p=>({...p}));
   const requestSerial=++delineationRequestSerial;
+  const operationSerial=++delineationOperationSerial;
+  const requestSnapRadiusM=Number(snapRadiusEl.value);
+  const requestBoundaryMatchM=Number(boundaryMatchEl.value);
   if(delineationAbortController){try{delineationAbortController.abort();}catch(_){}}
   const requestController=new AbortController();
   delineationAbortController=requestController;
   const requestId=`${Date.now()}-${requestSerial}`;
   if(target)latestDelineationSerialByPoint.set(target.point_id,requestSerial);
   const samePoint=(snapshot)=>{const current=points.find(p=>p.point_id===snapshot.point_id);return Boolean(current&&Number(current.lon)===Number(snapshot.lon)&&Number(current.lat)===Number(snapshot.lat));};
-  const requestIsCurrent=()=>target
+  const requestIsCurrent=()=>operationSerial===delineationOperationSerial&&(target
     ? latestDelineationSerialByPoint.get(target.point_id)===requestSerial&&samePoint(requestPoints[0])
-    : requestPoints.length===points.length&&requestPoints.every(snapshot=>samePoint(snapshot));
+    : requestPoints.length===points.length&&requestPoints.every(snapshot=>samePoint(snapshot)));
   processingPointIds=new Set(target?[target.point_id]:points.map(p=>p.point_id));renderPointCards();setStatus(target?`Menghitung DTA ${pointName(target.point_id)}…`:'Menghitung DTA…','busy');
   try{
     const response=await fetch('/api/delineate-multi',{
       method:'POST',
       headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':requestId},
       signal:requestController.signal,
-      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),paek_tolerance_m:150,vw_tolerance_m:4})
+      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4})
     });
     const payload=await response.json();
     if(!requestIsCurrent())return null;
@@ -1703,3 +1733,4 @@ document.addEventListener('keydown',e=>{
 });
 document.addEventListener('hydro:themechange',e=>{applyMapTheme(e.detail?.theme||'light');persistState();});
 setSidebarCollapsed(sidebarCollapsed,{save:false});updateAddPointButton();renderPointCards();updateBasemapGallery();refreshIcons();setHeaderVisible(false);
+showUsageNoticeOncePerBrowserSession();

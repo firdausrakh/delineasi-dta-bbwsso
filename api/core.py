@@ -323,7 +323,7 @@ class OutletPoint(BaseModel):
 class MultiDelineateRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
     snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(120.0, ge=10, le=500)
+    boundary_match_m: float = Field(90.0, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
 
@@ -337,7 +337,7 @@ class DelineateRequest(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
     lat: float = Field(..., ge=-90, le=90)
     snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(120.0, ge=10, le=500)
+    boundary_match_m: float = Field(90.0, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
 
@@ -345,7 +345,7 @@ class DelineateRequest(BaseModel):
 class DownloadRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
     snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(120.0, ge=10, le=500)
+    boundary_match_m: float = Field(90.0, ge=10, le=500)
     geometry_modes: list[str] = Field(default_factory=lambda: ["smoothed"])
     formats: list[str] = Field(default_factory=lambda: ["gpkg"])
     include_rivers: bool = True
@@ -1632,7 +1632,7 @@ def info():
         "bounds_wgs84": [float(v) for v in _web_bounds],
         "max_points": MAX_POINTS,
         "default_snap_radius_m": 300,
-        "default_boundary_match_m": 120,
+        "default_boundary_match_m": 90,
         "hybrid_raster_available": bool(HYBRID_RASTER_AVAILABLE),
         "hydrology_streams": int(len(streams)),
         "hydrology_subbasins": int(len(subbasins)),
@@ -1901,7 +1901,7 @@ def delineate(req: DelineateRequest, request: Request):
 @app.get("/api/watershed/{linkno}")
 def watershed_by_linkno(
     linkno: int,
-    boundary_match_m: float = 120.0,
+    boundary_match_m: float = 90.0,
     paek_tolerance_m: float = DEFAULT_PAEK_TOLERANCE_M,
     vw_tolerance_m: float = DEFAULT_VW_TOLERANCE_M,
 ):

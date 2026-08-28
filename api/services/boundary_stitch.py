@@ -23,7 +23,7 @@ from shapely.ops import substring
 class StitchDiagnostics:
     mode: str = "fabdem_processed"
     method: str = "no_official_match"
-    match_tolerance_m: float = 120.0
+    match_tolerance_m: float = 90.0
     paek_tolerance_m: float = 150.0
     vw_tolerance_m: float = 4.0
     smoothing_method: str = "PAEK-like exponential-kernel local quadratic"
@@ -445,13 +445,14 @@ def _cyclic_contact_runs(component: Polygon, official_boundary, match_tolerance_
     # official contact when the gap itself remains close to the official boundary. This
     # prevents dozens of 30--150 m alternating runs near downstream basin boundaries.
     gap_limit = max(300.0, float(match_tolerance_m) * 2.5)
+    contact_limit = float(match_tolerance_m) * 1.6 + sample_step
     for run in runs:
         if run["matched"] or run["line"].length > gap_limit:
             continue
         coords = list(run["line"].coords)
         stride = max(1, int(np.ceil(len(coords) / 64)))
         max_dist = max((Point(xy).distance(official_boundary) for xy in coords[::stride]), default=float("inf"))
-        if max_dist <= float(match_tolerance_m) * 1.6 + sample_step:
+        if max_dist <= contact_limit:
             run["matched"] = True
 
     if len(runs) > 1:
@@ -495,6 +496,12 @@ def _best_official_arc(raw_segment: LineString, official_geom, match_tolerance_m
     start = Point(raw_segment.coords[0]); end = Point(raw_segment.coords[-1])
     best = None
     endpoint_limit = float(match_tolerance_m) + max(5.0, sample_step_m * 1.5)
+    # `_cyclic_contact_runs` may deliberately absorb a short raster-scale gap
+    # into a matched run when it remains within this near-boundary corridor.
+    # Keep arc validation compatible with that classification; otherwise a
+    # one-cell change in sampling can make the same boundary stitch at 90/150 m
+    # but fall back at 120 m.
+    contact_limit = float(match_tolerance_m) * 1.6 + sample_step_m
     hausdorff_limit = float(match_tolerance_m) * 1.75 + sample_step_m
     for ring in _official_exterior_rings(official_geom):
         d0 = start.distance(ring); d1 = end.distance(ring)
@@ -515,10 +522,10 @@ def _best_official_arc(raw_segment: LineString, official_geom, match_tolerance_m
             # The raw->official direction is authoritative for contact classification.
             # Symmetric Hausdorff is intentionally not used as a hard gate: near an outlet,
             # an exact official arc can contain a short section that is farther from the raw
-            # DEM boundary even though every raw matched vertex is inside the 120 m corridor.
+            # DEM boundary even though every raw matched vertex is inside the configured corridor.
             raw_max, raw_mean = _directed_vertex_distance_stats(raw_segment, arc)
             official_max, official_mean = _directed_vertex_distance_stats(arc, raw_segment)
-            if raw_max > endpoint_limit + sample_step_m:
+            if raw_max > max(endpoint_limit + sample_step_m, contact_limit):
                 continue
             # Still reject implausible detours on the official candidate. This generous bound
             # permits authoritative boundary correction without allowing basin-scale jumps.
@@ -691,7 +698,7 @@ def stitch_watershed_boundary(
     raw_geom,
     official_geom=None,
     *,
-    match_tolerance_m: float = 120.0,
+    match_tolerance_m: float = 90.0,
     paek_tolerance_m: float = 150.0,
     vw_tolerance_m: float = 4.0,
     allow_full_official: bool = False,

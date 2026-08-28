@@ -3407,17 +3407,18 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   white-space:normal;
 }
 .add-point-session{
-  background:#223468!important;
-  color:#fff!important;
-  border-color:#223468!important;
+  background:var(--primary-action-bg)!important;
+  color:var(--primary-action-text)!important;
+  border-color:var(--primary-action-bg)!important;
 }
-.add-point-session:hover:not(:disabled){background:#17244c!important;border-color:#17244c!important}
+.add-point-session:hover:not(:disabled){background:var(--primary-action-hover)!important;border-color:var(--primary-action-hover)!important}
 .add-point-session.active{
-  background:var(--card-bg)!important;
-  color:var(--primary)!important;
-  border-color:var(--primary)!important;
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 10%,transparent);
+  background:var(--success)!important;
+  color:var(--card-bg)!important;
+  border-color:var(--success)!important;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 16%,transparent);
 }
+.add-point-session.active:hover:not(:disabled){background:var(--success)!important;border-color:var(--success)!important;filter:brightness(.92)}
 .point-mode-toggle{
   background:var(--card-bg)!important;
   color:var(--text-main)!important;

@@ -3,7 +3,7 @@
 {% block body_class %}spatial-page{% endblock %}
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.0-p33" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.2-r2-performance-v2" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -277,7 +277,13 @@
   </main>
 {% endblock %}
 {% block scripts %}
+<script>
+window.DTA_CONFIG = {
+  mapAssetsBase: {{ map_assets_public_base|tojson }},
+  mapAssetsVersion: {{ map_assets_version|tojson }}
+};
+</script>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
-<script src="/static/js/spatial.js?v=1.0.0.0-p33"></script>
+<script src="/static/js/spatial.js?v=1.0.0.2-r2-performance-v2"></script>
 {% endblock %}

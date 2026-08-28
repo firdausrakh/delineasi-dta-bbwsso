@@ -11,6 +11,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 import rasterio
+from rasterio.windows import Window
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -25,6 +26,21 @@ def _sha256(path: Path) -> str:
         for block in iter(lambda: fh.read(1024 * 1024), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def _raster_content_signature(path: Path) -> tuple[tuple, str]:
+    """Compare categorical raster values independently from TIFF/COG encoding."""
+    digest = hashlib.sha256()
+    with rasterio.open(path) as ds:
+        metadata = (
+            str(ds.crs), tuple(ds.transform), ds.width, ds.height, ds.count,
+            tuple(ds.dtypes), tuple(ds.nodatavals),
+        )
+        for band in range(1, ds.count + 1):
+            for row in range(0, ds.height, 512):
+                height = min(512, ds.height - row)
+                digest.update(ds.read(band, window=Window(0, row, ds.width, height)).tobytes(order="C"))
+    return metadata, digest.hexdigest()
 
 
 def _local_data_dir() -> Path | None:
@@ -47,6 +63,9 @@ def main() -> int:
     client = _r2_client()
     manifest_key = os.getenv("R2_MANIFEST_KEY", "manifest.json").strip() or "manifest.json"
     manifest = json.loads(client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read().decode("utf-8-sig"))
+    schema_version = int(manifest.get("schema_version") or 0)
+    if schema_version < 2:
+        raise RuntimeError(f"FAIL schema manifest R2 terlalu lama/tidak valid: {schema_version}")
     dsid = os.getenv("HYDRO_DATASET", "").strip() or manifest.get("active_dataset")
     spec = manifest["datasets"][dsid]
     ref = manifest["reference"]
@@ -64,6 +83,10 @@ def main() -> int:
     object_meta = manifest.get("objects") or {}
 
     print(f"Verifikasi R2 bucket={bucket} dataset={dsid}")
+    print(
+        f"  INFO manifest schema={schema_version} profile={manifest.get('runtime_profile') or 'legacy'} "
+        f"map_assets_version={manifest.get('map_assets_version') or 'legacy'}"
+    )
     for name, key in keys.items():
         head = client.head_object(Bucket=bucket, Key=key)
         size = int(head["ContentLength"])
@@ -102,6 +125,11 @@ def main() -> int:
             )
             if not same_grid:
                 raise RuntimeError("FAIL: flowdir.tif dan subbasins.tif tidak memiliki grid identik.")
+            if schema_version >= 3:
+                for label, ds in (("flowdir", fdir), ("subbasin_raster", sub)):
+                    layout = str(ds.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") or "").upper()
+                    if layout != "COG":
+                        raise RuntimeError(f"FAIL raster {label} belum COG (LAYOUT={layout or 'kosong'}).")
             raster_shape = (fdir.height, fdir.width)
 
         checks = {
@@ -127,8 +155,6 @@ def main() -> int:
             source_paths = {
                 "engine": processed / "hydro_engine.gpkg",
                 "crosswalk": processed / "crosswalk.csv",
-                "subbasin_raster": processed / "subbasins.tif",
-                "flowdir": data_dir / "shared" / "flowdir.tif",
                 "official": data_dir / "reference" / "official_reference.gpkg",
                 "rivers_original": data_dir / "reference" / "official_rivers_original.gpkg",
                 "toponim": data_dir / "reference" / "toponim.sqlite",
@@ -142,7 +168,15 @@ def main() -> int:
                     mismatches.append(name)
             if mismatches:
                 raise RuntimeError("FAIL data lokal vs R2 berbeda: " + ", ".join(mismatches))
+            raster_sources = {
+                "subbasin_raster": processed / "subbasins.tif",
+                "flowdir": data_dir / "shared" / "flowdir.tif",
+            }
+            for name, src in raster_sources.items():
+                if src.exists() and _raster_content_signature(src) != _raster_content_signature(local[name]):
+                    raise RuntimeError(f"FAIL nilai/grid raster lokal vs R2 berbeda: {name}")
             print(f"  PASS data lokal vs R2 byte-identical ({len(present)} file utama)")
+            print("  PASS raster lokal vs COG R2 grid/value-identical")
         else:
             print("  INFO LOCAL_DATA_DIR/data lokal tidak ditemukan; perbandingan sumber lokal dilewati.")
 
@@ -158,6 +192,9 @@ def main() -> int:
         )
         for key in ("official_basins.geojson", *river_asset_keys):
             head = client.head_object(Bucket=map_bucket, Key=key)
+            cache_control = str(head.get("CacheControl") or "")
+            if schema_version >= 3 and "immutable" not in cache_control.lower():
+                raise RuntimeError(f"FAIL Cache-Control map asset belum immutable: {key}: {cache_control!r}")
             print(f"  PASS map asset {key:34s} {int(head['ContentLength'])/1024/1024:9.2f} MB")
 
         river_payloads = {}

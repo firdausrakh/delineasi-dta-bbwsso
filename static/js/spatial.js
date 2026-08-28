@@ -12,6 +12,28 @@ const RIVER_ZOOM = {1:6.5,2:6.5,3:10.5,other:12.5};
 const RIVER_FULL_DETAIL_ZOOM = 14;
 const RIVER_KEYS = ['1','2','3','other'];
 const KARST_MESSAGE = 'Delineasi berbasis DEM permukaan tidak valid untuk kawasan karst. Sistem hidrologi karst didominasi oleh sungai bawah tanah sehingga batas topografi permukaan tidak mencerminkan daerah tangkapan air yang sebenarnya.';
+const DTA_CONFIG = window.DTA_CONFIG || {};
+const MAP_ASSETS_BASE = String(DTA_CONFIG.mapAssetsBase || '').replace(/\/$/,'');
+const MAP_ASSETS_VERSION = String(DTA_CONFIG.mapAssetsVersion || '');
+const MAP_ASSET_FILES = {
+  'official-basins':'official_basins.geojson',
+  'official-rivers-z6-8':'official_rivers_z6_8.geojson',
+  'official-rivers-z8-10':'official_rivers_z8_10.geojson',
+  'official-rivers-z10-11':'official_rivers_z10_11.geojson',
+  'official-rivers-z11-12':'official_rivers_z11_12.geojson',
+  'official-rivers-z12-14':'official_rivers_z12_14.geojson',
+  'official-rivers':'official_rivers.geojson'
+};
+
+function browserClientId(){
+  const key='delineasiDtaClientIdV1';
+  try{
+    let value=sessionStorage.getItem(key);
+    if(!value){value=globalThis.crypto?.randomUUID?.()||`${Date.now()}-${Math.random().toString(36).slice(2)}`;sessionStorage.setItem(key,value);}
+    return value;
+  }catch(_){return `${Date.now()}-${Math.random().toString(36).slice(2)}`;}
+}
+const DTA_CLIENT_ID = browserClientId();
 
 function clearLegacyPersistentState(){
   try{
@@ -76,6 +98,7 @@ let appToastTimer = null;
 // Prevent an older slow delineation response from overwriting a newer moved outlet.
 let delineationRequestSerial = 0;
 const latestDelineationSerialByPoint = new Map();
+let delineationAbortController = null;
 
 // Sidebar and map popup are two views of the same DTA state.
 const pointNameDrafts = new Map();
@@ -464,7 +487,15 @@ function riverDisplayAssetKeyForZoom(zoom=map?.getZoom?.()??0){
   if(zoom>=8.5)return 'official-rivers-z8-10';
   return 'official-rivers-z6-8';
 }
-function riverDisplayAssetUrl(key=riverDisplayAssetKeyForZoom()){return `/api/map-assets/${key}`;}
+function mapAssetUrl(key){
+  const filename=MAP_ASSET_FILES[key];
+  if(MAP_ASSETS_BASE&&filename){
+    const suffix=MAP_ASSETS_VERSION?`?v=${encodeURIComponent(MAP_ASSETS_VERSION)}`:'';
+    return `${MAP_ASSETS_BASE}/${filename}${suffix}`;
+  }
+  return `/api/map-assets/${key}`;
+}
+function riverDisplayAssetUrl(key=riverDisplayAssetKeyForZoom()){return mapAssetUrl(key);}
 function updateRiverDisplaySource({force=false}={}){
   const source=map?.getSource?.('official-rivers');
   if(!source)return;
@@ -545,7 +576,7 @@ function addOperationalLayers(){
   if(!map.getSource('esri-hillshade'))map.addSource('esri-hillshade',{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16,attribution:'Hillshade © Esri'});
   if(!map.getLayer('esri-hillshade-layer'))map.addLayer({id:'esri-hillshade-layer',type:'raster',source:'esri-hillshade',layout:{visibility:$('showHillshade')?.checked?'visible':'none'},paint:{'raster-opacity':Number($('hillshadeOpacity')?.value||100)/100,'raster-fade-duration':0}});
 
-  if(!map.getSource('official-basins'))map.addSource('official-basins',{type:'geojson',data:'/api/map-assets/official-basins',tolerance:0,maxzoom:24,buffer:128});
+  if(!map.getSource('official-basins'))map.addSource('official-basins',{type:'geojson',data:mapAssetUrl('official-basins'),tolerance:0,maxzoom:24,buffer:128});
   if(!map.getSource('official-basin-labels'))map.addSource('official-basin-labels',{type:'geojson',data:'/api/basin-labels'});
   if(!map.getLayer('official-basins-fill'))map.addLayer({id:'official-basins-fill',type:'fill',source:'official-basins',paint:{'fill-color':$('basinColor')?.value||'#9b7300','fill-opacity':0}});
   if(!map.getLayer('official-basins-line'))map.addLayer({id:'official-basins-line',type:'line',source:'official-basins',layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('basinColor')?.value||'#9b7300','line-width':lineBase(),'line-opacity':1}});
@@ -965,7 +996,9 @@ async function reconcileCachedResults({guard=null}={}){
   const byId=new Map(batchResult.results.map(r=>[r.point_id,r]));
   const cached=points.map(p=>byId.get(p.point_id)).filter(Boolean);
   if(!cached.length){clearResults();return true;}
-  const response=await fetch('/api/reconcile-results',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({results:cached})});
+  if(delineationAbortController){try{delineationAbortController.abort();}catch(_){}delineationAbortController=null;}
+  const reconcileRequestId=`${Date.now()}-reconcile-${++delineationRequestSerial}`;
+  const response=await fetch('/api/reconcile-results',{method:'POST',headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':reconcileRequestId},body:JSON.stringify({results:cached})});
   const payload=await response.json();if(!response.ok)throw parseApiError(payload,'Pembaruan hubungan DTA gagal.');
   if(typeof guard==='function'&&!guard())return false;
   batchResult=payload;renderDtaLayers();renderRequestedPoints();renderPointCards();renderRelationship(payload.network_analysis);$('downloadBtn').disabled=false;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=false;persistState();
@@ -977,6 +1010,10 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
   const target=onlyPointId?points.find(p=>p.point_id===onlyPointId):null;
   const requestPoints=(target?[target]:points).map(p=>({...p}));
   const requestSerial=++delineationRequestSerial;
+  if(delineationAbortController){try{delineationAbortController.abort();}catch(_){}}
+  const requestController=new AbortController();
+  delineationAbortController=requestController;
+  const requestId=`${Date.now()}-${requestSerial}`;
   if(target)latestDelineationSerialByPoint.set(target.point_id,requestSerial);
   const samePoint=(snapshot)=>{const current=points.find(p=>p.point_id===snapshot.point_id);return Boolean(current&&Number(current.lon)===Number(snapshot.lon)&&Number(current.lat)===Number(snapshot.lat));};
   const requestIsCurrent=()=>target
@@ -984,7 +1021,12 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
     : requestPoints.length===points.length&&requestPoints.every(snapshot=>samePoint(snapshot));
   processingPointIds=new Set(target?[target.point_id]:points.map(p=>p.point_id));renderPointCards();setStatus(target?`Menghitung DTA ${pointName(target.point_id)}…`:'Menghitung DTA…','busy');
   try{
-    const response=await fetch('/api/delineate-multi',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),paek_tolerance_m:150,vw_tolerance_m:4})});
+    const response=await fetch('/api/delineate-multi',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':requestId},
+      signal:requestController.signal,
+      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),paek_tolerance_m:150,vw_tolerance_m:4})
+    });
     const payload=await response.json();
     if(!requestIsCurrent())return null;
     if(!response.ok)throw parseApiError(payload,'Delineasi gagal.');
@@ -1002,12 +1044,15 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
     return true;
   }catch(err){
     // A slow Vercel response from an older outlet must never roll back or overwrite a newer move.
+    if(err?.name==='AbortError')return null;
     if(!requestIsCurrent())return null;
+    if(err?.code==='request_superseded')return null;
     if(err?.code==='karst_detected'){showKarst(err);return false;}
     if(err?.code==='outside_region'){showOutside();return false;}
     setStatus(err?.message||String(err),'error');
     return false;
   }finally{
+    if(delineationAbortController===requestController)delineationAbortController=null;
     if(target){
       if(latestDelineationSerialByPoint.get(target.point_id)===requestSerial){processingPointIds.delete(target.point_id);renderPointCards();}
     }else if(requestIsCurrent()){processingPointIds.clear();renderPointCards();}

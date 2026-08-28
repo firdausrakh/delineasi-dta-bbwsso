@@ -1,7 +1,7 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.0.0.0`  
-**Current repository state:** Cloudflare R2 Runtime — UI/Performance Refinement `p33`  
+**Version:** `1.0.0.2`  
+**Current repository state:** Cloudflare R2 Runtime — Performance v2 / UI Refinement `p34`  
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
 
@@ -120,11 +120,11 @@ Basemap Esri Streets, CARTO Positron, dan CARTO Dark Matter sudah dihapus dari g
 DATA MASTER LOKAL
 komputer pengelola
        │
-       │ export_r2_bundle.bat
+       │ 23_export_r2_bundle.bat
        ▼
    r2_bundle/
        │
-       │ upload_r2.bat
+       │ 24_upload_r2.bat
        ▼
 ┌────────────────────────────────────────────┐
 │              CLOUDFLARE R2                │
@@ -157,9 +157,15 @@ Cloudflare R2 berfungsi sebagai **object storage**, bukan database spasial. Oper
 Pada `DATA_BACKEND=r2`, backend:
 
 1. membaca `manifest.json` dari bucket private;
-2. melakukan `HEAD` object untuk membaca ETag/size;
-3. mengunduh file yang belum ada atau berubah ke cache runtime;
-4. memakai ulang file cached selama ETag masih sama.
+2. memakai ukuran dan SHA256 pada manifest untuk memvalidasi cache tanpa `HEAD` berulang;
+3. mengunduh tujuh object inti secara paralel, default maksimal empat koneksi;
+4. memakai ulang file cache selama versi manifest belum berubah;
+5. menunda download `toponim.sqlite` sampai penamaan titik pertama;
+6. menunda download `official_rivers_original.gpkg` sampai ekspor dengan jaringan sungai pertama.
+
+Manifest lama yang belum memiliki metadata ukuran/SHA256 tetap didukung melalui fallback `HEAD` + ETag. Bundle baru memakai `schema_version: 3` dan mempunyai `map_assets_version` untuk cache busting map-assets.
+
+Saat bundle baru dibuat, `flowdir.tif` dan `subbasins.tif` dikonversi menjadi **COG kategorikal** dengan resampling overview `NEAREST`. CRS, transform, dimensi, dtype, dan nilai sel base grid diverifikasi tetap identik. Runtime saat ini tetap memakai satu pasangan raster global agar closure topologi dan konsistensi grid dataset existing tidak berubah.
 
 Default cache Vercel berada di:
 
@@ -168,6 +174,23 @@ Default cache Vercel berada di:
 ```
 
 Cache ini bersifat temporary sesuai lifecycle instance/container Vercel.
+
+### Performance v2 untuk Vercel Hobby
+
+Runtime menerapkan perlindungan berikut tanpa mengubah algoritma hidrologi:
+
+- satu job GIS berat aktif per worker secara default;
+- antrean terbatas agar request tidak menumpuk tanpa batas;
+- request delineasi lama ditandai superseded oleh request browser yang lebih baru;
+- frontend membatalkan koneksi `fetch` delineasi sebelumnya;
+- cache hybrid D8 dan boundary stitching menggunakan `(LINKNO, raster row, raster column)`, bukan koordinat floating point;
+- cache topology dan geometry mempunyai batas terpisah;
+- cache geometry dibersihkan saat RSS memory melewati threshold;
+- map-assets public dimuat langsung dari custom domain R2 tanpa redirect melalui Vercel;
+- map-assets memakai versi bundle dan cache immutable;
+- statistik job, antrean, RSS, cache, dan transfer R2 tersedia pada `/api/info`.
+
+Pada worker satu vCPU, jangan menaikkan `DTA_MAX_CONCURRENT_HEAVY_JOBS` di atas `1` tanpa benchmark production.
 
 ---
 
@@ -304,11 +327,11 @@ Bucket ini dapat disajikan melalui R2 public development URL untuk pengujian, te
 ├── requirements.txt
 ├── run.bat
 ├── run_linux_mac.sh
-├── setup_r2.bat
-├── export_r2_bundle.bat
-├── upload_r2.bat
-├── verify_r2.bat
-├── migrate_to_r2.bat
+├── 21_setup_r2.bat
+├── 22_migrate_to_r2.bat
+├── 23_export_r2_bundle.bat
+├── 24_upload_r2.bat
+├── 25_verify_r2.bat
 ├── git_push.bat
 ├── vercel.json
 └── README.md
@@ -380,7 +403,7 @@ Respons harus memuat antara lain:
 
 ```json
 {
-  "app_version": "1.0.0.0",
+  "app_version": "1.0.0.2",
   "data_backend": "local",
   "active_dataset": "1km2"
 }
@@ -425,6 +448,17 @@ Contoh lengkap tersedia di `.env.example`.
 | `R2_MAP_ASSETS_PUBLIC_BASE` | disarankan | public/custom domain map-assets tanpa trailing slash |
 | `R2_REFRESH_CACHE` | opsional | `0` normal, `1` paksa refresh cache |
 | `DTA_RUNTIME_CACHE_DIR` | opsional | kosong = temporary directory sistem |
+| `R2_DOWNLOAD_WORKERS` | opsional | default `4`, download object inti secara paralel |
+| `R2_VERIFY_DOWNLOAD_SHA256` | opsional | default `0`; `1` untuk hash penuh setelah download |
+| `R2_RASTER_COG_COMPRESSION` | opsional migrasi | default `ZSTD`, fallback `DEFLATE` |
+| `DTA_MAX_CONCURRENT_HEAVY_JOBS` | opsional | default `1`, sesuai worker satu vCPU |
+| `DTA_MAX_QUEUED_HEAVY_JOBS` | opsional | default `4`, batas request GIS yang menunggu |
+| `DTA_HEAVY_JOB_QUEUE_TIMEOUT_S` | opsional | default `25` detik |
+| `DTA_TOPOLOGY_CACHE_SIZE` | opsional | default `2048`, cache tuple topology ringan |
+| `DTA_UPSTREAM_UNION_CACHE_SIZE` | opsional | default `24`, cache polygon upstream |
+| `DTA_HYBRID_CACHE_SIZE` | opsional | default `16`, cache hybrid D8 per sel |
+| `DTA_BOUNDARY_CACHE_SIZE` | opsional | default `16`, cache boundary stitching per sel |
+| `DTA_CACHE_PRESSURE_MB` | opsional | default `1400`, threshold pembersihan cache geometry |
 | `NOMINATIM_USER_AGENT` | disarankan | identitas request Nominatim |
 | `GOOGLE_MAPS_TILE_URL` | opsional | endpoint custom jika diperlukan |
 | `GOOGLE_SATELLITE_TILE_URL` | opsional | endpoint custom jika diperlukan |
@@ -440,7 +474,7 @@ Contoh lengkap tersedia di `.env.example`.
 Windows:
 
 ```text
-setup_r2.bat
+21_setup_r2.bat
 ```
 
 Script membuat virtual environment, memasang dependency, dan menyalin `.env.example` menjadi `.env` bila belum tersedia.
@@ -481,20 +515,20 @@ R2_MAP_ASSETS_PUBLIC_BASE=https://data-domain-anda.example
 ### 5. Jalankan migrasi lengkap
 
 ```text
-migrate_to_r2.bat
+22_migrate_to_r2.bat
 ```
 
 Alur:
 
 ```text
-export_r2_bundle.bat
+23_export_r2_bundle.bat
         ↓
-upload_r2.bat
+24_upload_r2.bat
         ↓
-verify_r2.bat
+25_verify_r2.bat
 ```
 
-#### `export_r2_bundle.bat`
+#### `23_export_r2_bundle.bat`
 
 Membaca data lokal dan memvalidasi:
 
@@ -508,7 +542,7 @@ Membaca data lokal dan memvalidasi:
 
 Tidak ada koneksi Supabase/database eksternal dalam proses ini.
 
-#### `upload_r2.bat`
+#### `24_upload_r2.bat`
 
 Mengunggah:
 
@@ -517,7 +551,7 @@ r2_bundle/runtime     → dta-runtime
 r2_bundle/map-assets  → dta-map-assets
 ```
 
-#### `verify_r2.bat`
+#### `25_verify_r2.bat`
 
 Memeriksa kembali object R2, ukuran/checksum, GeoPackage, crosswalk, SQLite RTree, raster grid, dan map-assets terhadap bundle/sumber lokal.
 
@@ -622,7 +656,7 @@ Tidak perlu upload ulang data R2.
 ```text
 Perbarui data master lokal
     ↓
-migrate_to_r2.bat
+22_migrate_to_r2.bat
     ↓
 Cloudflare R2
     ↓
@@ -640,7 +674,7 @@ Tidak perlu commit data ke GitHub dan biasanya tidak perlu redeploy Vercel.
 Setelah URL production tersedia, cek minimal:
 
 - halaman utama dapat dimuat;
-- `/api/info` mengembalikan `app_version: 1.0.0.0`;
+- `/api/info` mengembalikan `app_version: 1.0.0.2`;
 - `data_backend` adalah `r2`;
 - `active_dataset` adalah `1km2`;
 - Batas DAS tampil;
@@ -657,6 +691,8 @@ Setelah URL production tersedia, cek minimal:
 - pindah outlet tidak meninggalkan marker lama;
 - sidebar/search/mobile/fullscreen tidak saling menutupi;
 - ekspor berjalan;
+- request lama tidak menumpuk saat outlet dipindahkan berulang;
+- `/api/info` menampilkan `heavy_jobs`, `rss_memory_mb`, dan metrik R2;
 - browser Console tidak menampilkan error R2/CORS/runtime.
 
 ---
@@ -723,6 +759,10 @@ http://localhost:8000
 
 Untuk production tambahkan domain Vercel/custom domain aplikasi.
 
+Performance v2 mengarahkan browser langsung ke custom domain tersebut. Aktifkan Cloudflare Cache/Cache Everything untuk hostname map-assets. Script upload memberi `Cache-Control: public, max-age=31536000, immutable`, sedangkan `map_assets_version` pada manifest membuat URL baru ketika isi bundle berubah.
+
+Setelah mengubah kebijakan CORS atau cache pada bucket yang sudah pernah diakses, purge cache hostname map-assets sebelum QA ulang.
+
 Jika `R2_MAP_ASSETS_PUBLIC_BASE` dikosongkan saat local testing, backend dapat melayani map asset dari runtime data sebagai fallback sesuai implementasi endpoint yang tersedia.
 
 ---
@@ -764,7 +804,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29`, `p30`, `p31`, `p32`, `p33` pada proses pengembangan terakhir adalah **penanda refinement internal**, bukan pengganti semantic/public version API `1.0.0.0`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Runtime API pada paket ini menggunakan versi `1.0.0.2`.
 
 ---
 
@@ -794,6 +834,17 @@ Perubahan utama:
 - jaringan sungai display dibuat menjadi enam tier multiscale/generalized;
 - mode tambah titik dipisahkan dari mode Satu/Multi Titik;
 - interaksi polygon DTA kembali menggunakan incremental polygon pada refinement `p33`.
+
+### 1.0.0.2 — R2 Performance v2 — 28 August 2026
+
+- download object inti R2 paralel dan manifest-first cache validation;
+- toponim serta jaringan sungai asli untuk ekspor dimuat secara lazy;
+- map-assets dikirim langsung dari custom domain R2 dengan bundle version;
+- request delineasi lama dibatalkan/superseded;
+- job GIS berat dibatasi sesuai satu vCPU;
+- cache hybrid dan boundary menggunakan sel raster;
+- cache geometry dibatasi dan dapat dibersihkan berdasarkan RSS memory;
+- observability antrean, cache, memory, serta I/O R2 ditambahkan.
 
 ### Sebelum 1.0.0.0 — Internal development
 

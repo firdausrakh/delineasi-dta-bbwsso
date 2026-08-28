@@ -1,0 +1,37 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+config_local.bat
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime/cache
+.cache/
+.vercel/
+*.log
+*.tmp
+
+# Local spatial data / generated exports
+r2_bundle/
+data/
+static/data/*.geojson
+*.gpkg
+*.tif
+*.tiff
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

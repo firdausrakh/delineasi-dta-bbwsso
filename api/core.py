@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sqlite3
+import sys
 import unicodedata
 import threading
 import time
@@ -40,6 +41,11 @@ from shapely.ops import nearest_points, transform
 from api.services.boundary_stitch import process_fabdem_polygon, stitch_watershed_boundary
 from shapely.strtree import STRtree
 
+try:
+    import resource
+except ImportError:  # pragma: no cover - Windows local development
+    resource = None
+
 API_DIR = Path(__file__).resolve().parent
 ROOT_DIR = API_DIR.parent
 DATA_DIR = ROOT_DIR / "data"
@@ -49,8 +55,19 @@ PROCESSED_DATA_ROOT = DATA_DIR / "processed"
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
 
-from api.services.runtime_backend import load_runtime_bundle
+from api.services.runtime_backend import (
+    ensure_official_rivers_original,
+    ensure_toponym_db_path,
+    get_r2_runtime_metrics,
+    load_runtime_bundle,
+)
 from api.services.river_display import RIVER_DISPLAY_TIER_BY_FILENAME, build_river_display_gdf
+from api.services.performance import (
+    HEAVY_JOBS,
+    LATEST_REQUESTS,
+    HeavyJobQueueFull,
+    SupersededRequest,
+)
 
 RUNTIME_DATA = load_runtime_bundle(ROOT_DIR)
 DATA_BACKEND = RUNTIME_DATA.backend
@@ -67,11 +84,12 @@ FDIR_PATH = RUNTIME_DATA.fdir_path
 SUBBASIN_RASTER_PATH = RUNTIME_DATA.subbasin_raster_path
 TOPONYM_DB_PATH = RUNTIME_DATA.toponym_db_path or (REFERENCE_DATA_DIR / "toponim.sqlite")
 MAP_ASSETS_PUBLIC_BASE = RUNTIME_DATA.map_assets_public_base
+MAP_ASSETS_VERSION = RUNTIME_DATA.map_assets_version
 
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.0.0.0"
+APP_VERSION = "1.0.0.2"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 DEFAULT_PAEK_TOLERANCE_M = 150.0
@@ -94,6 +112,11 @@ TOPONYM_SETTLEMENT_PRIORITY = {
     "Ibukota Kabupaten": 4,
 }
 TOPONYM_NAMING_RADIUS_M = 5_000.0
+TOPOLOGY_CACHE_SIZE = max(256, int(os.getenv("DTA_TOPOLOGY_CACHE_SIZE", "2048")))
+UPSTREAM_UNION_CACHE_SIZE = max(4, int(os.getenv("DTA_UPSTREAM_UNION_CACHE_SIZE", "24")))
+HYBRID_CACHE_SIZE = max(4, int(os.getenv("DTA_HYBRID_CACHE_SIZE", "16")))
+BOUNDARY_CACHE_SIZE = max(4, int(os.getenv("DTA_BOUNDARY_CACHE_SIZE", "16")))
+CACHE_PRESSURE_MB = max(256.0, float(os.getenv("DTA_CACHE_PRESSURE_MB", "1400")))
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = os.getenv(
     "NOMINATIM_USER_AGENT",
@@ -125,10 +148,6 @@ if official_rivers.crs is None:
     raise RuntimeError("CRS is missing from official river layer.")
 if official_rivers.crs != streams.crs:
     official_rivers = official_rivers.to_crs(streams.crs)
-if official_rivers_original.crs is None:
-    raise RuntimeError("CRS is missing from original river layer.")
-if official_rivers_original.crs != streams.crs:
-    official_rivers_original = official_rivers_original.to_crs(streams.crs)
 
 subbasins_by_id = subbasins.set_index("polygon_id", drop=False)
 crosswalk_by_id = crosswalk.set_index("polygon_id", drop=False)
@@ -165,8 +184,9 @@ official_tree = STRtree(official_geometries)
 supported_basin_codes = set(link_to_official_code.values())
 official_river_geometries = list(official_rivers.geometry.values)
 official_river_tree = STRtree(official_river_geometries)
-official_river_original_geometries = list(official_rivers_original.geometry.values)
-official_river_original_tree = STRtree(official_river_original_geometries)
+official_river_original_geometries: list[Any] | None = None
+official_river_original_tree: STRtree | None = None
+_ORIGINAL_RIVER_LOCK = threading.Lock()
 
 # Global and per-official-basin stream spatial indexes.
 stream_geometries = list(streams.geometry.values)
@@ -331,7 +351,7 @@ class DownloadRequest(BaseModel):
     include_rivers: bool = True
 
 
-@lru_cache(maxsize=None)
+@lru_cache(maxsize=TOPOLOGY_CACHE_SIZE)
 def collect_upstream_ids(outlet_linkno: int) -> tuple[int, ...]:
     """Return outlet + all upstream links; topology is immutable per worker."""
     seen: set[int] = set()
@@ -347,7 +367,7 @@ def collect_upstream_ids(outlet_linkno: int) -> tuple[int, ...]:
     return tuple(ordered)
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=UPSTREAM_UNION_CACHE_SIZE)
 def watershed_union_projected(outlet_linkno: int):
     """Build/cache raw FABDEM upstream union in native projected CRS."""
     upstream_ids = collect_upstream_ids(outlet_linkno)
@@ -449,32 +469,49 @@ def _trace_local_d8_catchment(fdir: np.ndarray, local_mask: np.ndarray, outlet_r
     return out
 
 
-def local_raster_catchment_projected(outlet_linkno: int, snapped_point: Point):
-    """Delineate only the outlet's incremental subbasin using the D8 raster.
-
-    Full upstream units remain vector/predefined. This function is therefore the local
-    precision component of the hybrid engine.
-    """
+def _read_local_raster_window(outlet_linkno: int):
     if not HYBRID_RASTER_AVAILABLE:
         raise RuntimeError("Raster hybrid belum tersedia.")
     row = subbasins_by_id.loc[int(outlet_linkno)]
     local_geom = row.geometry
-    stream_pos = link_to_stream_pos[int(outlet_linkno)]
-    reach_geom = streams.iloc[stream_pos].geometry
-    # Add a two-cell margin to avoid edge truncation during reverse traversal.
     with _RASTER_LOCK:
         fds, wds = _get_raster_readers()
         px = max(abs(float(fds.transform.a)), abs(float(fds.transform.e)))
         minx, miny, maxx, maxy = local_geom.bounds
-        win = raster_window_from_bounds(minx - 2*px, miny - 2*px, maxx + 2*px, maxy + 2*px, transform=fds.transform)
+        win = raster_window_from_bounds(
+            minx - 2 * px, miny - 2 * px, maxx + 2 * px, maxy + 2 * px,
+            transform=fds.transform,
+        )
         win = win.round_offsets().round_lengths()
         full = rasterio.windows.Window(0, 0, fds.width, fds.height)
         win = win.intersection(full)
         fdir = fds.read(1, window=win)
         ws = wds.read(1, window=win)
         wtransform = fds.window_transform(win)
+    return fdir, ws, wtransform, win
+
+
+def locate_outlet_raster_cell(outlet_linkno: int, snapped_point: Point) -> tuple[int, int]:
+    """Resolve a snapped outlet to a stable global raster row/column cache key."""
+    fdir, ws, wtransform, win = _read_local_raster_window(int(outlet_linkno))
+    del fdir
     local_mask = ws == int(outlet_linkno)
-    outlet_rc = _nearest_local_raster_cell(local_mask, wtransform, snapped_point.x, snapped_point.y, reach_geom=reach_geom)
+    stream_pos = link_to_stream_pos[int(outlet_linkno)]
+    reach_geom = streams.iloc[stream_pos].geometry
+    local_row, local_col = _nearest_local_raster_cell(
+        local_mask, wtransform, snapped_point.x, snapped_point.y, reach_geom=reach_geom
+    )
+    return int(win.row_off) + local_row, int(win.col_off) + local_col
+
+
+def local_raster_catchment_by_cell(outlet_linkno: int, outlet_row: int, outlet_col: int):
+    """Delineate the local incremental subbasin from a stable global D8 cell."""
+    fdir, ws, wtransform, win = _read_local_raster_window(int(outlet_linkno))
+    local_mask = ws == int(outlet_linkno)
+    outlet_rc = (int(outlet_row) - int(win.row_off), int(outlet_col) - int(win.col_off))
+    r, c = outlet_rc
+    if r < 0 or c < 0 or r >= local_mask.shape[0] or c >= local_mask.shape[1] or not local_mask[r, c]:
+        raise ValueError("Sel outlet cache tidak berada di subbasin raster yang dipilih.")
     catch_mask = _trace_local_d8_catchment(fdir, local_mask, outlet_rc)
     if not catch_mask.any():
         raise ValueError("DTA raster lokal kosong setelah tracing D8.")
@@ -491,7 +528,13 @@ def local_raster_catchment_projected(outlet_linkno: int, snapped_point: Point):
     return largest_polygon_component(geom), int(catch_mask.sum()), outlet_rc
 
 
-@lru_cache(maxsize=64)
+def local_raster_catchment_projected(outlet_linkno: int, snapped_point: Point):
+    """Backward-compatible wrapper used by local diagnostics and benchmarks."""
+    outlet_row, outlet_col = locate_outlet_raster_cell(int(outlet_linkno), snapped_point)
+    return local_raster_catchment_by_cell(int(outlet_linkno), outlet_row, outlet_col)
+
+
+@lru_cache(maxsize=UPSTREAM_UNION_CACHE_SIZE)
 def _upstream_union_excluding_outlet(outlet_linkno: int):
     """Cache immutable full-upstream polygon union per LINKNO."""
     upstream_full_ids = tuple(
@@ -508,11 +551,12 @@ def _upstream_union_excluding_outlet(outlet_linkno: int):
     return clean_dta_polygon(geom), len(upstream_full_ids)
 
 
-@lru_cache(maxsize=48)
-def _hybrid_watershed_cached(outlet_linkno: int, snapped_x: float, snapped_y: float):
-    """Cache raw hybrid D8 geometry for an exact snapped outlet on a warm worker."""
-    snapped_point = Point(float(snapped_x), float(snapped_y))
-    local_geom, local_cells, outlet_rc = local_raster_catchment_projected(outlet_linkno, snapped_point)
+@lru_cache(maxsize=HYBRID_CACHE_SIZE)
+def _hybrid_watershed_cached(outlet_linkno: int, outlet_row: int, outlet_col: int):
+    """Cache raw hybrid D8 geometry by raster cell, not floating-point coordinates."""
+    local_geom, local_cells, outlet_rc = local_raster_catchment_by_cell(
+        outlet_linkno, int(outlet_row), int(outlet_col)
+    )
     upstream_geom, upstream_count = _upstream_union_excluding_outlet(int(outlet_linkno))
     geom = local_geom if upstream_geom is None else union_all([local_geom, upstream_geom], grid_size=0.01)
     if not geom.is_valid:
@@ -523,8 +567,9 @@ def _hybrid_watershed_cached(outlet_linkno: int, snapped_x: float, snapped_y: fl
 def hybrid_watershed_projected(outlet_linkno: int, snapped_point: Point):
     """Combine predefined upstream units with a raster-cut local outlet unit."""
     before = _hybrid_watershed_cached.cache_info().hits
+    outlet_row, outlet_col = locate_outlet_raster_cell(int(outlet_linkno), snapped_point)
     geom, local_cells, upstream_count, outlet_rc = _hybrid_watershed_cached(
-        int(outlet_linkno), float(snapped_point.x), float(snapped_point.y)
+        int(outlet_linkno), int(outlet_row), int(outlet_col)
     )
     cache_hit = _hybrid_watershed_cached.cache_info().hits > before
     return geom, {
@@ -532,6 +577,8 @@ def hybrid_watershed_projected(outlet_linkno: int, snapped_point: Point):
         "local_cells": int(local_cells),
         "full_upstream_units": int(upstream_count),
         "local_linkno": int(outlet_linkno),
+        "outlet_raster_row": int(outlet_row),
+        "outlet_raster_col": int(outlet_col),
         "hybrid_cache_hit": bool(cache_hit),
     }
 
@@ -693,24 +740,70 @@ def constrain_to_official(
     adjustment_km2 = area_km2_equal(final_geom) - area_km2_equal(raw_geom)
     return final_geom, official_info, str(stitch["mode"]), adjustment_km2, stitch
 
-@lru_cache(maxsize=48)
+@lru_cache(maxsize=BOUNDARY_CACHE_SIZE)
 def _constrain_network_cached(
     outlet_linkno: int,
-    snapped_x: float,
-    snapped_y: float,
+    outlet_row: int,
+    outlet_col: int,
     boundary_match_m: float,
     paek_tolerance_m: float,
     vw_tolerance_m: float,
 ):
-    """Cache expensive boundary smoothing/stitching for an exact snapped outlet."""
-    snapped = Point(float(snapped_x), float(snapped_y))
+    """Cache boundary smoothing/stitching by the hydrologically decisive D8 cell."""
     if HYBRID_RASTER_AVAILABLE:
-        raw_geom, _ = hybrid_watershed_projected(int(outlet_linkno), snapped)
+        raw_geom, *_ = _hybrid_watershed_cached(
+            int(outlet_linkno), int(outlet_row), int(outlet_col)
+        )
     else:
         raw_geom = watershed_union_projected(int(outlet_linkno))
     return constrain_to_official(
         int(outlet_linkno), raw_geom, float(boundary_match_m), float(paek_tolerance_m), float(vw_tolerance_m)
     )
+
+
+_CACHE_TRIM_LOCK = threading.Lock()
+_CACHE_TRIM_COUNT = 0
+_LAST_CACHE_TRIM = 0.0
+
+
+def _rss_memory_mb() -> float:
+    """Best-effort current resident memory for Linux/Vercel and local QA."""
+    try:
+        fields = Path("/proc/self/statm").read_text(encoding="ascii").split()
+        if len(fields) >= 2:
+            return int(fields[1]) * int(os.sysconf("SC_PAGE_SIZE")) / 1024 / 1024
+    except Exception:
+        pass
+    if resource is not None:
+        try:
+            value = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+            return value / 1024 / 1024 if sys.platform == "darwin" else value / 1024
+        except Exception:
+            pass
+    return 0.0
+
+
+def _trim_geometry_caches_if_needed() -> bool:
+    global _CACHE_TRIM_COUNT, _LAST_CACHE_TRIM
+    rss = _rss_memory_mb()
+    if rss <= 0 or rss < CACHE_PRESSURE_MB or time.monotonic() - _LAST_CACHE_TRIM < 30.0:
+        return False
+    with _CACHE_TRIM_LOCK:
+        rss = _rss_memory_mb()
+        if rss < CACHE_PRESSURE_MB or time.monotonic() - _LAST_CACHE_TRIM < 30.0:
+            return False
+        watershed_union_projected.cache_clear()
+        _upstream_union_excluding_outlet.cache_clear()
+        _hybrid_watershed_cached.cache_clear()
+        _constrain_network_cached.cache_clear()
+        _CACHE_TRIM_COUNT += 1
+        _LAST_CACHE_TRIM = time.monotonic()
+        return True
+
+
+def _heavy_job_context():
+    """Acquire the bounded GIS slot and trim caches under memory pressure."""
+    return HEAVY_JOBS.slot()
 
 
 def build_point_result(
@@ -720,12 +813,17 @@ def build_point_result(
     paek_tolerance_m: float,
     vw_tolerance_m: float,
     forced_linkno: int | None = None,
+    cancel_check=None,
 ) -> tuple[dict[str, Any], set[int]]:
     started = time.perf_counter()
+    if cancel_check:
+        cancel_check()
     x, y = to_data.transform(point.lon, point.lat)
     requested_projected = Point(x, y)
     requested_official = official_basin_at_point(requested_projected)
     official_river = nearest_official_river(requested_projected)
+    if cancel_check:
+        cancel_check()
 
     if forced_linkno is None and requested_official is None:
         raise HTTPException(
@@ -813,18 +911,26 @@ def build_point_result(
         t_union = time.perf_counter()
         if HYBRID_RASTER_AVAILABLE:
             raw_geom, hybrid_info = hybrid_watershed_projected(outlet_linkno, snapped)
+            outlet_row = int(hybrid_info["outlet_raster_row"])
+            outlet_col = int(hybrid_info["outlet_raster_col"])
         else:
             raw_geom = watershed_union_projected(outlet_linkno)
             hybrid_info = {"engine": "predefined_vector"}
+            outlet_row = -1
+            outlet_col = -1
         union_ms = (time.perf_counter() - t_union) * 1000.0
+        if cancel_check:
+            cancel_check()
 
         boundary_hits_before = _constrain_network_cached.cache_info().hits
         t_boundary = time.perf_counter()
         final_geom, official_info, boundary_mode, adjustment_km2, boundary_stitch = _constrain_network_cached(
-            int(outlet_linkno), float(snapped.x), float(snapped.y),
+            int(outlet_linkno), int(outlet_row), int(outlet_col),
             float(boundary_match_m), float(paek_tolerance_m), float(vw_tolerance_m)
         )
         boundary_ms = (time.perf_counter() - t_boundary) * 1000.0
+        if cancel_check:
+            cancel_check()
         geometry_cache_hit = _constrain_network_cached.cache_info().hits > boundary_hits_before
         geometry_ms = union_ms + boundary_ms
     except (KeyError, ValueError, RuntimeError) as exc:
@@ -1133,9 +1239,13 @@ def _normalize_search_text(value: str) -> str:
 
 
 def _toponym_connection() -> sqlite3.Connection | None:
-    if not TOPONYM_DB_PATH.exists():
+    try:
+        path = ensure_toponym_db_path(RUNTIME_DATA)
+    except RuntimeError:
         return None
-    conn = sqlite3.connect(f"file:{TOPONYM_DB_PATH}?mode=ro", uri=True, timeout=2.0)
+    if not path.exists():
+        return None
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2.0)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1451,13 +1561,67 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif request.url.path == "/":
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
+
+def _register_delineation_request(request: Request):
+    return LATEST_REQUESTS.register(
+        request.headers.get("x-dta-client-id"), request.headers.get("x-dta-request-id")
+    )
+
+
+def _performance_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, SupersededRequest):
+        return HTTPException(
+            status_code=409,
+            detail={"code": "request_superseded", "message": str(exc)},
+        )
+    return HTTPException(
+        status_code=429,
+        detail={"code": "server_busy", "message": str(exc)},
+        headers={"Retry-After": "2"},
+    )
+
+
 @app.get("/")
 def index(request: Request):
-    return templates.TemplateResponse(request=request, name="spatial.html", context={})
+    return templates.TemplateResponse(
+        request=request,
+        name="spatial.html",
+        context={
+            "map_assets_public_base": MAP_ASSETS_PUBLIC_BASE or "",
+            "map_assets_version": MAP_ASSETS_VERSION or APP_VERSION,
+        },
+    )
 
 
 @app.get("/api/info")
 def info():
+    performance = {
+        "persistent_raster_reader": True,
+        "r2_etag_cache": DATA_BACKEND == "r2",
+        "r2_manifest_first_cache": DATA_BACKEND == "r2",
+        "r2_parallel_downloads": DATA_BACKEND == "r2",
+        "lazy_original_rivers_and_toponyms": DATA_BACKEND == "r2",
+        "raster_cell_cache_key": True,
+        "rss_memory_mb": round(_rss_memory_mb(), 1),
+        "cache_pressure_mb": CACHE_PRESSURE_MB,
+        "cache_trim_count": _CACHE_TRIM_COUNT,
+        "heavy_jobs": HEAVY_JOBS.metrics(),
+        "latest_requests": LATEST_REQUESTS.metrics(),
+        "r2_runtime": get_r2_runtime_metrics() if DATA_BACKEND == "r2" else None,
+        "upstream_topology_cache": collect_upstream_ids.cache_info()._asdict(),
+        "upstream_union_cache": _upstream_union_excluding_outlet.cache_info()._asdict(),
+        "hybrid_cache": _hybrid_watershed_cached.cache_info()._asdict(),
+        "boundary_geometry_cache": _constrain_network_cached.cache_info()._asdict(),
+    }
     return {
         "app_version": APP_VERSION,
         "active_dataset": ACTIVE_DATASET_ID,
@@ -1477,14 +1641,8 @@ def info():
         "google_satellite_available": bool(os.getenv("GOOGLE_SATELLITE_TILE_URL")),
         "google_maps_tile_url": os.getenv("GOOGLE_MAPS_TILE_URL", ""),
         "google_satellite_tile_url": os.getenv("GOOGLE_SATELLITE_TILE_URL", ""),
-        "performance_v1": {
-            "persistent_raster_reader": True,
-            "r2_etag_cache": DATA_BACKEND == "r2",
-            "upstream_topology_cache": collect_upstream_ids.cache_info()._asdict(),
-            "upstream_union_cache": _upstream_union_excluding_outlet.cache_info()._asdict(),
-            "hybrid_cache": _hybrid_watershed_cached.cache_info()._asdict(),
-            "boundary_geometry_cache": _constrain_network_cached.cache_info()._asdict(),
-        },
+        "performance_v1": performance,
+        "performance_v2": performance,
     }
 
 
@@ -1597,7 +1755,12 @@ def map_asset(asset_key: str):
         raise HTTPException(status_code=404, detail="Map asset tidak ditemukan.")
 
     if MAP_ASSETS_PUBLIC_BASE:
-        return RedirectResponse(f"{MAP_ASSETS_PUBLIC_BASE}/{filename}", status_code=307)
+        suffix = f"?v={urllib.parse.quote(MAP_ASSETS_VERSION)}" if MAP_ASSETS_VERSION else ""
+        return RedirectResponse(
+            f"{MAP_ASSETS_PUBLIC_BASE}/{filename}{suffix}",
+            status_code=307,
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
 
     local_path = STATIC_DIR / "data" / filename
     if not local_path.exists():
@@ -1614,7 +1777,11 @@ def map_asset(asset_key: str):
             tier = RIVER_DISPLAY_TIER_BY_FILENAME.get(filename)
             frame = build_river_display_gdf(frame, tier) if tier is not None else frame.to_crs(CRS_WEB)
         local_path.write_text(frame.to_json(drop_id=True), encoding="utf-8")
-    return FileResponse(local_path, media_type="application/geo+json")
+    return FileResponse(
+        local_path,
+        media_type="application/geo+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/api/basin-labels")
@@ -1643,55 +1810,91 @@ def geocode(q: str = Query(..., min_length=2, max_length=160)):
     }
 
 @app.post("/api/delineate-multi")
-def delineate_multi(req: MultiDelineateRequest):
+def delineate_multi(req: MultiDelineateRequest, request: Request):
     if len({p.point_id for p in req.points}) != len(req.points):
         raise HTTPException(status_code=400, detail="point_id harus unik.")
-
-    results: list[dict[str, Any]] = []
-    upstream_sets: list[set[int]] = []
-    for p in req.points:
-        result, upstream = build_point_result(
-            p, req.snap_radius_m, req.boundary_match_m, req.paek_tolerance_m, req.vw_tolerance_m
-        )
-        results.append(result)
-        upstream_sets.append(upstream)
-
-    reconcile_final_geometries(results, upstream_sets)
-    apply_incremental_geometries(results, upstream_sets)
-    return {
-        "results": results,
-        "network_analysis": analyze_point_network(results, upstream_sets),
-    }
+    token = _register_delineation_request(request)
+    try:
+        with _heavy_job_context() as ticket:
+            LATEST_REQUESTS.ensure_current(token)
+            _trim_geometry_caches_if_needed()
+            results: list[dict[str, Any]] = []
+            upstream_sets: list[set[int]] = []
+            for p in req.points:
+                result, upstream = build_point_result(
+                    p,
+                    req.snap_radius_m,
+                    req.boundary_match_m,
+                    req.paek_tolerance_m,
+                    req.vw_tolerance_m,
+                    cancel_check=lambda: LATEST_REQUESTS.ensure_current(token),
+                )
+                results.append(result)
+                upstream_sets.append(upstream)
+            LATEST_REQUESTS.ensure_current(token)
+            reconcile_final_geometries(results, upstream_sets)
+            apply_incremental_geometries(results, upstream_sets)
+            LATEST_REQUESTS.ensure_current(token)
+            return {
+                "results": results,
+                "network_analysis": analyze_point_network(results, upstream_sets),
+                "performance": {"queue_ms": round(ticket.queue_ms, 1)},
+            }
+    except (HeavyJobQueueFull, SupersededRequest) as exc:
+        raise _performance_http_error(exc) from exc
 
 
 @app.post("/api/reconcile-results")
-def reconcile_results(req: CachedResultsRequest):
+def reconcile_results(req: CachedResultsRequest, request: Request):
     """Refresh topology + incremental hatches from cached DTA polygons only.
 
     This endpoint deliberately does not run stream snapping, raster D8 tracing, smoothing,
     or boundary stitching. It is used after deleting/restoring a point so unaffected DTA
     results do not need to be delineated again.
     """
-    results = [dict(r) for r in req.results]
-    ids = [str(r.get("point_id") or "") for r in results]
-    if any(not x for x in ids) or len(set(ids)) != len(ids):
-        raise HTTPException(status_code=400, detail="Cached point_id harus unik dan tidak kosong.")
-    upstream_sets = []
-    for result in results:
-        link = result.get("outlet_linkno")
-        upstream_sets.append(set(collect_upstream_ids(int(link))) if link is not None else set())
-    reconcile_final_geometries(results, upstream_sets)
-    apply_incremental_geometries(results, upstream_sets)
-    return {"results": results, "network_analysis": analyze_point_network(results, upstream_sets)}
+    token = _register_delineation_request(request)
+    try:
+        with _heavy_job_context() as ticket:
+            LATEST_REQUESTS.ensure_current(token)
+            results = [dict(r) for r in req.results]
+            ids = [str(r.get("point_id") or "") for r in results]
+            if any(not x for x in ids) or len(set(ids)) != len(ids):
+                raise HTTPException(status_code=400, detail="Cached point_id harus unik dan tidak kosong.")
+            upstream_sets = []
+            for result in results:
+                link = result.get("outlet_linkno")
+                upstream_sets.append(set(collect_upstream_ids(int(link))) if link is not None else set())
+            LATEST_REQUESTS.ensure_current(token)
+            reconcile_final_geometries(results, upstream_sets)
+            apply_incremental_geometries(results, upstream_sets)
+            return {
+                "results": results,
+                "network_analysis": analyze_point_network(results, upstream_sets),
+                "performance": {"queue_ms": round(ticket.queue_ms, 1)},
+            }
+    except (HeavyJobQueueFull, SupersededRequest) as exc:
+        raise _performance_http_error(exc) from exc
 
 
 @app.post("/api/delineate")
-def delineate(req: DelineateRequest):
+def delineate(req: DelineateRequest, request: Request):
     p = OutletPoint(point_id="O1", lon=req.lon, lat=req.lat, source="api")
-    result, _ = build_point_result(
-        p, req.snap_radius_m, req.boundary_match_m, req.paek_tolerance_m, req.vw_tolerance_m
-    )
-    return result
+    token = _register_delineation_request(request)
+    try:
+        with _heavy_job_context() as ticket:
+            _trim_geometry_caches_if_needed()
+            result, _ = build_point_result(
+                p,
+                req.snap_radius_m,
+                req.boundary_match_m,
+                req.paek_tolerance_m,
+                req.vw_tolerance_m,
+                cancel_check=lambda: LATEST_REQUESTS.ensure_current(token),
+            )
+            result.setdefault("processing", {})["queue_ms"] = round(ticket.queue_ms, 1)
+            return result
+    except (HeavyJobQueueFull, SupersededRequest) as exc:
+        raise _performance_http_error(exc) from exc
 
 
 @app.get("/api/dta/{linkno}")
@@ -1718,11 +1921,17 @@ def watershed_by_linkno(
         source="linkno",
         label=f"LINKNO {linkno}",
     )
-    result, _ = build_point_result(
-        p, 20000.0, float(boundary_match_m), float(paek_tolerance_m),
-        float(vw_tolerance_m), forced_linkno=linkno
-    )
-    return result
+    try:
+        with _heavy_job_context() as ticket:
+            _trim_geometry_caches_if_needed()
+            result, _ = build_point_result(
+                p, 20000.0, float(boundary_match_m), float(paek_tolerance_m),
+                float(vw_tolerance_m), forced_linkno=linkno
+            )
+            result.setdefault("processing", {})["queue_ms"] = round(ticket.queue_ms, 1)
+            return result
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
 
 
 def _selected_geometry_projected(result: dict[str, Any], geometry_mode: str):
@@ -1800,25 +2009,43 @@ def _result_frames_for_point(
     return dta, outlet, geom
 
 
+def _ensure_original_river_index():
+    global official_rivers_original, official_river_original_geometries, official_river_original_tree
+    if official_river_original_tree is not None and official_rivers_original is not None:
+        return official_rivers_original, official_river_original_tree
+    with _ORIGINAL_RIVER_LOCK:
+        if official_river_original_tree is None or official_rivers_original is None:
+            frame = ensure_official_rivers_original(RUNTIME_DATA)
+            if frame.crs is None:
+                raise RuntimeError("CRS is missing from original river layer.")
+            if frame.crs != streams.crs:
+                frame = frame.to_crs(streams.crs)
+            official_rivers_original = frame
+            official_river_original_geometries = list(frame.geometry.values)
+            official_river_original_tree = STRtree(official_river_original_geometries)
+    return official_rivers_original, official_river_original_tree
+
+
 def _clip_original_rivers(geom_export):
+    rivers_frame, rivers_tree = _ensure_original_river_index()
     # Spatial index is in the native processing CRS; convert the selected export geometry back when needed.
     if str(streams.crs).upper() == CRS_EXPORT:
         geom_native = geom_export
     else:
         back = Transformer.from_crs(CRS_EXPORT, streams.crs, always_xy=True)
         geom_native = transform(back.transform, geom_export)
-    idxs = official_river_original_tree.query(geom_native, predicate="intersects")
+    idxs = rivers_tree.query(geom_native, predicate="intersects")
     if len(idxs) == 0:
         return gpd.GeoDataFrame(
-            columns=[c for c in official_rivers_original.columns],
+            columns=[c for c in rivers_frame.columns],
             geometry="geometry",
             crs=CRS_EXPORT,
         )
-    rr = official_rivers_original.iloc[[int(i) for i in idxs]].copy()
+    rr = rivers_frame.iloc[[int(i) for i in idxs]].copy()
     rr["geometry"] = rr.geometry.intersection(geom_native)
     rr = rr[~rr.geometry.is_empty].copy()
     # Pertahankan struktur atribut asli SHP; hanya geometri yang di-clip.
-    rr = rr[[c for c in official_rivers_original.columns if c in rr.columns]]
+    rr = rr[[c for c in rivers_frame.columns if c in rr.columns]]
     rr = rr.to_crs(CRS_EXPORT) if str(rr.crs).upper() != CRS_EXPORT else rr
     return gpd.GeoDataFrame(rr, geometry="geometry", crs=CRS_EXPORT)
 
@@ -1888,6 +2115,15 @@ def _write_vector_by_format(gdf: gpd.GeoDataFrame, path: Path, fmt: str, name: s
 
 @app.post("/api/download")
 def download(req: DownloadRequest):
+    try:
+        with _heavy_job_context():
+            _trim_geometry_caches_if_needed()
+            return _download_impl(req)
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
+
+
+def _download_impl(req: DownloadRequest):
     allowed_formats = {"gpkg", "shp", "geojson", "kml"}
     formats: list[str] = []
     for f in req.formats:

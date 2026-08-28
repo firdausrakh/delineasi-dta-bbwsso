@@ -13,6 +13,7 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 import rasterio
+from rasterio.shutil import copy as raster_copy
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -44,6 +45,39 @@ def _sha256(path: Path) -> str:
 def _copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
+
+
+def _copy_raster_as_cog(src: Path, dst: Path) -> None:
+    """Create a categorical COG while preserving the authoritative base grid."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    compression = os.getenv("R2_RASTER_COG_COMPRESSION", "ZSTD").strip().upper() or "ZSTD"
+    options = {
+        "driver": "COG",
+        "compress": compression,
+        "blocksize": 512,
+        "overview_resampling": "NEAREST",
+        "BIGTIFF": "IF_SAFER",
+    }
+    try:
+        raster_copy(src, dst, **options)
+    except Exception:
+        if compression == "DEFLATE":
+            raise
+        dst.unlink(missing_ok=True)
+        options["compress"] = "DEFLATE"
+        raster_copy(src, dst, **options)
+    with rasterio.open(src) as source, rasterio.open(dst) as output:
+        same_grid = (
+            source.crs == output.crs
+            and source.transform == output.transform
+            and source.width == output.width
+            and source.height == output.height
+            and source.count == output.count
+            and source.dtypes == output.dtypes
+        )
+        if not same_grid:
+            dst.unlink(missing_ok=True)
+            raise RuntimeError(f"Konversi COG mengubah grid/dtype raster: {src}")
 
 
 def _river_base_name(value: Any) -> str | None:
@@ -184,8 +218,6 @@ def main() -> int:
         paths["crosswalk"]: processed_out / "crosswalk.csv",
         paths["summary"]: processed_out / "official_summary.json",
         paths["metadata"]: processed_out / "metadata.json",
-        paths["subbasin_raster"]: processed_out / "subbasins.tif",
-        paths["flowdir"]: shared_out / "flowdir.tif",
         paths["official"]: reference_out / "official_reference.gpkg",
         paths["rivers_original"]: reference_out / "official_rivers_original.gpkg",
         paths["toponim"]: reference_out / "toponim.sqlite",
@@ -193,6 +225,12 @@ def main() -> int:
     for src, dst in copy_map.items():
         _copy(src, dst)
         print(f"  {src.name:32s} -> {dst.relative_to(runtime)}")
+    for src, dst in (
+        (paths["subbasin_raster"], processed_out / "subbasins.tif"),
+        (paths["flowdir"], shared_out / "flowdir.tif"),
+    ):
+        _copy_raster_as_cog(src, dst)
+        print(f"  {src.name:32s} -> {dst.relative_to(runtime)} (COG kategorikal)")
 
     print("[2/4] Membuat map-assets multiscale dari reference lokal...")
     basins = gpd.read_file(paths["official"], layer="official_basins").to_crs("EPSG:4326")
@@ -241,10 +279,19 @@ def main() -> int:
             "role": "metadata",
         }
 
+    asset_digest = hashlib.sha256()
+    for asset in sorted(p for p in map_assets.iterdir() if p.is_file()):
+        asset_digest.update(asset.name.encode("utf-8"))
+        asset_digest.update(_sha256(asset).encode("ascii"))
+    map_assets_version = asset_digest.hexdigest()[:16]
+
     manifest = {
-        "schema_version": 2,
+        "schema_version": 3,
         "source": "local-runtime-data",
         "active_dataset": dsid,
+        "map_assets_version": map_assets_version,
+        "runtime_profile": "r2-performance-v2",
+        "raster_layout": "global_cog",
         "datasets": {
             dsid: {
                 "engine": object_paths["engine"],
@@ -278,6 +325,7 @@ def main() -> int:
     print(f"Dataset     : {dsid}")
     print(f"Runtime     : {runtime}")
     print(f"Map assets  : {map_assets}")
+    print(f"Asset versi : {map_assets_version}")
     return 0
 
 

@@ -859,7 +859,7 @@ def landsystem_metrics(geom, source_crs: Any, path: Path | None) -> dict[str, An
             classes.append(item)
         if water_area > 0:
             classes.append({
-                "name": "Badan Air", "land_type": "Badan Air", "physiography": "", "relief_class": "",
+                "name": "badan air", "land_type": "badan air", "physiography": "", "relief_class": "",
                 "land_type_source": "tipe lahan belum teridentifikasi", "physiography_source": "", "relief_class_source": "",
                 "area_km2": _round(water_area / 1_000_000.0, 4),
                 "area_pct": _round(water_area / total * 100.0, 2),
@@ -881,7 +881,7 @@ def landsystem_metrics(geom, source_crs: Any, path: Path | None) -> dict[str, An
                 for source_value, area in values.items()
             ]
         output.update({"available": True, "source": path.name, "classes": classes,
-                       "dominant": next((item for item in classes if item["land_type"] != "Badan Air"), None) or (classes[0] if classes else None), **attribute_groups})
+                       "dominant": next((item for item in classes if str(item["land_type"]).strip().lower() != "badan air"), None) or (classes[0] if classes else None), **attribute_groups})
     except (OSError, ValueError, KeyError):
         output["missing"].append("landsystem tidak dapat dibaca")
     return output
@@ -1663,7 +1663,7 @@ def refresh_characteristic_narratives(analysis: dict[str, Any], decimal_separato
         for item in candidates[:limit]:
             name = item.get("name") or "belum teridentifikasi"
             if key == "land_types" and "belum teridentifikasi" in str(name).lower():
-                name = "Badan Air"
+                name = "badan air"
             suffix = f" ({_narrative_number(item.get('area_pct'), 1, sep)}%)" if with_pct else ""
             phrases.append(f"{name}{suffix}")
         return phrases

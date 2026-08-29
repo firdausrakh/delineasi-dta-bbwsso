@@ -182,7 +182,7 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
     rows.extend([[item.get("class"), item.get("area_pct")] for item in (analysis.get("curve_number") or {}).get("distribution") or []])
     rows.extend([[], ["Waktu Konsentrasi"], ["Metode", "Estimasi (jam)", "Keterangan"]])
     tc = analysis.get("time_of_concentration") or {}
-    rows.extend([[item.get("label"), item.get("value_hours"), item.get("reason")] for item in tc.get("methods") or [] if isinstance(item.get("value_hours"), (int, float))])
+    rows.extend([[item.get("label"), item.get("value_hours"), item.get("reason")] for item in tc.get("methods") or [] if isinstance(item.get("value_hours"), (int, float)) and math.isfinite(float(item.get("value_hours"))) and float(item.get("value_hours")) > 0])
     rows.append(["Tc Representatif", tc.get("representative_hours") or tc.get("recommended_hours"), f"Dasar: {', '.join(tc.get('representative_methods') or tc.get('recommendation_methods') or [])}. Kesepakatan antar-metode: {tc.get('method_agreement') or tc.get('confidence') or 'Rendah'}. {tc.get('representative_basis') or tc.get('recommendation_basis') or ''}"])
 
     # Pertahankan hubungan perhitungan utama sebagai formula Excel, bukan hanya angka hasil.

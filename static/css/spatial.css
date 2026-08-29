@@ -4079,3 +4079,252 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   .spatial-page .hss-dta-status-badge{height:32px!important;min-height:32px!important}
 }
 
+
+/* ============================================================
+   v1.3.3 — readability + compact collapsible HSS controls
+   ============================================================ */
+
+/* Readability: no critical analysis/card copy below the 11–13 px hierarchy. */
+.spatial-page .technical-group h3,
+.spatial-page .analysis-limitations h3{
+  font-size:13px!important;
+  line-height:1.35!important;
+}
+.spatial-page .technical-table-wrap table{
+  font-size:13px!important;
+  line-height:1.45!important;
+}
+.spatial-page .technical-table-wrap thead th{
+  font-size:12px!important;
+  line-height:1.35!important;
+}
+.spatial-page .technical-table-wrap th,
+.spatial-page .technical-table-wrap td{
+  padding:9px 10px!important;
+}
+.spatial-page .method-reason,
+.spatial-page .territory-characteristics p{
+  font-size:12px!important;
+  line-height:1.6!important;
+}
+.spatial-page .recommendation-row strong{
+  font-size:13px!important;
+}
+
+/* Result DTA card typography. */
+.spatial-page .point-name-chip,
+.spatial-page .existing-point-name-chip{
+  font-size:11px!important;
+}
+.spatial-page .point-summary-river,
+.spatial-page .point-summary-area{
+  font-size:12px!important;
+}
+.spatial-page .point-summary-basin{
+  font-size:11px!important;
+}
+.spatial-page .point-edit-label,
+.spatial-page .point-edit-label-row,
+.spatial-page .point-action-label{
+  font-size:11px!important;
+}
+.spatial-page .point-name-grid input,
+.spatial-page .popup-point-name-editor input{
+  font-size:12px!important;
+}
+.spatial-page .point-action-row .dta-action-button,
+.spatial-page .morphometry-analysis-button,
+.spatial-page .point-actions-popup button{
+  font-size:11px!important;
+}
+.spatial-page .point-action-row .dta-action-button span,
+.spatial-page .morphometry-analysis-button span{
+  font-size:inherit!important;
+}
+
+/* Parameter morfometri: one compact disclosure, closed by default. */
+.spatial-page .hss-morphometry-controls{
+  margin-top:13px!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+.spatial-page .hss-morph-details{
+  border:1px solid var(--border-color);
+  border-radius:10px;
+  background:color-mix(in srgb,var(--primary) 1.5%,var(--card-bg));
+  overflow:hidden;
+}
+.spatial-page .hss-morph-details>summary,
+.spatial-page .hss-method-card>summary{
+  list-style:none;
+  cursor:pointer;
+  user-select:none;
+}
+.spatial-page .hss-morph-details>summary::-webkit-details-marker,
+.spatial-page .hss-method-card>summary::-webkit-details-marker{
+  display:none;
+}
+.spatial-page .hss-morph-details>summary{
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 12px;
+  color:var(--text-strong);
+  font-size:13px;
+  font-weight:800;
+}
+.spatial-page .hss-morph-details>summary>span{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+}
+.spatial-page .hss-morph-details>summary svg{
+  width:15px;
+  height:15px;
+}
+.spatial-page .hss-morph-details-body{
+  padding:0 12px 12px;
+  border-top:1px solid var(--border-color);
+}
+.spatial-page .hss-morph-heading{
+  align-items:center!important;
+  margin:0 0 10px!important;
+  padding-top:10px;
+}
+.spatial-page .hss-morph-heading small{
+  font-size:12px!important;
+}
+.spatial-page .hss-details-chevron{
+  width:16px!important;
+  height:16px!important;
+  flex:0 0 auto;
+  transition:transform .16s ease;
+  color:var(--text-muted);
+}
+.spatial-page details[open]>.hss-method-card-head .hss-details-chevron,
+.spatial-page .hss-morph-details[open]>summary .hss-details-chevron{
+  transform:rotate(180deg);
+}
+
+/* Method cards behave like the DTA cards: title only until expanded. */
+.spatial-page .hss-method-grid{
+  grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  align-items:start;
+}
+.spatial-page .hss-method-card{
+  padding:0!important;
+  border-left:3px solid var(--hss-color)!important;
+  overflow:hidden;
+}
+.spatial-page .hss-method-card-head{
+  min-height:46px;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:space-between!important;
+  gap:9px;
+  padding:10px 11px!important;
+}
+.spatial-page .hss-method-card-head:hover{
+  background:color-mix(in srgb,var(--primary) 3%,var(--card-bg));
+}
+.spatial-page .hss-method-toggle{
+  display:flex!important;
+  align-items:center!important;
+  gap:8px!important;
+  min-width:0;
+}
+.spatial-page .hss-method-toggle input{
+  margin:0!important;
+  flex:0 0 auto;
+}
+.spatial-page .hss-method-toggle b{
+  font-size:13px!important;
+  line-height:1.3;
+}
+.spatial-page .hss-method-card-body{
+  padding:0 11px 11px;
+  border-top:1px solid var(--border-color);
+}
+.spatial-page .hss-method-meta{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding-top:9px;
+}
+.spatial-page .hss-method-meta small{
+  color:var(--text-muted);
+  font-size:12px!important;
+  line-height:1.4;
+}
+.spatial-page .hss-reset-method{
+  font-size:11px!important;
+  white-space:nowrap;
+}
+.spatial-page .hss-param-grid label,
+.spatial-page .hss-auto-parameter,
+.spatial-page .hss-gama-derived-note,
+.spatial-page .hss-readonly-param>span{
+  font-size:12px!important;
+}
+.spatial-page .hss-param-grid input,
+.spatial-page .hss-morph-grid input,
+.spatial-page .hss-readonly-param>strong{
+  font-size:13px!important;
+}
+.spatial-page .hss-morph-grid label{
+  font-size:12px!important;
+}
+.spatial-page .hss-morph-grid b,
+.spatial-page .hss-readonly-param>strong b{
+  font-size:11px!important;
+}
+.spatial-page .hss-method-heading strong{
+  font-size:13px!important;
+}
+.spatial-page .hss-method-heading small,
+.spatial-page .hss-run-row small,
+.spatial-page .hss-result-head small,
+.spatial-page .hss-chart-toolbar,
+.spatial-page .hss-chart-details,
+.spatial-page .hss-summary-table,
+.spatial-page .hss-summary-table thead th{
+  font-size:12px!important;
+}
+.spatial-page .hss-chart-tab,
+.spatial-page .hss-volume-badge{
+  font-size:11px!important;
+}
+
+@media(max-width:800px){
+  .spatial-page .hss-method-grid{grid-template-columns:1fr!important}
+}
+
+/* v1.3.3 table hierarchy correction: parameter/method and value must dominate explanatory copy. */
+.spatial-page .technical-table-wrap tbody th{
+  font-size:13px!important;
+  line-height:1.4!important;
+  font-weight:700!important;
+}
+.spatial-page .technical-table-wrap tbody td{
+  font-size:12px!important;
+  line-height:1.5!important;
+}
+.spatial-page .technical-table-wrap tbody td:nth-child(2){
+  font-size:13px!important;
+  line-height:1.4!important;
+  font-weight:700!important;
+}
+.spatial-page .technical-table-wrap .method-reason{
+  font-size:12px!important;
+  line-height:1.5!important;
+}
+/* Method name text acts like the checkbox; blank card space remains the disclosure trigger. */
+.spatial-page .hss-method-toggle b{
+  cursor:pointer!important;
+  user-select:none;
+}
+

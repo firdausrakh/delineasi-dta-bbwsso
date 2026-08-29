@@ -494,7 +494,7 @@ async function openHydrologicAnalysis(id){
     tooltip:analysisIndicatorTooltip(item.label,item.value,{tc})
   })).join('');
   const cnInterpretations=cn.interpretations||{};
-  const tcRows=(tc.methods||[]).filter(item=>Number.isFinite(Number(item.value_hours))).map(item=>`<tr><th>${escapeHtml(item.label)}</th><td>${formatAnalysisValue(item.value_hours,{unit:'jam'})}</td><td><small class="method-reason">${escapeHtml(item.reason||'—')}</small></td></tr>`).join('');
+  const tcRows=(tc.methods||[]).filter(item=>Number.isFinite(Number(item.value_hours))&&Number(item.value_hours)>0).map(item=>`<tr><th>${escapeHtml(item.label)}</th><td>${formatAnalysisValue(item.value_hours,{unit:'jam'})}</td><td><small class="method-reason">${escapeHtml(item.reason||'—')}</small></td></tr>`).join('');
   const missing=(terrain.missing||[]).length?`<div class="analysis-data-note"><i data-lucide="database-zap"></i><span>Data opsional belum lengkap: ${escapeHtml(terrain.missing.join(', '))}. Lengkapi sumber data agar metrik terkait aktif otomatis.</span></div>`:'';
   const limitations=(analysis.limitations||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('');
   $('hydrologicAnalysisContent').innerHTML=`

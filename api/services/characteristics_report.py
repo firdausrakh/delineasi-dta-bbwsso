@@ -159,7 +159,7 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
         story.append(KeepTogether([Paragraph(labels["landcover"], h2), Paragraph("; ".join(lc_lines) if lc_lines else ("Not available" if is_en else "Belum tersedia"), body)]))
         ls_lines = [_safe_text(
             f"{item.get('land_type')}: {_number(item.get('area_pct'), 2, decimal_separator)} %"
-            if item.get("land_type") == "Badan Air" else
+            if str(item.get("land_type") or "").strip().lower() == "badan air" else
             f"{item.get('land_type')}; fisiografi {item.get('physiography')}; relief {item.get('relief_class')}: {_number(item.get('area_pct'), 2, decimal_separator)} %"
         ) for item in (landsystem.get("classes") or [])[:5]]
         story.append(KeepTogether([Paragraph("Sistem Lahan", h2), Paragraph("; ".join(ls_lines) if ls_lines else "Belum tersedia", body)]))
@@ -179,7 +179,7 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
                 numeric_value = float(value)
             except (TypeError, ValueError):
                 continue
-            if not math.isfinite(numeric_value):
+            if not math.isfinite(numeric_value) or numeric_value <= 0:
                 continue
             tc_data.append([_safe_text(item.get("label")), _number(numeric_value, decimal_separator=decimal_separator) + " jam", Paragraph(_safe_text(item.get("reason")), small)])
         tc_data.append(["Tc Representatif", _number(tc.get("representative_hours") or tc.get("recommended_hours"), decimal_separator=decimal_separator) + " jam", Paragraph(_safe_text(f"Dasar: {', '.join(tc.get('representative_methods') or tc.get('recommendation_methods') or [])}. Kesepakatan antar-metode {tc.get('method_agreement') or tc.get('confidence') or 'Rendah'}. {tc.get('representative_basis') or tc.get('recommendation_basis') or ''}"), small)])

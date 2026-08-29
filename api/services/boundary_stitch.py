@@ -21,11 +21,13 @@ from shapely.ops import substring
 
 @dataclass
 class StitchDiagnostics:
+    # PAEK/VW are supplied by the caller. Their application defaults live only
+    # in api/core.py so this service never owns a second configuration source.
+    paek_tolerance_m: float
+    vw_tolerance_m: float
     mode: str = "fabdem_processed"
     method: str = "no_official_match"
     match_tolerance_m: float = 90.0
-    paek_tolerance_m: float = 150.0
-    vw_tolerance_m: float = 4.0
     smoothing_method: str = "PAEK-like exponential-kernel local quadratic"
     simplification_method: str = "Visvalingam-Whyatt effective-area"
     matched_raw_boundary_length_m: float = 0.0
@@ -140,7 +142,7 @@ def _weighted_local_quadratic(u: np.ndarray, values: np.ndarray, weights: np.nda
         return float(np.sum(values * weights) / total) if total > 0 else float(values[len(values) // 2])
 
 
-def _paek_smooth_line(line: LineString, tolerance_m: float = 150.0, *, closed: bool = False) -> LineString:
+def _paek_smooth_line(line: LineString, tolerance_m: float, *, closed: bool = False) -> LineString:
     """
     PAEK-like smoothing.
 
@@ -219,13 +221,13 @@ def _triangle_effective_height(a, b, c) -> float:
     return float(twice_area / base)
 
 
-def _vw_simplify_line(line: LineString, tolerance_m: float = 4.0, *, closed: bool = False) -> LineString:
+def _vw_simplify_line(line: LineString, tolerance_m: float, *, closed: bool = False) -> LineString:
     """
     Visvalingam-Whyatt effective-area simplification.
 
     The user-facing tolerance is expressed in projected metres. Internally the
     effective triangle area is normalized to its equivalent perpendicular height,
-    which makes a 4 m tolerance intuitive and consistent with GIS distance units.
+    which keeps the user-facing tolerance intuitive and consistent with GIS distance units.
     """
     coords = list(line.coords)
     if tolerance_m <= 0 or len(coords) < 4:
@@ -305,8 +307,8 @@ def _vw_simplify_line(line: LineString, tolerance_m: float = 4.0, *, closed: boo
 def process_fabdem_line(
     line: LineString,
     *,
-    paek_tolerance_m: float = 150.0,
-    vw_tolerance_m: float = 4.0,
+    paek_tolerance_m: float,
+    vw_tolerance_m: float,
     closed: bool = False,
 ) -> LineString:
     smoothed = _paek_smooth_line(line, paek_tolerance_m, closed=closed)
@@ -317,8 +319,8 @@ def process_fabdem_line(
 def process_fabdem_polygon(
     geom,
     *,
-    paek_tolerance_m: float = 150.0,
-    vw_tolerance_m: float = 4.0,
+    paek_tolerance_m: float,
+    vw_tolerance_m: float,
 ):
     """PAEK-like smooth + VW simplify FABDEM-derived polygons only."""
     processed: list[Polygon] = []
@@ -698,9 +700,9 @@ def stitch_watershed_boundary(
     raw_geom,
     official_geom=None,
     *,
+    paek_tolerance_m: float,
+    vw_tolerance_m: float,
     match_tolerance_m: float = 90.0,
-    paek_tolerance_m: float = 150.0,
-    vw_tolerance_m: float = 4.0,
     allow_full_official: bool = False,
 ):
     """
@@ -708,7 +710,7 @@ def stitch_watershed_boundary(
 
     Workflow:
       raw DTA -> detect official-boundary overlap/corridor -> retain only unmatched FABDEM
-      internal boundary -> PAEK-like smooth (150 m default) -> VW simplify (4 m default) ->
+      internal boundary -> PAEK-like smooth -> VW simplify ->
       snap endpoints (matching tolerance) -> stitch exact official arc -> validate polygon.
 
     Official DAS geometry is always copied exactly and is never smoothed or simplified.

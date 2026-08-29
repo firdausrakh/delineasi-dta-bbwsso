@@ -1,6 +1,6 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.3.2`
+**Version:** `1.3.3`
 **Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
@@ -427,7 +427,7 @@ Respons harus memuat antara lain:
 
 ```json
 {
-  "app_version": "1.3.2",
+  "app_version": "1.3.3",
   "data_backend": "local",
   "active_dataset": "1km2"
 }
@@ -701,7 +701,7 @@ Tidak perlu commit data ke GitHub dan biasanya tidak perlu redeploy Vercel.
 Setelah URL production tersedia, cek minimal:
 
 - halaman utama dapat dimuat;
-- `/api/info` mengembalikan `app_version: 1.3.2`;
+- `/api/info` mengembalikan `app_version: 1.3.3`;
 - `data_backend` adalah `r2`;
 - `active_dataset` adalah `1km2`;
 - Batas DAS tampil;
@@ -831,66 +831,35 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.2`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.3`.
 
 ---
 
 ## Riwayat arsitektur
 
-### 1.0.0.0 — 26 August 2026 — First Web Release
+Riwayat versi diurutkan dari rilis terbaru hingga rilis web pertama.
 
-Rilis web pertama menggunakan FastAPI/Vercel Container dengan Supabase PostGIS + Storage sebagai sumber data production. Baseline tersebut sudah mencakup hybrid D8, topology multi-DTA, conservative boundary stitching, penamaan toponim, ekspor, dan UI desktop/mobile.
+### 1.3.3 — Penyederhanaan kontrol HSS & peningkatan keterbacaan — 29 August 2026
 
-### Cloudflare R2 migration — 27 August 2026
-
-Runtime data kemudian diubah dari Supabase menjadi arsitektur predefined/read-only:
-
-```text
-Data lokal master → Cloudflare R2 → Vercel/FastAPI
-```
-
-Perubahan utama:
-
-- Supabase PostGIS/Storage tidak lagi menjadi dependency runtime;
-- sumber migrasi R2 langsung dari data lokal;
-- `psycopg` dan `supabase-py` dihapus dari requirements;
-- data runtime private disimpan di `dta-runtime`;
-- map-assets public disimpan di `dta-map-assets`;
-- runtime memakai cache berbasis R2 ETag;
-- toponim memakai SQLite + RTree;
-- jaringan sungai display dibuat menjadi enam tier multiscale/generalized;
-- mode tambah titik dipisahkan dari mode Satu/Multi Titik;
-- interaksi polygon DTA kembali menggunakan incremental polygon pada refinement `p33`.
-
-### 1.0.0.2 — R2 Performance v2 — 28 August 2026
-
-- download object inti R2 paralel dan manifest-first cache validation;
-- toponim serta jaringan sungai asli untuk ekspor dimuat secara lazy;
-- map-assets dikirim langsung dari custom domain R2 dengan bundle version;
-- request delineasi lama dibatalkan/superseded;
-- job GIS berat dibatasi sesuai satu vCPU;
-- cache hybrid dan boundary menggunakan sel raster;
-- cache geometry dibatasi dan dapat dibersihkan berdasarkan RSS memory;
-- observability antrean, cache, memory, serta I/O R2 ditambahkan.
-
-### 1.2.0 — Karakteristik DTA terpadu — 29 August 2026
-
-- respons hidrologi dan 12 indikator kunci diseragamkan pada web, PDF, dan XLSX;
-- distribusi lereng dan Curve Number memakai label kelas eksplisit tanpa interval bertumpang tindih;
-- metode Tc ditambah NRCS Velocity, Izzard, Johnstone-Cross, dan Viparelli dengan nilai kosong bila input wajib tidak tersedia;
-- rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
-- komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
-- tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
-
+- ukuran font tabel karakteristik, narasi wilayah, kartu DTA, tombol aksi, dan kontrol HSS diperbesar agar elemen utama berada pada hierarki sekitar 11–13 px;
+- **Parameter morfometri** HSS diubah menjadi panel buka/tutup dan secara default tampil ringkas;
+- setiap kartu metode HSS dapat dibuka/tutup secara individual, sehingga tampilan awal hanya menonjolkan nama metode dan pilihan metode;
+- zoom dan pan grafik HSS dibatasi ke **sumbu horizontal (waktu)**, sedangkan sumbu-Y debit tetap terkunci;
+- drag-box/drag-zoom pada grafik HSS dinonaktifkan;
+- metode waktu konsentrasi tanpa nilai tidak ditampilkan pada tabel hasil;
+- label tipe sistem lahan **Badan Air** dinormalisasi menjadi **badan air**;
+- riwayat versi README dirapikan dari versi terbaru ke `1.0.0.0`;
+- `APP_VERSION` dinaikkan menjadi `1.3.3`.
 
 ### 1.3.2 — Penyempurnaan UI HSS dan Gama I — 29 August 2026
 
 - kartu DTA pada modal HSS diringkas sehingga badge status sejajar langsung dengan dropdown DTA dan Tr tetap kompak;
 - parameter turunan Gama I (`D`, `SF`, `SN`, `WF`, `RUA`, `SIM`) ditampilkan sebagai nilai otomatis read-only di kartu Gama I;
 - tombol **Analisis HSS** menggunakan latar biru PU dengan ikon dan teks putih;
-- indikator loading karakteristik memakai progress bar bertahap dan ikon loader yang berputar, termasuk ketika analisis karakteristik dipicu pertama kali dari HSS;
-- keterangan parameter morfometri menjelaskan bahwa parameter turunan Gama I dihitung otomatis dari input morfometri dan tidak dapat diedit langsung;
-- mempertahankan koreksi Gama I dari rilis sebelumnya: eksponen `S^-0,0986` pada `TB` serta segmen resesi linear `TB-1 → TB` hingga `Q(TB)=0`;
+- indikator loading karakteristik memakai progress bar bertahap dan indikator proses, termasuk ketika analisis karakteristik dipicu pertama kali dari HSS;
+- koreksi Gama I dipertahankan: eksponen `S^-0,0986` pada `TB` serta segmen resesi linear `TB-1 → TB` hingga `Q(TB)=0`;
+- parameter morfometri sumber HSS dapat diubah khusus untuk skenario HSS dan di-reset ke hasil karakteristik DTA;
+- label tombol tambah titik disederhanakan menjadi **Mulai Tambah** dan **Selesai**;
 - dokumentasi dan `APP_VERSION` diselaraskan menjadi `1.3.2`.
 
 ### 1.3.1 — HSS interaktif dan analisis lazy — 29 August 2026
@@ -914,9 +883,50 @@ Perubahan utama:
 - menambahkan ekspor HSS opsional sebagai workbook XLSX per DTA, dengan satu sheet per metode;
 - menambahkan regression test terhadap contoh Katulampa SNI 2415:2026 untuk SCS, Snyder–Alexeyev, dan parameter inti Gama I.
 
-### Sebelum 1.0.0.0 — Internal development
+### 1.2.0 — Karakteristik DTA terpadu — 29 August 2026
 
-Versi internal sebelum public release memakai penomoran pengembangan tersendiri. Riwayat public version tetap dimulai dari `1.0.0.0`.
+- respons hidrologi dan 12 indikator kunci diseragamkan pada web, PDF, dan XLSX;
+- distribusi lereng dan Curve Number memakai label kelas eksplisit tanpa interval bertumpang tindih;
+- metode Tc ditambah NRCS Velocity, Izzard, Johnstone-Cross, dan Viparelli dengan nilai kosong bila input wajib tidak tersedia;
+- rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
+- komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
+- tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
+
+### 1.0.0.2 — R2 Performance v2 — 28 August 2026
+
+- download object inti R2 paralel dan manifest-first cache validation;
+- toponim serta jaringan sungai asli untuk ekspor dimuat secara lazy;
+- map-assets dikirim langsung dari custom domain R2 dengan bundle version;
+- request delineasi lama dibatalkan/superseded;
+- job GIS berat dibatasi sesuai satu vCPU;
+- cache hybrid dan boundary menggunakan sel raster;
+- cache geometry dibatasi dan dapat dibersihkan berdasarkan RSS memory;
+- observability antrean, cache, memory, serta I/O R2 ditambahkan.
+
+### 1.0.0.0 — 26 August 2026 — First Web Release
+
+Rilis web pertama menggunakan FastAPI/Vercel Container dengan Supabase PostGIS + Storage sebagai sumber data production. Baseline tersebut sudah mencakup hybrid D8, topology multi-DTA, conservative boundary stitching, penamaan toponim, ekspor, dan UI desktop/mobile.
+
+### Catatan migrasi arsitektur — 27 August 2026
+
+Setelah rilis web pertama, runtime data dimigrasikan dari Supabase menjadi arsitektur predefined/read-only:
+
+```text
+Data lokal master → Cloudflare R2 → Vercel/FastAPI
+```
+
+Perubahan utama:
+
+- Supabase PostGIS/Storage tidak lagi menjadi dependency runtime;
+- sumber migrasi R2 langsung dari data lokal;
+- `psycopg` dan `supabase-py` dihapus dari requirements;
+- data runtime private disimpan di `dta-runtime`;
+- map-assets public disimpan di `dta-map-assets`;
+- runtime memakai cache berbasis R2 ETag;
+- toponim memakai SQLite + RTree;
+- jaringan sungai display dibuat menjadi enam tier multiscale/generalized;
+- mode tambah titik dipisahkan dari mode Satu/Multi Titik;
+- interaksi polygon DTA kembali menggunakan incremental polygon pada refinement `p33`.
 
 ---
 

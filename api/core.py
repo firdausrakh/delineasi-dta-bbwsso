@@ -102,11 +102,16 @@ LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsy
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.3.2"
+APP_VERSION = "1.3.3"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
+
+# Shared delineation defaults. Keep these values in one place so request
+# schemas, API metadata, and service calls cannot drift apart.
+DEFAULT_SNAP_RADIUS_M = 300.0
+DEFAULT_BOUNDARY_MATCH_M = 90.0
 DEFAULT_PAEK_TOLERANCE_M = 150.0
-DEFAULT_VW_TOLERANCE_M = 4.0
+DEFAULT_VW_TOLERANCE_M = 3.0
 HOLE_AREA_THRESHOLD_M2 = 62_500.0  # 6.25 ha
 KARST_WARNING_TITLE = "Kawasan Bentang Alam Karst Terdeteksi"
 KARST_WARNING_SUBTITLE = "Delineasi Otomatis Tidak Dapat Diproses"
@@ -335,8 +340,8 @@ class OutletPoint(BaseModel):
 
 class MultiDelineateRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
-    snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(90.0, ge=10, le=500)
+    snap_radius_m: float = Field(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000)
+    boundary_match_m: float = Field(DEFAULT_BOUNDARY_MATCH_M, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
     decimal_separator: str = Field(",", pattern="^[,.]$")
@@ -350,8 +355,8 @@ class CachedResultsRequest(BaseModel):
 class DelineateRequest(BaseModel):
     lon: float = Field(..., ge=-180, le=180)
     lat: float = Field(..., ge=-90, le=90)
-    snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(90.0, ge=10, le=500)
+    snap_radius_m: float = Field(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000)
+    boundary_match_m: float = Field(DEFAULT_BOUNDARY_MATCH_M, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
     decimal_separator: str = Field(",", pattern="^[,.]$")
@@ -374,8 +379,8 @@ class HssRequest(BaseModel):
 
 class DownloadRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
-    snap_radius_m: float = Field(300.0, gt=0, le=20000)
-    boundary_match_m: float = Field(90.0, ge=10, le=500)
+    snap_radius_m: float = Field(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000)
+    boundary_match_m: float = Field(DEFAULT_BOUNDARY_MATCH_M, ge=10, le=500)
     geometry_modes: list[str] = Field(default_factory=lambda: ["smoothed"])
     formats: list[str] = Field(default_factory=lambda: ["shp"])
     include_rivers: bool = False
@@ -1730,8 +1735,8 @@ def info():
         "official_basins": int(len(official_basins)),
         "bounds_wgs84": [float(v) for v in _web_bounds],
         "max_points": MAX_POINTS,
-        "default_snap_radius_m": 300,
-        "default_boundary_match_m": 90,
+        "default_snap_radius_m": DEFAULT_SNAP_RADIUS_M,
+        "default_boundary_match_m": DEFAULT_BOUNDARY_MATCH_M,
         "hybrid_raster_available": bool(HYBRID_RASTER_AVAILABLE),
         "hydrologic_analysis": {
             "dem_available": bool(DEM_PATH),
@@ -1763,7 +1768,7 @@ def info():
 def location_check(
     lon: float = Query(..., ge=-180, le=180),
     lat: float = Query(..., ge=-90, le=90),
-    snap_radius_m: float = Query(300.0, gt=0, le=20000),
+    snap_radius_m: float = Query(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000),
 ):
     """Validate a requested point, preview snapping, and suggest a settlement name."""
     x, y = to_data.transform(lon, lat)
@@ -2015,7 +2020,7 @@ def delineate(req: DelineateRequest, request: Request):
 @app.get("/api/watershed/{linkno}")
 def watershed_by_linkno(
     linkno: int,
-    boundary_match_m: float = 90.0,
+    boundary_match_m: float = DEFAULT_BOUNDARY_MATCH_M,
     paek_tolerance_m: float = DEFAULT_PAEK_TOLERANCE_M,
     vw_tolerance_m: float = DEFAULT_VW_TOLERANCE_M,
 ):

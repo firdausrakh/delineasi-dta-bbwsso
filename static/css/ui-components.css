@@ -369,11 +369,6 @@
     cursor: pointer;
 }
 .ui-summary-table__download svg { width: 12px; height: 12px; color: currentColor; }
-.ui-summary-table__download:hover:not(:disabled) {
-    border-color: var(--secondary-action-hover);
-    background: var(--secondary-action-hover);
-    color: var(--secondary-action-text);
-}
 .ui-summary-table__download:disabled { opacity: .45; cursor: not-allowed; }
 .ui-summary-table__scroll {
     width: 100%;

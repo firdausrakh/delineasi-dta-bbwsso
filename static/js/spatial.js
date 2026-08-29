@@ -11,7 +11,7 @@ const USAGE_NOTICE_KEY = 'delineasiDtaUsageNoticeV1';
 const RIVER_ZOOM = {1:6.5,2:6.5,3:10.5,other:12.5};
 const RIVER_FULL_DETAIL_ZOOM = 14;
 const RIVER_KEYS = ['1','2','3','other'];
-const KARST_MESSAGE = 'Delineasi berbasis DEM permukaan tidak valid untuk kawasan karst. Sistem hidrologi karst didominasi oleh sungai bawah tanah sehingga batas topografi permukaan tidak mencerminkan daerah tangkapan air yang sebenarnya.';
+const KARST_MESSAGE = 'Delineasi berbasis topografi permukaan tidak valid untuk kawasan karst. Sistem hidrologi karst didominasi oleh sungai bawah tanah sehingga batas topografi permukaan tidak mencerminkan daerah tangkapan air yang sebenarnya.';
 const DTA_CONFIG = window.DTA_CONFIG || {};
 const MAP_ASSETS_BASE = String(DTA_CONFIG.mapAssetsBase || '').replace(/\/$/,'');
 const MAP_ASSETS_VERSION = String(DTA_CONFIG.mapAssetsVersion || '');
@@ -69,6 +69,8 @@ function readAppState(){try{return JSON.parse(sessionStorage.getItem(APP_STATE_K
 const restoredState = readAppState();
 if(restoredState.pointColors&&typeof restoredState.pointColors==='object'){for(let i=1;i<=MAX_POINTS;i++){const id=`O${i}`;if(restoredState.pointColors[id])POINT_COLORS[id]=restoredState.pointColors[id];}}
 let info = {};
+const uiLanguage = 'id';
+let decimalSeparator = restoredState.decimalSeparator === '.' ? '.' : ',';
 let points = Array.isArray(restoredState.points)?restoredState.points.slice(0,MAX_POINTS).map(p=>({...p,label:clampPointName(p?.label)})):[];
 let batchResult = null;
 let studyBounds = null;
@@ -176,7 +178,7 @@ function persistState(){
     sessionStorage.setItem(APP_STATE_KEY,JSON.stringify({
       points:points.map(p=>({point_id:p.point_id,lon:p.lon,lat:p.lat,source:p.source,label:p.label})),
       nameDrafts:Object.fromEntries(points.map(p=>[p.point_id,pointNameDraft(p.point_id)])),
-      pointColors:{...POINT_COLORS},sidebarCollapsed,currentBasemap,selectedLightBasemap,activePointId,pointInputMode,multiPointMode:pointInputMode==='multi',camera:getCameraState(),
+      pointColors:{...POINT_COLORS},sidebarCollapsed,currentBasemap,selectedLightBasemap,activePointId,pointInputMode,multiPointMode:pointInputMode==='multi',language:uiLanguage,decimalSeparator,camera:getCameraState(),
       controls:{snapRadius:snapRadiusEl?.value,boundaryMatch:boundaryMatchEl?.value,showHillshade:$('showHillshade')?.checked,hillshadeOpacity:$('hillshadeOpacity')?.value,showBasins:$('showBasins')?.checked,showBasinLabels:$('showBasinLabels')?.checked,showRivers:$('showRivers')?.checked,autoRiverZoom:$('autoRiverZoom')?.checked,riverOrders,showRiverLabels:$('showRiverLabels')?.checked,showHatch:$('showHatch')?.checked,hatchOpacity:$('hatchOpacity')?.value,lineWidth:$('lineWidth')?.value,basinColor:$('basinColor')?.value,riverColor:$('riverColor')?.value}
     }));
   }catch(_){}
@@ -258,6 +260,17 @@ function clearActivePointIfNoOpenCard(){
 }
 function setLayerVisibility(id,show){if(map.getLayer(id))map.setLayoutProperty(id,'visibility',show?'visible':'none');}
 function parseApiError(payload,fallback='Proses gagal.'){const d=payload?.detail;if(d&&typeof d==='object')return d;return {message:typeof d==='string'?d:fallback};}
+async function parseErrorResponse(response,fallback='Proses gagal.'){
+  const contentType=(response.headers.get('content-type')||'').toLowerCase();
+  if(contentType.includes('application/json')){
+    try{return parseApiError(await response.json(),fallback);}catch(_){}
+  }
+  try{
+    const text=(await response.text()).trim();
+    if(text&&!/^internal server error$/i.test(text))return {message:text};
+  }catch(_){}
+  return {message:`${fallback} Server mengembalikan HTTP ${response.status}.`};
+}
 function pointName(id){const p=points.find(x=>x.point_id===id);return p?.label?.trim()||id;}
 function pointNameDraft(id){return pointNameDrafts.has(id)?String(pointNameDrafts.get(id)):pointName(id);}
 function pointNameDirty(id){return pointNameDraft(id).trim()!==pointName(id).trim();}
@@ -312,11 +325,199 @@ function renderPopupDtaActions(){
 function nextPointId(){for(let i=1;i<=MAX_POINTS;i++){const id=`O${i}`;if(!points.some(p=>p.point_id===id))return id;}return null;}
 function formatArea(value){
   const v=Number(value)||0;
-  if(v<10)return Number(v.toFixed(2)).toString();
-  if(v<100)return Number(v.toFixed(1)).toString();
-  return Math.round(v).toString();
+  return formatDisplayNumber(v,v<10?2:(v<100?1:0));
 }
-function formatDistance(m){const v=Number(m)||0;return v>=1000?`${Number((v/1000).toFixed(2))} km`:`${Math.round(v)} m`;}
+function formatDisplayNumber(value){
+  if(!Number.isFinite(Number(value)))return '—';
+  const abs=Math.abs(Number(value)),digits=abs<1?3:(abs<10?2:(abs<100?1:0));
+  const raw=Number(value).toLocaleString('en-US',{maximumFractionDigits:digits,minimumFractionDigits:0});
+  return decimalSeparator===','?raw.replace(/,/g,'X').replace(/\./g,',').replace(/X/g,'.'):raw;
+}
+function applyAnalysisLanguage(){
+  if(uiLanguage!=='en')return;
+  const content=$('hydrologicAnalysisContent');if(!content?.innerHTML)return;
+  const replacements={
+    'RESPONS HIDROLOGI DTA':'DTA HYDROLOGIC RESPONSE','Indikator Kuantitatif Kunci':'Key Quantitative Indicators','Ringkasan untuk pengambilan keputusan':'Decision-making summary','Lihat Analisis Teknis':'View Technical Analysis','Topografi & Bentuk DTA':'Terrain & Basin Morphometry','Jaringan Drainase':'Drainage Network','Parameter Kemiringan Lintasan Aliran':'Flowpath Slope Parameters','Penutupan Lahan':'Land Cover','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number (CN)':'Curve Number (CN)','Rasio percabangan (Rb)':'Bifurcation ratio (Rb)','Tc Representatif':'Representative multi-method Tc','Waktu Konsentrasi':'Time of Concentration','Batasan interpretasi':'Interpretation limitations','Luas DTA':'Basin area','Rata-rata kemiringan':'Mean slope','Relief DTA (R)':'Basin relief (R)','Rentang elevasi (ΔZ)':'Elevation range (ΔZ)','Kesepakatan antar-metode':'Inter-method agreement','Kerapatan drainase':'Drainage density','Faktor bentuk':'Form factor','Lintasan aliran terpanjang':'Longest flow path','CN-II tertimbang':'Weighted CN-II','Keliling':'Perimeter','Elevasi minimum':'Minimum elevation','Elevasi rata-rata':'Mean elevation','Elevasi maksimum':'Maximum elevation','Elevasi outlet':'Outlet elevation','Rasio elongasi':'Elongation ratio','Rasio kebulatan':'Circularity ratio','Rasio relief':'Relief ratio','Integral hipsometrik':'Hypsometric integral','Panjang total sungai':'Total stream length','Panjang sungai utama':'Main channel length','Kemiringan ruas sungai':'Reach slope','Kemiringan lintasan aliran terpanjang':'Longest flowpath slope','Kemiringan lintasan melalui sentroid':'Centroidal flowpath slope','Kemiringan lintasan 10-85':'10-85 flowpath slope','Kemiringan DTA':'Basin slope','Distribusi Kelas Lereng':'Slope Class Distribution','Klasifikasi':'Interpretation','Implikasi':'Definition','Nilai':'Value','Parameter':'Parameter','Definisi':'Definition','Keterangan':'Notes','Rekomendasi':'Recommended'
+  };
+  let html=content.innerHTML;for(const [id,en] of Object.entries(replacements))html=html.replaceAll(id,en);content.innerHTML=html;refreshIcons(content);
+}
+function applyInterfaceLanguage(){
+  const en=uiLanguage==='en';
+  document.documentElement.lang=en?'en':'id';
+  if(en){
+    const translated={
+      'ANALISIS SPASIAL':'SPATIAL ANALYSIS','Istilah & Definisi':'Terms & Definitions','Metodologi & Sumber Data':'Methodology & Data Sources',
+      'Pilih Titik':'Select Point','Mode satu titik':'Single-point mode','Bahasa':'Language','Pemisah desimal':'Decimal separator',
+      'Pengaturan lanjutan':'Advanced settings','Pencarian sungai terdekat':'Nearest-stream search','Jarak penyesuaian batas DAS':'Basin-boundary adjustment distance',
+      'Hasil DTA':'DTA Results','Maksimal 10 DTA per pemrosesan':'Maximum 10 DTAs per run','Fokus Semua':'Focus All','Hapus Semua':'Clear All',
+      'Hubungan Antar Titik':'Relationships Between Points','Peta Dasar':'Basemap','Layer & Tampilan':'Layers & Display','Penggaris':'Measure',
+      'Warna DTA':'DTA Color','Pilih warna':'Choose color','KODE HEX warna DTA':'DTA color HEX code','Opasitas':'Opacity','Batas DAS':'Basin Boundary',
+      'Nama DAS':'Basin labels','Jaringan Sungai':'River Network','Otomatis sesuai zoom':'Auto by zoom','Label sungai':'River labels',
+      'DTA hasil delineasi':'Delineated DTA','Arsiran':'Hatching','Ketebalan garis':'Line width','Reset':'Reset','Koma (,)':'Comma (,)','Titik (.)':'Dot (.)',
+      'Unduh Hasil':'Download Result','Analisis Morfometri':'Morphometric Analysis','Belum ada hasil delineasi.':'No delineation result yet.',
+      'Mode Satu Titik. Tekan Mulai Tambah Titik untuk memilih outlet.':'Single-point mode. Press Start Adding Point to select an outlet.'
+    };
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    const nodes=[];let node;while((node=walker.nextNode())){if(!['SCRIPT','STYLE'].includes(node.parentElement?.tagName))nodes.push(node);}
+    nodes.forEach(item=>{let value=item.nodeValue;Object.entries(translated).forEach(([id,valueEn])=>{value=value.replaceAll(id,valueEn);});item.nodeValue=value;});
+  }
+  const button=(id,icon,value)=>{const el=$(id);if(el)el.innerHTML=`<i data-lucide="${icon}"></i>${value}`;};
+  button('previewCoordinateBtn','map-pin',en?'Show Point':'Tampilkan Titik');
+  button('downloadBtn','download',en?'Download Result':'Unduh Hasil');
+  button('addPointSessionBtn','crosshair',en?'Start Adding Point':'Mulai Tambah Titik');
+  button('pointModeBtn','map-pin',pointInputMode==='multi'?(en?'Multiple Points':'Multi Titik'):(en?'Single Point':'Satu Titik'));
+  const select=$('languageSelect');if(select)select.value=uiLanguage;
+  const decimal=$('decimalSeparatorSelect');if(decimal)decimal.value=decimalSeparator;
+  renderPointCards();refreshIcons();
+}
+function formatAnalysisValue(value,{digits=2,unit=''}={}){
+  if(value===null||value===undefined||!Number.isFinite(Number(value)))return `<span class="analysis-na">—</span>`;
+  return `${formatDisplayNumber(value,digits)}${unit?` ${unit}`:''}`;
+}
+function analysisMetric(label,value,options={}){
+  const tooltip=options.tooltip?String(options.tooltip):'';
+  const help=tooltip?` data-help="${escapeHtml(tooltip)}"`:'';
+  const info=tooltip?`<button class="info-tooltip analysis-metric-info" type="button" aria-label="Informasi ${escapeHtml(label)}">i</button>`:'';
+  return `<div class="analysis-metric${options.priorityAccent?' analysis-metric--priority':''}"${help}><span class="analysis-metric-label"><span>${escapeHtml(label)}</span>${info}</span><strong>${formatAnalysisValue(value,options)}</strong>${options.interpretation?`<small>${escapeHtml(options.interpretation)}</small>`:''}</div>`;
+}
+function analysisIndicatorTooltip(label,value,{tc={}}={}){
+  const hasValue=value!==null&&value!==undefined&&Number.isFinite(Number(value));
+  if(!hasValue)return 'Dasar interpretasi: indikator belum dapat dinilai karena data belum tersedia. Tingkat kepercayaan: Rendah.';
+  const tcAgreement=String(tc.method_agreement||tc.confidence||'belum dinilai');
+  const meta={
+    'Luas DTA (A)':'Dasar interpretasi: luas geometri DTA hasil delineasi; tidak digunakan sebagai kelas cepat/lambat secara tunggal. Tingkat kepercayaan: Tinggi, dihitung langsung dari geometri DTA.',
+    'Kemiringan rata-rata (S)':'Dasar interpretasi: Datar 0–8%, Landai >8–15%, Agak curam >15–25%, Curam >25–40%, dan Sangat curam >40%. Tingkat kepercayaan: Tinggi, dihitung dari data ketinggian. Aksen oranye menandai indikator prioritas pembentuk respons hidrologis.',
+    'Relief DTA (R)':'Dasar interpretasi: selisih elevasi batas tertinggi terhadap elevasi outlet; tidak diberi kelas respons tunggal. Tingkat kepercayaan: Tinggi, dihitung dari data ketinggian dan posisi outlet.',
+    'Kerapatan drainase (Dd)':'Dasar interpretasi: Rendah <1,0; Sedang 1,0–<2,0; Tinggi 2,0–<3,5; Sangat tinggi ≥3,5 km/km². Tingkat kepercayaan: Sedang–tinggi, bergantung pada kelengkapan dan skala jaringan sungai. Aksen oranye menandai indikator prioritas pembentuk respons hidrologis.',
+    'Frekuensi sungai (Fs)':'Dasar interpretasi: jumlah sungai Strahler per km²; tidak diterapkan ambang universal karena sensitif terhadap skala dan detail jaringan. Tingkat kepercayaan: Sedang, bergantung pada kelengkapan jaringan sungai.',
+    'Rasio percabangan (Rb)':'Dasar interpretasi: perbandingan jumlah sungai antarorde; menunjukkan struktur percabangan. Tingkat kepercayaan: Sedang, sensitif terhadap penetapan orde dan kelengkapan jaringan sungai.',
+    'Faktor bentuk (Ff)':'Dasar interpretasi: Sangat memanjang <0,30; Memanjang 0,30–<0,50; Agak kompak 0,50–<0,75; Kompak ≥0,75. Tingkat kepercayaan: Tinggi, dihitung dari luas dan panjang karakteristik DTA.',
+    'Lintasan aliran terpanjang (Lb)':'Dasar interpretasi: panjang lintasan hidrologis terpanjang menuju outlet; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan konektivitas lintasan aliran.',
+    'Kemiringan alur utama (Sc)':'Dasar interpretasi: beda elevasi ujung alur utama terhadap outlet dibagi panjang alur utama; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan representasi alur utama.',
+    'Curve Number (CN)':'Dasar interpretasi: nilai CN-II tertimbang; semakin tinggi CN, semakin kecil potensi retensi dan semakin besar kecenderungan limpasan. Tingkat kepercayaan: Sedang, dipengaruhi ketelitian penutupan lahan serta kelompok tanah hidrologi. Aksen oranye menandai indikator prioritas pembentuk respons hidrologis.',
+    'Waktu konsentrasi (Tc)':`Dasar interpretasi: nilai representatif dari beberapa metode waktu konsentrasi yang tersedia. Tingkat kepercayaan: ${tcAgreement}; menunjukkan kesepakatan antar-metode, bukan ukuran kepercayaan statistik. Aksen oranye menandai indikator prioritas pembentuk respons hidrologis.`,
+    'Kawasan terbangun':'Dasar interpretasi: persentase area kelas penutupan lahan terbangun di dalam DTA; tidak diterapkan ambang universal. Tingkat kepercayaan: Sedang, mengikuti resolusi dan akurasi penutupan lahan.'
+  };
+  return meta[label]||'Dasar interpretasi mengikuti definisi parameter pada Karakteristik Detail. Tingkat kepercayaan mengikuti ketersediaan dan kualitas data sumber.';
+}
+function analysisResponseTheme(responseClass){
+  const normalized=String(responseClass||'').trim().toLowerCase().replace(/[–—-]/g,'-').replace(/\s+/g,' ');
+  const themes={
+    'lambat':{key:'slow',primary:'#4776A8',tint:'#EEF4FA',stronger:'#3B628C'},
+    'lambat-sedang':{key:'slow-medium',primary:'#4F8585',tint:'#EDF5F4',stronger:'#3E6F70'},
+    'sedang':{key:'medium',primary:'#A58A45',tint:'#F7F3E7',stronger:'#806A2E'},
+    'sedang-cepat':{key:'medium-fast',primary:'#D47A3A',tint:'#FBF0E7',stronger:'#A95C29'},
+    'cepat':{key:'fast',primary:'#C65353',tint:'#FAECEC',stronger:'#9D3F3F'},
+  };
+  return themes[normalized]||themes.sedang;
+}
+function technicalRow(label,value,classification='—',implication='—',options={}){
+  const classificationText=classification==='—'||classification==='-'||classification==null?'':String(classification);
+  return `<tr><th>${escapeHtml(label)}</th><td>${formatAnalysisValue(value,options)}</td><td>${escapeHtml(classificationText)}</td><td class="narrative-cell">${escapeHtml(implication||'—')}</td></tr>`;
+}
+function technicalTextRow(label,value,classification='—',implication='—'){
+  const classificationText=classification==='—'||classification==='-'||classification==null?'':String(classification);
+  return `<tr><th>${escapeHtml(label)}</th><td>${value?escapeHtml(value):'<span class="analysis-na">Belum tersedia</span>'}</td><td>${escapeHtml(classificationText)}</td><td class="narrative-cell">${escapeHtml(implication||'—')}</td></tr>`;
+}
+function formatNarrativeText(value){
+  const separator=decimalSeparator==='.'?'.':',';
+  return String(value||'').replace(/(\d)[,.](\d)/g,`$1${separator}$2`);
+}
+function openHydrologicAnalysis(id){
+  const result=pointResult(id),analysis=result?.hydrologic_analysis;
+  if(!analysis){showAppToast('Analisis teknis belum tersedia untuk DTA ini.');return;}
+  const morph=analysis.morphometry||{},terrain=analysis.terrain||{},elev=terrain.elevation||{},slope=terrain.slope||{},drain=analysis.drainage||{},landcover=analysis.landcover||{},landsystem=analysis.landsystem||{},cn=analysis.curve_number||{},tc=analysis.time_of_concentration||{},flowSlope=terrain.flowpath_slope||{},keys=analysis.key_indicators||{},classes=analysis.classifications||{},summary=analysis.executive_summary||{};
+  const rbByOrder=Object.entries(drain.bifurcation_ratios_by_order||{}).map(([pair,value])=>`${pair.replace('-', '→')}: ${formatDisplayNumber(value,2)}`).join('; ');
+  const responseTheme=analysisResponseTheme(summary.response_class);
+  const modal=$('hydrologicAnalysisModal');
+  modal.dataset.responseTheme=responseTheme.key;
+  modal.style.setProperty('--analysis-status-primary',responseTheme.primary);
+  modal.style.setProperty('--analysis-status-tint',responseTheme.tint);
+  modal.style.setProperty('--analysis-status-stronger',responseTheme.stronger);
+  $('hydrologicAnalysisTitle').textContent=`${result?.official_river?.name||'Sungai tanpa nama'} – ${pointName(id)}`;
+  const slopeRanges={'Datar':'Datar (0–8%)','Landai':'Landai (>8–15%)','Agak curam':'Agak curam (>15–25%)','Curam':'Curam (>25–40%)','Sangat curam':'Sangat curam (>40%)'};
+  const slopeBars=(slope.distribution||[]).map(item=>`<div class="slope-class-row"><span>${escapeHtml(slopeRanges[item.class]||item.class)}</span><div><i style="width:${Math.max(0,Math.min(100,Number(item.area_pct)||0))}%"></i></div><strong>${formatAnalysisValue(item.area_pct,{digits:1,unit:'%'})}</strong></div>`).join('');
+  const priorityIndicatorLabels=new Set(['Kemiringan rata-rata (S)','Kerapatan drainase (Dd)','Curve Number (CN)','Waktu konsentrasi (Tc)']);
+  const indicatorItems=(analysis.key_indicator_items||[]).map(item=>analysisMetric(item.label,item.value,{
+    unit:item.unit||'',
+    priorityAccent:priorityIndicatorLabels.has(item.label),
+    tooltip:analysisIndicatorTooltip(item.label,item.value,{tc})
+  })).join('');
+  const cnInterpretations=cn.interpretations||{};
+  const tcRows=(tc.methods||[]).map(item=>`<tr><th>${escapeHtml(item.label)}</th><td>${formatAnalysisValue(item.value_hours,{unit:'jam'})}</td><td><small class="method-reason">${escapeHtml(item.reason||'—')}</small></td></tr>`).join('');
+  const missing=(terrain.missing||[]).length?`<div class="analysis-data-note"><i data-lucide="database-zap"></i><span>Data opsional belum lengkap: ${escapeHtml(terrain.missing.join(', '))}. Lengkapi sumber data agar metrik terkait aktif otomatis.</span></div>`:'';
+  const limitations=(analysis.limitations||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+  $('hydrologicAnalysisContent').innerHTML=`
+    <section class="analysis-executive"><div><span class="analysis-kicker">RESPONS HIDROLOGI</span><strong>${escapeHtml(String(summary.response_class||'Belum dapat dinilai').toUpperCase())}</strong></div><p>${escapeHtml(formatNarrativeText(summary.narrative||''))}</p></section>
+    <section><div class="analysis-section-title"><span>Indikator Kunci</span><small class="analysis-priority-legend" data-help="Aksen oranye menandai indikator yang paling langsung digunakan untuk membaca kecenderungan respons hidrologis DTA. Oranye bukan penanda bahaya atau kualitas data."><i></i><span>Oranye = indikator prioritas respons hidrologis</span><button class="info-tooltip" type="button" aria-label="Arti indikator prioritas">i</button></small></div><div class="analysis-indicator-grid">
+      ${indicatorItems}
+    </div>${missing}</section>
+    <details class="technical-analysis"><summary><span><i data-lucide="table-properties"></i>Lihat Karakteristik Detail</span><i data-lucide="chevron-down"></i></summary><div id="analysisTechnicalBody" class="technical-analysis-body">
+      <div class="technical-group territory-characteristics"><h3>Karakteristik Wilayah</h3><div class="technical-table-wrap territory-table"><table><tbody><tr><td>${(analysis.territory_paragraphs||[analysis.territory_detail]).filter(Boolean).map(paragraph=>`<p>${escapeHtml(formatNarrativeText(paragraph))}</p>`).join('')||'<p>Karakteristik wilayah belum tersedia.</p>'}</td></tr></tbody></table></div></div>
+      <div class="technical-group"><h3>Topografi & Bentuk DTA</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
+        ${technicalRow('Luas DTA (A)',morph.area_km2,'—','Luas wilayah tangkapan pada batas DTA',{digits:2,unit:'km²'})}
+        ${technicalRow('Keliling (P)',morph.perimeter_km,'—','Keliling batas DTA yang telah diperhalus',{digits:2,unit:'km'})}
+        ${technicalRow('Panjang DTA (Lb)',morph.basin_length_km,'—','Lintasan aliran terpanjang dari outlet ke hulu',{digits:2,unit:'km'})}
+        ${technicalRow('Elevasi minimum',elev.min_m,'—','Titik ketinggian terendah dalam DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Elevasi rata-rata',elev.mean_m,'—','Rata-rata ketinggian seluruh wilayah DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Elevasi maksimum',elev.max_m,'—','Titik ketinggian tertinggi dalam DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Elevasi outlet',elev.outlet_m,'—','Ketinggian pada titik outlet DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Elevasi batas tertinggi',elev.divide_max_m,'—','Titik tertinggi sepanjang batas DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Relief DTA (R)',elev.relief_m,Number.isFinite(Number(elev.relief_m))?(elev.relief_m>=1000?'Tinggi':'—'):'—','Selisih batas tertinggi terhadap elevasi outlet',{digits:1,unit:'m'})}
+        ${technicalRow('Rentang elevasi (ΔZ)',elev.elevation_range_m,'—','Selisih elevasi maksimum dan minimum DTA',{digits:1,unit:'m'})}
+        ${technicalRow('Kemiringan rata-rata (S)',slope.mean_pct,classes.mean_slope,'Rata-rata kemiringan permukaan seluruh DTA',{digits:2,unit:'%'})}
+        ${technicalRow('Kemiringan maksimum',slope.p95_pct,'—','Nilai tinggi representatif kemiringan permukaan DTA',{digits:2,unit:'%'})}
+        ${technicalTextRow('Arah lereng dominan',terrain.aspect?.dominant,'Orientasi','Arah lereng yang paling banyak dijumpai')}
+        ${technicalRow('Faktor bentuk (Ff)',morph.form_factor,classes.shape,'Perbandingan luas terhadap kuadrat panjang DTA',{digits:3})}
+        ${technicalRow('Rasio elongasi (Re)',morph.elongation_ratio,classes.elongation,'Perbandingan diameter setara terhadap panjang DTA',{digits:3})}
+        ${technicalRow('Rasio kebulatan (Rc)',morph.circularity_ratio,Number.isFinite(Number(morph.circularity_ratio))?(morph.circularity_ratio>=.5?'Relatif membulat':'Relatif tidak membulat'):'—','Luas dibandingkan dengan kuadrat keliling DTA',{digits:3})}
+        ${technicalRow('Rasio relief',morph.relief_ratio,'—','Relief dibagi panjang DTA',{digits:4})}
+        ${technicalRow('Integral hipsometrik (HI)',terrain.hypsometry?.integral,terrain.hypsometry?.stage||'—','Tahap perkembangan bentuk lahan berdasarkan distribusi elevasi',{digits:3})}
+      </tbody></table></div></div>
+      <div class="technical-group"><h3>Jaringan Drainase</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
+        ${technicalRow('Panjang total sungai',drain.total_stream_length_km,'—','Jumlah panjang seluruh sungai dalam DTA',{digits:2,unit:'km'})}
+        ${technicalRow('Panjang sungai utama',drain.main_channel_length_km,'—','Panjang jalur sungai utama menuju outlet',{digits:2,unit:'km'})}
+        ${technicalRow('Lintasan aliran terpanjang',terrain.longest_flow_path_km,'—','Jarak aliran terpanjang dari outlet ke hulu',{digits:2,unit:'km'})}
+        ${technicalRow('Kemiringan alur utama',drain.main_channel_slope_pct,'—','Beda elevasi dibagi panjang alur utama',{digits:3,unit:'%'})}
+        ${technicalRow('Kemiringan rata-rata jaringan',drain.network_mean_slope_pct,'—','Rata-rata kemiringan ruas berbobot panjang',{digits:3,unit:'%'})}
+        ${technicalRow('Sinuositas alur utama',drain.channel_sinuosity,'—','Panjang alur dibagi jarak lurus ujungnya',{digits:3})}
+        ${technicalRow('Jumlah percabangan',drain.junction_count,'—','Titik pertemuan sedikitnya dua ruas sungai',{digits:0})}
+        ${technicalRow('Kerapatan percabangan',drain.junction_density_per_km2,'—','Jumlah percabangan per luas DTA',{digits:3,unit:'percabangan/km²'})}
+        ${technicalRow('Intensitas drainase (Id)',drain.drainage_intensity,'—','Frekuensi sungai dibagi kerapatan drainase',{digits:3})}
+        ${technicalRow('Nomor infiltrasi (If)',drain.infiltration_number,'—','Kerapatan drainase dikali frekuensi sungai',{digits:3})}
+        ${technicalRow('Orde sungai maksimum (Strahler)',drain.stream_order_max,'—','Orde Strahler tertinggi dalam DTA',{digits:0})}
+        ${technicalRow('Kerapatan drainase (Dd)',drain.drainage_density_km_per_km2,classes.drainage_density,'Panjang sungai per luas DTA',{digits:3,unit:'km/km²'})}
+        ${technicalRow('Frekuensi sungai (Fs)',drain.stream_frequency_per_km2,'—','Jumlah sungai Strahler per luas DTA',{digits:3,unit:'sungai/km²'})}
+        ${technicalRow('Rasio percabangan (Rb)',drain.bifurcation_ratio,'—','Perbandingan jumlah sungai pada orde berurutan',{digits:3})}
+        ${technicalTextRow('Rasio percabangan per orde',rbByOrder||null,'—','Rasio untuk setiap pasangan orde berurutan')}
+      </tbody></table></div></div>
+      <div class="technical-group"><h3>Parameter Kemiringan Lintasan Aliran</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
+        ${technicalRow('Kemiringan rata-rata jaringan',drain.network_mean_slope_pct ?? drain.reach_slope_pct,'—','Rata-rata kemiringan ruas berbobot panjang',{digits:3,unit:'%'})}
+        ${technicalRow('Panjang lintasan aliran melalui sentroid',terrain.centroidal_flowpath_km,'—','Jarak outlet ke titik lintasan terdekat sentroid',{digits:3,unit:'km'})}
+        ${technicalRow('Panjang lintasan aliran 10-85',terrain.flowpath_10_85_km,'—','Bagian lintasan antara posisi 10% dan 85%',{digits:3,unit:'km'})}
+        ${technicalRow('Kemiringan lintasan aliran terpanjang',flowSlope.longest_flowpath_pct,'—','Beda elevasi dibagi panjang lintasan terpanjang',{digits:3,unit:'%'})}
+        ${technicalRow('Kemiringan lintasan melalui sentroid',flowSlope.centroidal_flowpath_pct,'—','Beda elevasi dibagi panjang lintasan melalui sentroid',{digits:3,unit:'%'})}
+        ${technicalRow('Kemiringan lintasan 10-85',flowSlope.flowpath_10_85_pct,'—','Beda elevasi dibagi panjang lintasan 10–85',{digits:3,unit:'%'})}
+        ${technicalRow('Kemiringan DTA',slope.mean_pct,classes.mean_slope,'Rata-rata kemiringan permukaan seluruh DTA',{digits:3,unit:'%'})}
+      </tbody></table></div></div>
+      <div class="technical-group landcover-group"><h3>Penutupan Lahan</h3><div class="technical-table-wrap"><table><thead><tr><th>Kode PL</th><th>Kelas</th><th>Luas</th><th>Persentase area</th></tr></thead><tbody>
+        ${(landcover.classes||[]).map(item=>`<tr><th>${escapeHtml(item.code)}</th><td>${escapeHtml(item.name)}</td><td>${formatAnalysisValue(item.area_km2,{unit:'km²'})}</td><td>${formatAnalysisValue(item.area_pct,{unit:'%'})}</td></tr>`).join('')||'<tr><td colspan="4">Data penutup/penggunaan lahan belum tersedia.</td></tr>'}
+      </tbody></table></div></div>
+      <div class="technical-group cn-group"><h3>Curve Number dan Potensi Limpasan</h3><div class="analysis-indicator-grid cn-summary-grid">
+        ${analysisMetric('Curve Number Rata-rata Tertimbang (CN-II)',cn.weighted_cn_ii,{interpretation:cnInterpretations.weighted_cn})}${analysisMetric('Retensi Potensial (S)',cn.potential_retention_mm,{unit:'mm',interpretation:cnInterpretations.retention})}${analysisMetric('Area CN ≥ 80',cn.high_cn_pct,{unit:'%',interpretation:cnInterpretations.high_cn_area})}
+      </div><h4 class="analysis-distribution-title">Distribusi Curve Number</h4><div class="slope-class-list analysis-distribution-list">${(cn.distribution||[]).map(item=>`<div class="slope-class-row"><span>${escapeHtml(item.class)}</span><div><i style="width:${Math.max(0,Math.min(100,Number(item.area_pct)||0))}%"></i></div><strong>${formatAnalysisValue(item.area_pct,{digits:1,unit:'%'})}</strong></div>`).join('')}</div></div>
+      <div class="technical-group landsystem-group"><h3>Sistem Lahan</h3><div class="technical-table-wrap"><table><thead><tr><th>Tipe sistem lahan</th><th>Fisiografi</th><th>Relief</th><th>Luas</th><th>Persentase</th></tr></thead><tbody>${(landsystem.classes||[]).map(item=>`<tr><th>${escapeHtml(item.land_type||item.name)}</th><td>${escapeHtml(item.physiography||'—')}</td><td>${escapeHtml(item.relief_class||'—')}</td><td>${formatAnalysisValue(item.area_km2,{unit:'km²'})}</td><td>${formatAnalysisValue(item.area_pct,{unit:'%'})}</td></tr>`).join('')||'<tr><td colspan="5">Data sistem lahan belum tersedia.</td></tr>'}</tbody></table></div></div>
+      <div class="technical-group tc-group"><h3>Waktu Konsentrasi</h3><div class="technical-table-wrap"><table><thead><tr><th>Metode</th><th>Estimasi</th><th>Keterangan</th></tr></thead><tbody>
+        ${tcRows}<tr class="recommendation-row"><th>Tc Representatif</th><td>${formatAnalysisValue(tc.representative_hours??tc.recommended_hours,{unit:'jam'})}</td><td><strong>Dasar: ${escapeHtml((tc.representative_methods||tc.recommendation_methods||[]).join(', ')||'Belum tersedia')}</strong><small class="method-reason">Kesepakatan antar-metode: ${escapeHtml(tc.method_agreement||tc.confidence||'Rendah')}. ${escapeHtml(tc.representative_basis||tc.recommendation_basis||'')}</small></td></tr>
+      </tbody></table></div></div>
+      ${slopeBars?`<div class="technical-group slope-distribution-group"><h3>Distribusi Kelas Lereng</h3><div class="slope-class-list">${slopeBars}</div></div>`:''}
+      <div class="analysis-limitations"><h3>Batasan interpretasi</h3><ul>${limitations}</ul></div>
+    </div></details>`;
+  const detailBody=$('analysisTechnicalBody'),limitationsEl=detailBody?.querySelector('.analysis-limitations');
+  ['.slope-distribution-group','.landcover-group','.landsystem-group','.cn-group','.tc-group'].forEach(selector=>{const section=detailBody?.querySelector(selector);if(section&&limitationsEl)detailBody.insertBefore(section,limitationsEl);});
+  refreshIcons($('hydrologicAnalysisModal'));applyAnalysisLanguage();window.HydroUI?.enhanceFieldHelp($('hydrologicAnalysisModal'));openMapModal($('hydrologicAnalysisModal'));
+}
+function formatDistance(m){const v=Number(m)||0;return v>=1000?`${formatDisplayNumber(v/1000,2)} km`:`${formatDisplayNumber(Math.round(v),0)} m`;}
 function haversineMeters(lon1,lat1,lon2,lat2){const R=6371008.8,toRad=Math.PI/180,p1=lat1*toRad,p2=lat2*toRad,dp=(lat2-lat1)*toRad,dl=(lon2-lon1)*toRad;const a=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*R*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
 function nearestExistingPoint(lon,lat,{excludeId=null}={}){let best=null;for(const p of points){if(excludeId&&p.point_id===excludeId)continue;const c=pointMapCoordinate(p.point_id)||{lon:p.lon,lat:p.lat};const d=haversineMeters(lon,lat,c.lon,c.lat);if(!best||d<best.distance_m)best={point:p,distance_m:d};}return best;}
 function pointResult(id){return batchResult?.results?.find(r=>r.point_id===id)||null;}
@@ -625,6 +826,8 @@ function addOperationalLayers(){
     id:'official-river-labels',type:'symbol',source:'official-rivers',filter:riverLabelFilter(),minzoom:RIVER_ZOOM[1],
     layout:{
       'symbol-placement':'line','symbol-spacing':220,'symbol-sort-key':riverLabelSortKeyExpression(),'symbol-z-order':'source',
+      // Custom river labels come from official-rivers assets generated from the /data or R2 river network.
+      // Keep the default MapLibre sans-serif text stack here; this does not affect raster basemap labels.
       'text-field':riverMapLabelExpression(),'text-size':riverLabelSizeExpression(),
       'text-rotation-alignment':'map','text-pitch-alignment':'map','text-keep-upright':true,'text-max-angle':70,
       'text-offset':[0,-.55],'text-padding':1,'text-allow-overlap':false,'text-ignore-placement':false
@@ -1055,7 +1258,7 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
       method:'POST',
       headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':requestId},
       signal:requestController.signal,
-      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4})
+      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4,decimal_separator:decimalSeparator})
     });
     const payload=await response.json();
     if(!requestIsCurrent())return null;
@@ -1243,6 +1446,7 @@ function renderPointCards(){
         </label>
         <div class="point-action-label">Aksi</div>
         <div class="point-action-row">${renderSidebarDtaActions(p.point_id,coordText)}</div>
+        <button class="morphometry-analysis-button open-hydrologic-analysis" data-id="${p.point_id}" type="button"><i data-lucide="chart-no-axes-combined"></i><span>Karakteristik</span></button>
       </div>
     </details>`;
   }).join('');
@@ -1267,6 +1471,7 @@ function renderPointCards(){
   pointListEl.querySelectorAll('.remove-point').forEach(b=>b.addEventListener('click',()=>deletePointWithoutRedelineation(b.dataset.id)));
   pointListEl.querySelectorAll('.zoom-outlet').forEach(b=>b.addEventListener('click',()=>zoomToOutlet(b.dataset.id)));
   pointListEl.querySelectorAll('.zoom-point').forEach(b=>b.addEventListener('click',()=>{setActivePoint(b.dataset.id,{openCard:false});zoomToPoint(b.dataset.id);}));
+  pointListEl.querySelectorAll('.open-hydrologic-analysis').forEach(b=>b.addEventListener('click',()=>openHydrologicAnalysis(b.dataset.id)));
   pointListEl.querySelectorAll('.copy-point-coordinate').forEach(b=>b.addEventListener('click',e=>copyText(e.currentTarget.dataset.coordinate||pointCoordinateText(e.currentTarget.dataset.id),e.currentTarget)));
   pointListEl.querySelectorAll('.move-point').forEach(b=>b.addEventListener('click',()=>armMovePoint(b.dataset.id)));
   pointListEl.querySelectorAll('.change-point-color').forEach(b=>b.addEventListener('click',e=>openDtaColorPicker(b.dataset.id,e.currentTarget)));
@@ -1300,6 +1505,7 @@ function openExistingPointMenu(id){
   nameInput?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();if(pointNameDirty(id))savePointName(id);}else if(e.key==='Escape'){e.preventDefault();resetPointNameDraft(id);nameInput.blur();}});
   el.querySelector('[data-action="zoomOutlet"]')?.addEventListener('click',()=>{zoomToOutlet(id);closePointPopup();});
   el.querySelector('[data-action="zoomDta"]')?.addEventListener('click',()=>{zoomToPoint(id);closePointPopup();});
+  el.querySelector('[data-action="analysis"]')?.addEventListener('click',()=>{closePointPopup();openHydrologicAnalysis(id);});
   el.querySelector('[data-action="copyCoordinate"]')?.addEventListener('click',e=>copyText(coordinateText,e.currentTarget));
   el.querySelector('[data-action="moveOutlet"]')?.addEventListener('click',()=>armMovePoint(id));
   el.querySelector('[data-action="changeColor"]')?.addEventListener('click',e=>openDtaColorPicker(id,e.currentTarget));
@@ -1626,6 +1832,7 @@ map.on('dblclick',e=>{
 
 $('mapSearchForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('searchInput').value.trim();if(q.length<2){setStatus('Masukkan minimal 2 karakter.','error');return;}searchResultsEl.classList.remove('hidden');searchResultsEl.innerHTML='<div class="search-loading">Mencari…</div>';try{const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}`),p=await r.json();if(!r.ok)throw new Error(parseApiError(p,'Pencarian gagal.').message);if(!p.results.length){searchResultsEl.innerHTML='<div class="search-empty">Lokasi tidak ditemukan.</div>';return;}searchResultsEl.innerHTML=p.results.map((x,i)=>`<button class="search-result" type="button" data-i="${i}"><strong>${escapeHtml(x.name||x.display_name.split(',')[0])}</strong><span>${escapeHtml(x.display_name)}</span></button>`).join('');searchResultsEl.querySelectorAll('.search-result').forEach(b=>b.addEventListener('click',()=>{const x=p.results[Number(b.dataset.i)];searchResultsEl.classList.add('hidden');map.flyTo({center:[x.lon,x.lat],zoom:13});cancelScheduledPointPopup();if(addingPoints){clearLocationPreview();openPointPopup(Number(x.lon),Number(x.lat),x.source||'geocode',x.display_name);}else showLocationPreview(Number(x.lon),Number(x.lat),x.source||'geocode',x.display_name);}));}catch(err){searchResultsEl.innerHTML=`<div class="search-empty">${escapeHtml(err.message)}</div>`;}});
 $('previewCoordinateBtn').addEventListener('click',()=>{try{const {lat,lon}=parseCoordinate($('coordinateInput').value);map.flyTo({center:[lon,lat],zoom:13});cancelScheduledPointPopup();if(addingPoints){clearLocationPreview();openPointPopup(lon,lat,'coordinate');}else showLocationPreview(lon,lat,'coordinate');}catch(err){setStatus(err.message,'error');}});
+$('decimalSeparatorSelect')?.addEventListener('change',event=>{decimalSeparator=event.target.value==='.'?'.':',';persistState();renderPointCards();if(!$('hydrologicAnalysisModal').classList.contains('hidden')&&activePointId)openHydrologicAnalysis(activePointId);});
 $('coordinateInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('previewCoordinateBtn').click();}});
 $('addPointSessionBtn').addEventListener('click',()=>{
   if(!addingPoints&&pointInputMode==='multi'&&points.length>=MAX_POINTS)return;
@@ -1685,25 +1892,26 @@ function updateDownloadSummary(){
   const summary=$('downloadSummary');if(!summary)return;
   const formats=[...document.querySelectorAll('.download-format:checked')].map(x=>({gpkg:'GeoPackage',shp:'Shapefile',geojson:'GeoJSON',kml:'KML'}[x.value]||x.value));
   const modes=[...document.querySelectorAll('.geometry-mode:checked')].map(x=>x.value==='smoothed'?'Diperhalus':'Asli');
-  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div>`;
+  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div><div><b>Karakteristik DTA</b><span>${$('downloadAnalysisReport')?.checked?'PDF + XLSX per DTA':'Tidak disertakan'}</span></div>`;
 }
 
 $('downloadBtn').addEventListener('click',()=>{$('downloadStatus').textContent='';updateDownloadSummary();openMapModal($('downloadModal'));});
 for(const id of ['closeDownloadModal','cancelDownloadBtn'])$(id).addEventListener('click',()=>closeMapModal($('downloadModal')));
 document.querySelectorAll('.download-format,.geometry-mode').forEach(x=>x.addEventListener('change',updateDownloadSummary));
-$('downloadRivers')?.addEventListener('change',updateDownloadSummary);
+$('downloadRivers')?.addEventListener('change',updateDownloadSummary);$('downloadAnalysisReport')?.addEventListener('change',updateDownloadSummary);
 $('confirmDownloadBtn').addEventListener('click',async()=>{
   const formats=[...document.querySelectorAll('.download-format:checked')].map(x=>x.value);const geometry_modes=[...document.querySelectorAll('.geometry-mode:checked')].map(x=>x.value);
   if(!geometry_modes.length){$('downloadStatus').textContent='Pilih Diperhalus, Asli, atau keduanya.';return;}if(!formats.length){$('downloadStatus').textContent='Pilih minimal satu format.';return;}
   $('downloadStatus').textContent='Menyiapkan paket unduhan…';$('confirmDownloadBtn').disabled=true;
-  try{const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:points.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),geometry_modes,formats,include_rivers:$('downloadRivers').checked})});if(!r.ok){const p=await r.json();throw new Error(parseApiError(p,'Unduhan gagal.').message);}const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);a.href=url;a.download=m?m[1]:'Delineasi_DTA.zip';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);closeMapModal($('downloadModal'));}catch(e){$('downloadStatus').textContent=e.message||String(e);}finally{$('confirmDownloadBtn').disabled=false;}
+  try{const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:points.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),geometry_modes,formats,include_rivers:$('downloadRivers').checked,include_analysis_report:$('downloadAnalysisReport')?.checked===true,language:uiLanguage,decimal_separator:decimalSeparator})});if(!r.ok){const error=await parseErrorResponse(r,'Unduhan gagal.');throw new Error(error.message);}const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);a.href=url;a.download=m?m[1]:'Delineasi_DTA.zip';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);closeMapModal($('downloadModal'));}catch(e){$('downloadStatus').textContent=e.message||String(e);}finally{$('confirmDownloadBtn').disabled=false;}
 });
 
 for(const id of ['definitionHeaderBtn','definitionSidebarBtn'])$(id).addEventListener('click',()=>openMapModal($('definitionModal')));
 for(const id of ['methodologyHeaderBtn','methodologySidebarBtn'])$(id).addEventListener('click',()=>openMapModal($('methodologyModal')));
 $('basinSourceBtn').addEventListener('click',()=>openMapModal($('basinSourceModal')));
 $('closeDefinitionModal').addEventListener('click',()=>closeMapModal($('definitionModal')));$('closeMethodologyModal').addEventListener('click',()=>closeMapModal($('methodologyModal')));$('closeBasinSourceModal').addEventListener('click',()=>closeMapModal($('basinSourceModal')));$('closeKarstModal').addEventListener('click',()=>closeMapModal($('karstModal')));$('closeOutsideModal').addEventListener('click',()=>closeMapModal($('outsideModal')));
-for(const id of ['karstModal','outsideModal','confirmClearModal','downloadModal','definitionModal','methodologyModal','basinSourceModal','basemapModal','usageNoticeModal'])$(id).addEventListener('click',e=>{if(e.target.id===id)closeMapModal(e.currentTarget);});
+$('closeHydrologicAnalysisModal').addEventListener('click',()=>closeMapModal($('hydrologicAnalysisModal')));
+for(const id of ['karstModal','outsideModal','confirmClearModal','downloadModal','hydrologicAnalysisModal','definitionModal','methodologyModal','basinSourceModal','basemapModal','usageNoticeModal'])$(id).addEventListener('click',e=>{if(e.target.id===id)closeMapModal(e.currentTarget);});
 $('headerHandle').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(isHeaderUiBlocked())return;toggleHeader();});
 $('closeDtaColorPicker')?.addEventListener('click',e=>{e.preventDefault();closeDtaColorPicker();});
 document.addEventListener('pointerdown',e=>{const panel=$('dtaColorPickerPanel');if(!panel||panel.classList.contains('hidden'))return;if(panel.contains(e.target)||e.target.closest?.('.change-point-color'))return;closeDtaColorPicker();});
@@ -1732,5 +1940,5 @@ document.addEventListener('keydown',e=>{
   if(!layerPanel.classList.contains('hidden')){layerPanel.classList.add('hidden');updateHeaderHandleInteractivity();}
 });
 document.addEventListener('hydro:themechange',e=>{applyMapTheme(e.detail?.theme||'light');persistState();});
-setSidebarCollapsed(sidebarCollapsed,{save:false});updateAddPointButton();renderPointCards();updateBasemapGallery();refreshIcons();setHeaderVisible(false);
+setSidebarCollapsed(sidebarCollapsed,{save:false});updateAddPointButton();applyInterfaceLanguage();updateBasemapGallery();refreshIcons();setHeaderVisible(false);
 showUsageNoticeOncePerBrowserSession();

@@ -43,6 +43,7 @@ class RuntimeBundle:
     map_assets_public_base: str | None = None
     map_assets_version: str | None = None
     lazy_objects: dict[str, RuntimeObjectRef] = field(default_factory=dict)
+    analysis_paths: dict[str, Path] = field(default_factory=dict)
 
 
 _R2_METRICS_LOCK = threading.Lock()
@@ -341,6 +342,12 @@ def _load_r2(root: Path, requested_dataset_id: str | None) -> RuntimeBundle:
             ref_key("toponim", "reference/toponim.sqlite"),
             cache_root / "reference" / "toponim.sqlite",
         ),
+        "dem": ref("dem", key("dem", "shared/dem.tif"), cache_root / "shared" / "dem.tif"),
+        "plen": ref("plen", key("plen", "shared/plen.tif"), cache_root / "shared" / "plen.tif"),
+        "cn2": ref("cn2", key("cn2", "shared/cn2.tif"), cache_root / "shared" / "cn2.tif"),
+        "landcover": ref("landcover", key("landcover", "shared/landcover.tif"), cache_root / "shared" / "landcover.tif"),
+        "streams_analysis": ref("streams_analysis", key("streams_analysis", "shared/streams_analysis.zip"), cache_root / "shared" / "streams_analysis.zip"),
+        "landsystem": ref("landsystem", key("landsystem", "shared/landsystem.zip"), cache_root / "shared" / "landsystem.zip"),
     }
     download_started = time.perf_counter()
     paths = _download_many(client, refs)
@@ -390,6 +397,7 @@ def _load_r2(root: Path, requested_dataset_id: str | None) -> RuntimeBundle:
         map_assets_public_base=map_assets_base,
         map_assets_version=str(manifest.get("map_assets_version") or "").strip() or None,
         lazy_objects=lazy_objects,
+        analysis_paths={name: ref.local_path for name, ref in lazy_objects.items() if name in {"dem", "plen", "cn2", "landcover", "streams_analysis", "landsystem"}},
     )
 
 
@@ -505,6 +513,12 @@ def _load_local(root: Path, requested_dataset_id: str | None) -> RuntimeBundle:
         subbasin_raster_path=paths["subbasin_raster"],
         toponym_db_path=paths["toponim"],
         map_assets_public_base=None,
+        analysis_paths={
+            "dem": data_dir / "shared" / "dem.tif", "plen": data_dir / "shared" / "plen.tif",
+            "cn2": data_dir / "shared" / "cn2.tif", "landcover": data_dir / "shared" / "landcover.tif",
+            "streams_analysis": data_dir / "shared" / "streams_analysis.zip",
+            "landsystem": data_dir / "shared" / "landsystem.zip",
+        },
     )
 
 

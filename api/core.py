@@ -56,11 +56,15 @@ STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
 
 from api.services.runtime_backend import (
+    ensure_runtime_object,
     ensure_official_rivers_original,
     ensure_toponym_db_path,
     get_r2_runtime_metrics,
     load_runtime_bundle,
 )
+from api.services.hydrologic_analysis import build_hydrologic_analysis, optional_spatial_path, refresh_characteristic_narratives
+from api.services.characteristics_report import create_characteristics_report
+from api.services.characteristics_workbook import create_characteristics_workbook
 from api.services.river_display import RIVER_DISPLAY_TIER_BY_FILENAME, build_river_display_gdf
 from api.services.performance import (
     HEAVY_JOBS,
@@ -85,11 +89,17 @@ SUBBASIN_RASTER_PATH = RUNTIME_DATA.subbasin_raster_path
 TOPONYM_DB_PATH = RUNTIME_DATA.toponym_db_path or (REFERENCE_DATA_DIR / "toponim.sqlite")
 MAP_ASSETS_PUBLIC_BASE = RUNTIME_DATA.map_assets_public_base
 MAP_ASSETS_VERSION = RUNTIME_DATA.map_assets_version
+DEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_DEM_PATH", "dem.tif")
+PLEN_PATH = optional_spatial_path(ROOT_DIR, "DTA_FLOW_PATH_PATH", "plen.tif")
+CN_PATH = optional_spatial_path(ROOT_DIR, "DTA_CN_PATH", "cn2.tif")
+LANDCOVER_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDCOVER_PATH", "landcover.tif")
+ANALYSIS_STREAM_PATH = optional_spatial_path(ROOT_DIR, "DTA_ANALYSIS_STREAM_PATH", "streams_analysis.zip")
+LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsystem.zip")
 
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.0.0.2"
+APP_VERSION = "1.2.0"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 DEFAULT_PAEK_TOLERANCE_M = 150.0
@@ -326,6 +336,7 @@ class MultiDelineateRequest(BaseModel):
     boundary_match_m: float = Field(90.0, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
+    decimal_separator: str = Field(",", pattern="^[,.]$")
 
 
 class CachedResultsRequest(BaseModel):
@@ -340,6 +351,7 @@ class DelineateRequest(BaseModel):
     boundary_match_m: float = Field(90.0, ge=10, le=500)
     paek_tolerance_m: float = Field(DEFAULT_PAEK_TOLERANCE_M, ge=10, le=1000)
     vw_tolerance_m: float = Field(DEFAULT_VW_TOLERANCE_M, ge=0, le=100)
+    decimal_separator: str = Field(",", pattern="^[,.]$")
 
 
 class DownloadRequest(BaseModel):
@@ -349,6 +361,9 @@ class DownloadRequest(BaseModel):
     geometry_modes: list[str] = Field(default_factory=lambda: ["smoothed"])
     formats: list[str] = Field(default_factory=lambda: ["gpkg"])
     include_rivers: bool = True
+    include_analysis_report: bool = False
+    language: str = Field("id", pattern="^(id|en)$")
+    decimal_separator: str = Field(",", pattern="^[,.]$")
 
 
 @lru_cache(maxsize=TOPOLOGY_CACHE_SIZE)
@@ -806,6 +821,24 @@ def _heavy_job_context():
     return HEAVY_JOBS.slot()
 
 
+def _analysis_data_paths() -> dict[str, Path | None]:
+    """Resolve optional analysis layers, lazily materializing them from R2 when configured."""
+    defaults = {"dem": DEM_PATH, "plen": PLEN_PATH, "flowdir": FDIR_PATH, "cn2": CN_PATH, "landcover": LANDCOVER_PATH,
+                "streams_analysis": ANALYSIS_STREAM_PATH, "landsystem": LANDSYSTEM_PATH}
+    if DATA_BACKEND != "r2":
+        return defaults
+    resolved: dict[str, Path | None] = {}
+    for name, fallback in defaults.items():
+        if name not in RUNTIME_DATA.lazy_objects:
+            resolved[name] = fallback
+            continue
+        try:
+            resolved[name] = ensure_runtime_object(RUNTIME_DATA, name)
+        except Exception:
+            resolved[name] = fallback
+    return resolved
+
+
 def build_point_result(
     point: OutletPoint,
     snap_radius_m: float,
@@ -816,6 +849,7 @@ def build_point_result(
     cancel_check=None,
 ) -> tuple[dict[str, Any], set[int]]:
     started = time.perf_counter()
+    analysis_paths = _analysis_data_paths()
     if cancel_check:
         cancel_check()
     x, y = to_data.transform(point.lon, point.lat)
@@ -889,6 +923,20 @@ def build_point_result(
             "watershed_geojson": mapping(raw_web),
             "processing": {"total_ms": round((time.perf_counter() - started) * 1000.0, 1)},
         }
+        result["hydrologic_analysis"] = build_hydrologic_analysis(
+            geom=final_geom,
+            outlet=snapped,
+            source_crs=streams.crs,
+            area_km2=result["area_km2"],
+            streams=streams,
+            upstream_ids=set(),
+            upstream_by_downstream=upstream_by_downstream,
+            outlet_linkno=None,
+            dem_path=analysis_paths["dem"], plen_path=analysis_paths["plen"], flowdir_path=analysis_paths["flowdir"],
+            landcover_path=analysis_paths["landcover"], cn_path=analysis_paths["cn2"],
+            analysis_stream_path=analysis_paths["streams_analysis"], landsystem_path=analysis_paths["landsystem"],
+        )
+        result["processing"]["total_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
         return result, set()
 
     t_snap = time.perf_counter()
@@ -983,6 +1031,20 @@ def build_point_result(
             **hybrid_info,
         },
     }
+    result["hydrologic_analysis"] = build_hydrologic_analysis(
+        geom=final_geom,
+        outlet=snapped,
+        source_crs=streams.crs,
+        area_km2=result["area_km2"],
+        streams=streams,
+        upstream_ids=upstream_ids,
+        upstream_by_downstream=upstream_by_downstream,
+        outlet_linkno=outlet_linkno,
+        dem_path=analysis_paths["dem"], plen_path=analysis_paths["plen"], flowdir_path=analysis_paths["flowdir"],
+        landcover_path=analysis_paths["landcover"], cn_path=analysis_paths["cn2"],
+        analysis_stream_path=analysis_paths["streams_analysis"], landsystem_path=analysis_paths["landsystem"],
+    )
+    result["processing"]["total_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
     return result, upstream_ids
 
 
@@ -1039,6 +1101,31 @@ def _result_native_geometry(result: dict[str, Any], key: str = "dta_geojson"):
     if not value:
         return None
     return transform(to_data.transform, shape(value))
+
+
+def _refresh_reconciled_hydrologic_analysis(result: dict[str, Any], upstream_ids: set[int]) -> None:
+    """Refresh metrics only when topology reconciliation changed the final polygon."""
+    actions = (result.get("topology_qa") or {}).get("actions") or []
+    if not actions:
+        return
+    geom = _result_native_geometry(result)
+    if geom is None or geom.is_empty:
+        return
+    snapped = Point(*to_data.transform(float(result["snapped_lon"]), float(result["snapped_lat"])))
+    analysis_paths = _analysis_data_paths()
+    result["hydrologic_analysis"] = build_hydrologic_analysis(
+        geom=geom,
+        outlet=snapped,
+        source_crs=streams.crs,
+        area_km2=float(result["area_km2"]),
+        streams=streams,
+        upstream_ids=upstream_ids,
+        upstream_by_downstream=upstream_by_downstream,
+        outlet_linkno=result.get("outlet_linkno"),
+        dem_path=analysis_paths["dem"], plen_path=analysis_paths["plen"], flowdir_path=analysis_paths["flowdir"],
+        landcover_path=analysis_paths["landcover"], cn_path=analysis_paths["cn2"],
+        analysis_stream_path=analysis_paths["streams_analysis"], landsystem_path=analysis_paths["landsystem"],
+    )
 
 
 def _safe_smoothed_raw(result: dict[str, Any]):
@@ -1634,6 +1721,20 @@ def info():
         "default_snap_radius_m": 300,
         "default_boundary_match_m": 90,
         "hybrid_raster_available": bool(HYBRID_RASTER_AVAILABLE),
+        "hydrologic_analysis": {
+            "dem_available": bool(DEM_PATH),
+            "flow_path_available": bool(PLEN_PATH),
+            "curve_number_available": bool(CN_PATH),
+            "landcover_available": bool(LANDCOVER_PATH),
+            "analysis_streams_available": bool(ANALYSIS_STREAM_PATH),
+            "landsystem_available": bool(LANDSYSTEM_PATH),
+            "dem_source": DEM_PATH.name if DEM_PATH else None,
+            "flow_path_source": PLEN_PATH.name if PLEN_PATH else None,
+            "curve_number_source": CN_PATH.name if CN_PATH else None,
+            "landcover_source": LANDCOVER_PATH.name if LANDCOVER_PATH else None,
+            "analysis_streams_source": ANALYSIS_STREAM_PATH.name if ANALYSIS_STREAM_PATH else None,
+            "landsystem_source": LANDSYSTEM_PATH.name if LANDSYSTEM_PATH else None,
+        },
         "hydrology_streams": int(len(streams)),
         "hydrology_subbasins": int(len(subbasins)),
         "hybrid_raster_shape": list(HYBRID_RASTER_SHAPE) if HYBRID_RASTER_SHAPE else None,
@@ -1833,6 +1934,9 @@ def delineate_multi(req: MultiDelineateRequest, request: Request):
                 upstream_sets.append(upstream)
             LATEST_REQUESTS.ensure_current(token)
             reconcile_final_geometries(results, upstream_sets)
+            for result, upstream in zip(results, upstream_sets):
+                _refresh_reconciled_hydrologic_analysis(result, upstream)
+                refresh_characteristic_narratives(result.get("hydrologic_analysis") or {}, req.decimal_separator)
             apply_incremental_geometries(results, upstream_sets)
             LATEST_REQUESTS.ensure_current(token)
             return {
@@ -1849,8 +1953,9 @@ def reconcile_results(req: CachedResultsRequest, request: Request):
     """Refresh topology + incremental hatches from cached DTA polygons only.
 
     This endpoint deliberately does not run stream snapping, raster D8 tracing, smoothing,
-    or boundary stitching. It is used after deleting/restoring a point so unaffected DTA
-    results do not need to be delineated again.
+    or boundary stitching. If reconciliation changes a final polygon, only its derived
+    characterization is refreshed. It is used after deleting/restoring a point so
+    unaffected DTA results do not need to be delineated again.
     """
     token = _register_delineation_request(request)
     try:
@@ -1866,6 +1971,8 @@ def reconcile_results(req: CachedResultsRequest, request: Request):
                 upstream_sets.append(set(collect_upstream_ids(int(link))) if link is not None else set())
             LATEST_REQUESTS.ensure_current(token)
             reconcile_final_geometries(results, upstream_sets)
+            for result, upstream in zip(results, upstream_sets):
+                _refresh_reconciled_hydrologic_analysis(result, upstream)
             apply_incremental_geometries(results, upstream_sets)
             return {
                 "results": results,
@@ -1892,6 +1999,7 @@ def delineate(req: DelineateRequest, request: Request):
                 cancel_check=lambda: LATEST_REQUESTS.ensure_current(token),
             )
             result.setdefault("processing", {})["queue_ms"] = round(ticket.queue_ms, 1)
+            refresh_characteristic_narratives(result.get("hydrologic_analysis") or {}, req.decimal_separator)
             return result
     except (HeavyJobQueueFull, SupersededRequest) as exc:
         raise _performance_http_error(exc) from exc
@@ -1978,6 +2086,17 @@ def _result_frames_for_point(
     river_name = (result.get("official_river") or {}).get("name")
     basin_name = (result.get("official_basin") or result.get("requested_official_basin") or {}).get("name")
     label = point.label or point.point_id
+    # Characterization describes the final/smoothed DTA. Do not attach those values to a
+    # separately exported raw boundary because that would imply false geometric agreement.
+    analysis = (result.get("hydrologic_analysis") or {}) if geometry_mode == "smoothed" else {}
+    morphometry = analysis.get("morphometry") or {}
+    terrain = analysis.get("terrain") or {}
+    drainage = analysis.get("drainage") or {}
+    landcover = analysis.get("landcover") or {}
+    curve_number = analysis.get("curve_number") or {}
+    concentration = analysis.get("time_of_concentration") or {}
+    elevation = terrain.get("elevation") or {}
+    slope = terrain.get("slope") or {}
     dta = gpd.GeoDataFrame(
         [{
             "ID": point.point_id,
@@ -1985,6 +2104,20 @@ def _result_frames_for_point(
             "LUAS_KM2": area_km2_equal(geom_native),
             "DAS": basin_name,
             "SUNGAI": river_name,
+            "RESPON": (analysis.get("executive_summary") or {}).get("response_class"),
+            "KELILING_KM": morphometry.get("perimeter_km"),
+            "FORM_FACTOR": morphometry.get("form_factor"),
+            "ELONG_RATIO": morphometry.get("elongation_ratio"),
+            "CIRC_RATIO": morphometry.get("circularity_ratio"),
+            "RELIEF_M": elevation.get("relief_m"),
+            "SLOPE_MEAN": slope.get("mean_pct"),
+            "DRAIN_DENS": drainage.get("drainage_density_km_per_km2"),
+            "CN2": curve_number.get("weighted_cn_ii"),
+            "RETEN_MM": curve_number.get("potential_retention_mm"),
+            "TC_JAM": concentration.get("representative_hours") or concentration.get("recommended_hours"),
+            "PL_HUTAN": (landcover.get("summary") or {}).get("forest_pct"),
+            "PL_TANI": (landcover.get("summary") or {}).get("agriculture_pct"),
+            "FLOWPATH_KM": terrain.get("longest_flow_path_km") or drainage.get("main_channel_length_km"),
             "SUMBER": dta_source,
             "geometry": geom,
         }],
@@ -2167,6 +2300,9 @@ def _download_impl(req: DownloadRequest):
             built_results.append(result)
             upstream_sets.append(upstream)
         reconcile_final_geometries(built_results, upstream_sets)
+        for result, upstream in zip(built_results, upstream_sets):
+            _refresh_reconciled_hydrologic_analysis(result, upstream)
+            refresh_characteristic_narratives(result.get("hydrologic_analysis") or {}, req.decimal_separator)
         apply_incremental_geometries(built_results, upstream_sets)
 
         for point, result in zip(req.points, built_results):
@@ -2208,6 +2344,20 @@ def _download_impl(req: DownloadRequest):
                 if req.include_rivers and rivers is not None and len(rivers):
                     river_path = point_dir / f"Sungai_{base_name}{ext}"
                     _write_vector_by_format(rivers, river_path, fmt, f"Sungai {base_name}")
+
+            if req.include_analysis_report:
+                report_result = dict(result)
+                report_result["label"] = f"{river_name} – {point_name}"
+                create_characteristics_report(
+                    [report_result],
+                    point_dir / f"Laporan_Karakteristik_{base_name}.pdf",
+                    language="id",
+                    decimal_separator=req.decimal_separator,
+                )
+                create_characteristics_workbook(
+                    [report_result],
+                    point_dir / f"Karakteristik_{base_name}.xlsx",
+                )
 
         with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
             for fp in root_dir.rglob("*"):

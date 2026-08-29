@@ -3,7 +3,7 @@
 {% block body_class %}spatial-page{% endblock %}
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.0.0.3-session-notice-action-colors" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.6.7-sidebar-polish" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -29,9 +29,13 @@
           <button id="previewCoordinateBtn" class="btn btn-neutral full" type="button"><i data-lucide="map-pin"></i>Tampilkan Titik</button>
         </section>
 
+        <section class="analysis-preferences settings-group-divider" aria-label="Preferensi tampilan angka">
+          <label class="settings-field" data-help="Memilih koma atau titik sebagai pemisah desimal pada web, PDF, dan Excel."><span class="field-label-line">Pemisah desimal <button class="info-tooltip" type="button" aria-label="Informasi pemisah desimal">i</button></span><select id="decimalSeparatorSelect" aria-label="Pilihan pemisah desimal"><option value="," selected>Koma (,)</option><option value=".">Titik (.)</option></select></label>
+        </section>
+
         <details class="advanced panel-section">
           <summary><i data-lucide="sliders-horizontal"></i>Pengaturan lanjutan</summary>
-          <label data-help="Jarak maksimum pencarian dari titik yang dipilih menuju jaringan sungai DEM yang digunakan untuk menentukan titik tuang. Gunakan nilai lebih besar hanya bila titik berada cukup jauh dari alur hasil ekstraksi."><span class="field-label-line">Pencarian sungai terdekat</span>
+          <label class="settings-field" data-help="Jarak maksimum pencarian dari titik yang dipilih menuju jaringan sungai DEM yang digunakan untuk menentukan titik tuang. Gunakan nilai lebih besar hanya bila titik berada cukup jauh dari alur hasil ekstraksi."><span class="field-label-line">Pencarian sungai terdekat <button class="info-tooltip" type="button" aria-label="Informasi pencarian sungai terdekat">i</button></span>
             <select id="snapRadius">
               <option value="100">100 m</option>
               <option value="300" selected>300 m (bawaan)</option>
@@ -40,7 +44,7 @@
               <option value="2000">2 km</option>
             </select>
           </label>
-          <label data-help="Koridor maksimum antara batas DTA hasil DEM dan Batas DAS. Segmen batas DTA yang berada di dalam koridor ini dapat diselaraskan ke Batas DAS apabila lolos pemeriksaan topologi dan bentuk."><span class="field-label-line">Jarak penyesuaian batas DAS</span>
+          <label class="settings-field" data-help="Koridor maksimum antara batas DTA hasil DEM dan Batas DAS. Segmen batas DTA yang berada di dalam koridor ini dapat diselaraskan ke Batas DAS apabila lolos pemeriksaan topologi dan bentuk."><span class="field-label-line">Jarak penyesuaian batas DAS <button class="info-tooltip" type="button" aria-label="Informasi jarak penyesuaian batas DAS">i</button></span>
             <select id="boundaryMatch">
               <option value="30">30 m</option><option value="60">60 m</option><option value="90" selected>90 m (bawaan)</option><option value="120">120 m</option><option value="150">150 m</option>
             </select>
@@ -50,7 +54,7 @@
         <div id="status" class="status neutral">Mode Satu Titik. Tekan Mulai Tambah Titik untuk memilih outlet.</div>
 
         <section class="panel-section outlet-section">
-          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA per pemrosesan</div></div><div class="result-heading-actions"><button id="focusAllDtaBtn" class="text-button focus-all-button result-stack-button" type="button" aria-label="Fokus semua DTA" disabled><i data-lucide="scan-search"></i><span>Fokus<br>Semua</span></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
+          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA<br>per pemrosesan</div></div><div class="result-heading-actions"><button id="focusAllDtaBtn" class="text-button focus-all-button result-stack-button" type="button" aria-label="Fokus semua DTA" disabled><i data-lucide="scan-search"></i><span>Fokus<br>Semua</span></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
           <div id="pointList" class="point-list"><div class="empty-state">Belum ada hasil delineasi.</div></div>
           <div class="point-input-control-row spaced-add-point" role="group" aria-label="Kontrol penambahan titik">
             <button id="addPointSessionBtn" class="btn btn-neutral add-point-session" type="button" aria-pressed="false"><i data-lucide="crosshair"></i>Mulai Tambah Titik</button>
@@ -185,9 +189,17 @@
             <label class="check-card"><input class="download-format" type="checkbox" value="kml" /> KML</label>
           </div></div>
           <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" checked /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
+          <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" checked /> Sertakan analisis karakteristik DTA (PDF dan Excel)</label></div>
           <div id="downloadSummary" class="download-summary" aria-live="polite"></div>
           <div id="downloadStatus" class="download-status"></div>
           <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh ZIP</button></div>
+        </div>
+      </div>
+
+      <div id="hydrologicAnalysisModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="hydrologicAnalysisTitle">
+        <div class="modal-card hydrologic-analysis-modal">
+          <div class="modal-head"><div><span class="eyebrow">KARAKTERISTIK DAERAH TANGKAPAN AIR</span><h2 id="hydrologicAnalysisTitle">Karakteristik DTA</h2></div><button id="closeHydrologicAnalysisModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
+          <div id="hydrologicAnalysisContent" class="hydrologic-analysis-content"></div>
         </div>
       </div>
 
@@ -285,5 +297,5 @@ window.DTA_CONFIG = {
 </script>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
-<script src="/static/js/spatial.js?v=1.0.0.3-session-notice-action-colors-boundary-race"></script>
+<script src="/static/js/spatial.js?v=1.6.5-river-data-sans"></script>
 {% endblock %}

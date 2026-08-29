@@ -76,6 +76,12 @@ def main() -> int:
         "metadata": spec["metadata"],
         "subbasin_raster": spec["subbasin_raster"],
         "flowdir": spec["flowdir"],
+        "dem": spec["dem"],
+        "plen": spec["plen"],
+        "cn2": spec["cn2"],
+        "landcover": spec["landcover"],
+        "streams_analysis": spec["streams_analysis"],
+        "landsystem": spec["landsystem"],
         "official": ref["official"],
         "rivers_original": ref["rivers_original"],
         "toponim": ref["toponim"],
@@ -116,7 +122,9 @@ def main() -> int:
         with sqlite3.connect(local["toponim"]) as conn:
             top_count = int(conn.execute("select count(*) from toponim").fetchone()[0])
             rtree_count = int(conn.execute("select count(*) from toponim_rtree").fetchone()[0])
-        with rasterio.open(local["flowdir"]) as fdir, rasterio.open(local["subbasin_raster"]) as sub:
+        with rasterio.open(local["flowdir"]) as fdir, rasterio.open(local["subbasin_raster"]) as sub, \
+                rasterio.open(local["dem"]) as dem, rasterio.open(local["plen"]) as plen, \
+                rasterio.open(local["cn2"]) as cn2, rasterio.open(local["landcover"]) as landcover:
             same_grid = (
                 fdir.crs == sub.crs
                 and fdir.transform == sub.transform
@@ -131,6 +139,13 @@ def main() -> int:
                     if layout != "COG":
                         raise RuntimeError(f"FAIL raster {label} belum COG (LAYOUT={layout or 'kosong'}).")
             raster_shape = (fdir.height, fdir.width)
+            for label, ds in (("dem", dem), ("plen", plen), ("cn2", cn2), ("landcover", landcover)):
+                if ds.crs != fdir.crs:
+                    raise RuntimeError(f"FAIL CRS raster analisis {label} tidak sama dengan flowdir.")
+                if schema_version >= 4:
+                    layout = str(ds.tags(ns="IMAGE_STRUCTURE").get("LAYOUT") or "").upper()
+                    if layout != "COG":
+                        raise RuntimeError(f"FAIL raster analisis {label} belum COG (LAYOUT={layout or 'kosong'}).")
 
         checks = {
             "streams": len(streams),
@@ -171,6 +186,10 @@ def main() -> int:
             raster_sources = {
                 "subbasin_raster": processed / "subbasins.tif",
                 "flowdir": data_dir / "shared" / "flowdir.tif",
+                "dem": data_dir / "shared" / "dem.tif",
+                "plen": data_dir / "shared" / "plen.tif",
+                "cn2": data_dir / "shared" / "cn2.tif",
+                "landcover": data_dir / "shared" / "landcover.tif",
             }
             for name, src in raster_sources.items():
                 if src.exists() and _raster_content_signature(src) != _raster_content_signature(local[name]):

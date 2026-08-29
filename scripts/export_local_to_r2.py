@@ -47,7 +47,7 @@ def _copy(src: Path, dst: Path) -> None:
     shutil.copy2(src, dst)
 
 
-def _copy_raster_as_cog(src: Path, dst: Path) -> None:
+def _copy_raster_as_cog(src: Path, dst: Path, *, categorical: bool = True) -> None:
     """Create a categorical COG while preserving the authoritative base grid."""
     dst.parent.mkdir(parents=True, exist_ok=True)
     compression = os.getenv("R2_RASTER_COG_COMPRESSION", "ZSTD").strip().upper() or "ZSTD"
@@ -55,7 +55,7 @@ def _copy_raster_as_cog(src: Path, dst: Path) -> None:
         "driver": "COG",
         "compress": compression,
         "blocksize": 512,
-        "overview_resampling": "NEAREST",
+        "overview_resampling": "NEAREST" if categorical else "BILINEAR",
         "BIGTIFF": "IF_SAFER",
     }
     try:
@@ -142,6 +142,12 @@ def _validate_source(data_dir: Path, dsid: str) -> dict[str, Path]:
         "metadata": processed / "metadata.json",
         "subbasin_raster": processed / "subbasins.tif",
         "flowdir": shared / "flowdir.tif",
+        "dem": shared / "dem.tif",
+        "plen": shared / "plen.tif",
+        "cn2": shared / "cn2.tif",
+        "landcover": shared / "landcover.tif",
+        "streams_analysis": shared / "streams_analysis.zip",
+        "landsystem": shared / "landsystem.zip",
         "official": reference / "official_reference.gpkg",
         "rivers_original": reference / "official_rivers_original.gpkg",
         "toponim": reference / "toponim.sqlite",
@@ -169,7 +175,9 @@ def _validate_source(data_dir: Path, dsid: str) -> dict[str, Path]:
     if top_count <= 0 or top_count != rtree_count:
         raise RuntimeError(f"toponim.sqlite / RTree tidak valid: {top_count} vs {rtree_count}")
 
-    with rasterio.open(paths["flowdir"]) as fdir, rasterio.open(paths["subbasin_raster"]) as sub:
+    with rasterio.open(paths["flowdir"]) as fdir, rasterio.open(paths["subbasin_raster"]) as sub, \
+            rasterio.open(paths["dem"]) as dem, rasterio.open(paths["plen"]) as plen, \
+            rasterio.open(paths["cn2"]) as cn2, rasterio.open(paths["landcover"]) as landcover:
         same_grid = (
             fdir.crs == sub.crs
             and fdir.transform == sub.transform
@@ -178,6 +186,12 @@ def _validate_source(data_dir: Path, dsid: str) -> dict[str, Path]:
         )
         if not same_grid:
             raise RuntimeError("flowdir.tif dan subbasins.tif lokal tidak memiliki grid identik.")
+        analysis_grid = (dem.crs == fdir.crs and dem.transform == fdir.transform and dem.width == fdir.width and dem.height == fdir.height)
+        if not analysis_grid:
+            raise RuntimeError("dem.tif harus memiliki grid identik dengan flowdir.tif.")
+        for label, ds in (("plen.tif", plen), ("cn2.tif", cn2), ("landcover.tif", landcover)):
+            if ds.crs != fdir.crs:
+                raise RuntimeError(f"{label} CRS tidak sama dengan flowdir.tif.")
 
     print(
         f"Sumber lokal valid: streams={len(streams):,}, subbasins={len(subbasins):,}, "
@@ -221,16 +235,22 @@ def main() -> int:
         paths["official"]: reference_out / "official_reference.gpkg",
         paths["rivers_original"]: reference_out / "official_rivers_original.gpkg",
         paths["toponim"]: reference_out / "toponim.sqlite",
+        paths["streams_analysis"]: shared_out / "streams_analysis.zip",
+        paths["landsystem"]: shared_out / "landsystem.zip",
     }
     for src, dst in copy_map.items():
         _copy(src, dst)
         print(f"  {src.name:32s} -> {dst.relative_to(runtime)}")
-    for src, dst in (
-        (paths["subbasin_raster"], processed_out / "subbasins.tif"),
-        (paths["flowdir"], shared_out / "flowdir.tif"),
+    for src, dst, categorical in (
+        (paths["subbasin_raster"], processed_out / "subbasins.tif", True),
+        (paths["flowdir"], shared_out / "flowdir.tif", True),
+        (paths["dem"], shared_out / "dem.tif", False),
+        (paths["plen"], shared_out / "plen.tif", True),
+        (paths["cn2"], shared_out / "cn2.tif", True),
+        (paths["landcover"], shared_out / "landcover.tif", True),
     ):
-        _copy_raster_as_cog(src, dst)
-        print(f"  {src.name:32s} -> {dst.relative_to(runtime)} (COG kategorikal)")
+        _copy_raster_as_cog(src, dst, categorical=categorical)
+        print(f"  {src.name:32s} -> {dst.relative_to(runtime)} (COG)")
 
     print("[2/4] Membuat map-assets multiscale dari reference lokal...")
     basins = gpd.read_file(paths["official"], layer="official_basins").to_crs("EPSG:4326")
@@ -259,6 +279,12 @@ def main() -> int:
         "metadata": f"datasets/{dsid}/metadata.json",
         "subbasin_raster": f"datasets/{dsid}/subbasins.tif",
         "flowdir": "shared/flowdir.tif",
+        "dem": "shared/dem.tif",
+        "plen": "shared/plen.tif",
+        "cn2": "shared/cn2.tif",
+        "landcover": "shared/landcover.tif",
+        "streams_analysis": "shared/streams_analysis.zip",
+        "landsystem": "shared/landsystem.zip",
         "official": "reference/official_reference.gpkg",
         "rivers_original": "reference/official_rivers_original.gpkg",
         "toponim": "reference/toponim.sqlite",
@@ -286,7 +312,7 @@ def main() -> int:
     map_assets_version = asset_digest.hexdigest()[:16]
 
     manifest = {
-        "schema_version": 3,
+        "schema_version": 4,
         "source": "local-runtime-data",
         "active_dataset": dsid,
         "map_assets_version": map_assets_version,
@@ -300,6 +326,12 @@ def main() -> int:
                 "metadata": object_paths["metadata"],
                 "subbasin_raster": object_paths["subbasin_raster"],
                 "flowdir": object_paths["flowdir"],
+                "dem": object_paths["dem"],
+                "plen": object_paths["plen"],
+                "cn2": object_paths["cn2"],
+                "landcover": object_paths["landcover"],
+                "streams_analysis": object_paths["streams_analysis"],
+                "landsystem": object_paths["landsystem"],
             }
         },
         "reference": {

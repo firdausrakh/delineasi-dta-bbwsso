@@ -1,7 +1,7 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.0.0.2`  
-**Current repository state:** Cloudflare R2 Runtime — Performance v2 / UI Refinement `p34`  
+**Version:** `1.2.0`
+**Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA terpadu
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
 
@@ -25,6 +25,16 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 - Pembersihan hole kecil `< 62.500 m²` (`6,25 ha`).
 - Pemindahan outlet dengan perhitungan ulang hanya pada titik terkait.
 - Ekspor DTA beserta atribut dan jaringan sungai pendukung.
+
+### Karakterisasi fisik–hidrologi
+
+- Ringkasan eksekutif kecenderungan respons hidrologi berbasis kombinasi parameter.
+- Dua belas indikator kunci tersusun 4 × 3 pada desktop: luas, kemiringan, relief, kerapatan drainase, frekuensi sungai, rasio bifurkasi, faktor bentuk, lintasan terpanjang, kemiringan alur utama, CN, Tc, dan kawasan terbangun.
+- Detail teknis topografi, morfometri, jaringan drainase, integral hipsometrik, distribusi kelas lereng, sistem lahan, penggunaan lahan, Curve Number, dan waktu konsentrasi.
+- Perbandingan 12 metode waktu konsentrasi dengan status kesesuaian dan rekomendasi berbasis median robust metode yang sesuai domain, bukan rata-rata seluruh metode.
+- Laporan PDF dan workbook XLSX satu-sheet dibuat terpisah untuk setiap DTA dan mengambil nilai dari hasil analisis yang sama dengan web.
+- Atribut analisis utama ikut disertakan pada layer DTA diperhalus hasil ekspor.
+- Nilai berbasis raster aktif otomatis saat `dem.tif` dan `plen.tif` tersedia di `data/shared/`; nilai yang belum memiliki sumber data ditandai belum tersedia.
 
 ### Interaksi titik outlet
 
@@ -243,7 +253,9 @@ data/
 │       ├── toponim
 │       └── toponim_rtree
 └── shared/
-    └── flowdir.tif
+    ├── flowdir.tif
+    ├── dem.tif                       # opsional, statistik elevasi dan lereng
+    └── plen.tif                      # opsional, longest flow path
 ```
 
 Jika data berada di luar repository:
@@ -537,6 +549,9 @@ Membaca data lokal dan memvalidasi:
 - Batas DAS dan Jaringan Sungai reference;
 - `toponim.sqlite` + SQLite RTree;
 - grid `flowdir.tif` dan `subbasins.tif`;
+- raster `dem.tif`, `plen.tif`, `cn2.tif`, dan `landcover.tif` untuk analisis karakteristik;
+- `streams_analysis.zip` sebagai jaringan sungai analisis (berbeda dari `streams_web` untuk delineasi);
+- `landsystem.zip` sebagai sumber ringkasan sistem lahan.
 - pembuatan map-assets jaringan sungai multiscale;
 - manifest dan SHA-256 file runtime utama.
 
@@ -553,7 +568,7 @@ r2_bundle/map-assets  → dta-map-assets
 
 #### `25_verify_r2.bat`
 
-Memeriksa kembali object R2, ukuran/checksum, GeoPackage, crosswalk, SQLite RTree, raster grid, dan map-assets terhadap bundle/sumber lokal.
+Memeriksa kembali object R2, ukuran/checksum, GeoPackage, crosswalk, SQLite RTree, raster grid, raster analisis, jaringan analisis, dan map-assets terhadap bundle/sumber lokal.
 
 ---
 
@@ -845,6 +860,15 @@ Perubahan utama:
 - cache hybrid dan boundary menggunakan sel raster;
 - cache geometry dibatasi dan dapat dibersihkan berdasarkan RSS memory;
 - observability antrean, cache, memory, serta I/O R2 ditambahkan.
+
+### 1.2.0 — Karakteristik DTA terpadu — 29 August 2026
+
+- respons hidrologi dan 12 indikator kunci diseragamkan pada web, PDF, dan XLSX;
+- distribusi lereng dan Curve Number memakai label kelas eksplisit tanpa interval bertumpang tindih;
+- metode Tc ditambah NRCS Velocity, Izzard, Johnstone-Cross, dan Viparelli dengan nilai kosong bila input wajib tidak tersedia;
+- rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
+- komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
+- tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
 
 ### Sebelum 1.0.0.0 — Internal development
 

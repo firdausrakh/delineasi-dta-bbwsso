@@ -8,10 +8,19 @@ from __future__ import annotations
 
 import math
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape
 
+
+
+@dataclass(frozen=True)
+class ExcelFormula:
+    """Excel formula with a cached numeric value for non-calculating readers."""
+
+    expression: str
+    cached: float | None = None
 
 def _column_name(index: int) -> str:
     result = ""
@@ -22,6 +31,10 @@ def _column_name(index: int) -> str:
 
 
 def _cell(ref: str, value: Any, style: int = 0) -> str:
+    if isinstance(value, ExcelFormula):
+        cached = value.cached
+        cached_xml = f"<v>{float(cached):.10g}</v>" if cached is not None and math.isfinite(float(cached)) else "<v/>"
+        return f'<c r="{ref}" s="{style or 2}"><f>{escape(value.expression)}</f>{cached_xml}</c>'
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)):
         return f'<c r="{ref}" s="{style or 2}"><v>{float(value):.10g}</v></c>'
     text = "—" if value is None else str(value)
@@ -68,13 +81,13 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
     flow_slope = terrain.get("flowpath_slope") or {}
     hi = terrain.get("hypsometry") or {}
     rb_by_order = drainage.get("bifurcation_ratios_by_order") or {}
-    rb_text = "; ".join(f"{pair.replace('-', '→')}: {value:.2f}" for pair, value in rb_by_order.items()) or None
+    order_counts = drainage.get("order_counts") or {}
     values = [
         ("Luas DTA (A)", morph.get("area_km2"), "km²", "Luas wilayah tangkapan pada batas DTA"),
         ("Keliling (P)", morph.get("perimeter_km"), "km", "Keliling batas DTA yang telah diperhalus"),
-        ("Panjang DTA (Lb)", morph.get("basin_length_km"), "km", "Lintasan aliran terpanjang dari outlet ke hulu"),
-        ("Panjang lintasan melalui sentroid (Lca)", terrain.get("centroidal_flowpath_km"), "km", "Jarak outlet ke titik lintasan terdekat sentroid"),
-        ("Panjang lintasan 10–85", terrain.get("flowpath_10_85_km"), "km", "Bagian lintasan antara posisi 10% dan 85%"),
+        ("Panjang lintasan aliran (L)", terrain.get("longest_flow_path_km") or morph.get("basin_length_km"), "km", "Lintasan aliran terpanjang dari outlet ke hulu"),
+        ("Panjang lintasan aliran melalui sentroid (Lca)", terrain.get("centroidal_flowpath_km"), "km", "Lintasan outlet melalui titik terdekat sentroid"),
+        ("Panjang lintasan aliran 10-85 (L10-85)", terrain.get("flowpath_10_85_km"), "km", "Bagian lintasan antara posisi 10% dan 85%"),
         ("Elevasi minimum", elevation.get("min_m"), "mdpl", "Titik ketinggian terendah dalam DTA"),
         ("Elevasi rata-rata", elevation.get("mean_m"), "mdpl", "Rata-rata ketinggian seluruh wilayah DTA"),
         ("Elevasi maksimum", elevation.get("max_m"), "mdpl", "Titik ketinggian tertinggi dalam DTA"),
@@ -91,13 +104,13 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
         ("Rasio relief (Rh)", morph.get("relief_ratio"), "-", "Relief dibagi panjang DTA"),
         ("Integral hipsometrik (HI)", hi.get("integral"), "-", f"Tahap perkembangan: {hi.get('stage') or 'belum tersedia'}"),
         ("Panjang total sungai (Lt)", drainage.get("total_stream_length_km"), "km", "Jumlah panjang seluruh sungai dalam DTA"),
-        ("Panjang alur utama (Lc)", drainage.get("main_channel_length_km"), "km", "Panjang jalur sungai utama menuju outlet"),
+        ("Panjang sungai utama", drainage.get("main_channel_length_km"), "km", "Panjang jaringan sungai utama dari outlet menuju hulu"),
         ("Kemiringan alur utama (Sc)", drainage.get("main_channel_slope_pct"), "%", "Beda elevasi dibagi panjang alur utama"),
         ("Kemiringan rata-rata jaringan", drainage.get("network_mean_slope_pct"), "%", "Rata-rata kemiringan ruas berbobot panjang"),
         ("Sinuositas alur utama", drainage.get("channel_sinuosity"), "-", "Panjang alur dibagi jarak lurus ujungnya"),
-        ("Kemiringan lintasan aliran terpanjang", flow_slope.get("longest_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan terpanjang"),
-        ("Kemiringan lintasan melalui sentroid", flow_slope.get("centroidal_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan melalui sentroid"),
-        ("Kemiringan lintasan 10–85", flow_slope.get("flowpath_10_85_pct"), "%", "Beda elevasi dibagi panjang lintasan 10–85"),
+        ("Kemiringan lintasan aliran terpanjang (SL)", flow_slope.get("longest_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan terpanjang"),
+        ("Kemiringan lintasan melalui sentroid (Sca)", flow_slope.get("centroidal_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan melalui sentroid"),
+        ("Kemiringan lintasan 10-85 (S10-85)", flow_slope.get("flowpath_10_85_pct"), "%", "Beda elevasi dibagi panjang lintasan 10-85"),
         ("Kerapatan drainase (Dd)", drainage.get("drainage_density_km_per_km2"), "km/km²", "Panjang sungai per luas DTA"),
         ("Frekuensi sungai (Fs)", drainage.get("stream_frequency_per_km2"), "sungai/km²", "Jumlah sungai Strahler per luas DTA"),
         ("Tekstur drainase (Dt)", drainage.get("drainage_texture_per_km"), "sungai/km", "Jumlah sungai per keliling DTA"),
@@ -110,13 +123,28 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
         ("Orde sungai maksimum (Strahler)", drainage.get("stream_order_max"), "-", "Orde Strahler tertinggi dalam DTA"),
         ("Jumlah sungai (Nu)", drainage.get("stream_count"), "sungai", "Jumlah sungai Strahler dalam DTA"),
         ("Panjang sungai rata-rata (Lm)", drainage.get("mean_stream_length_km"), "km", "Panjang total dibagi jumlah sungai"),
-        ("Rasio percabangan (Rb)", drainage.get("bifurcation_ratio"), "-", "Perbandingan jumlah sungai pada orde berurutan"),
-        ("Rasio percabangan per orde", rb_text, "-", "Rasio untuk setiap pasangan orde berurutan"),
+    ]
+    # Tampilkan jumlah ruas per orde sebagai nilai sumber agar rasio percabangan di Excel dapat diaudit.
+    def _order_key(value: Any) -> int:
+        text = str(value).strip()
+        # Pair keys are stored as ``1-2``, ``2-3``, etc.  For a bifurcation ratio
+        # the row label must use the first order only, not concatenate both digits.
+        head = text.split("-", 1)[0]
+        digits = "".join(ch for ch in head if ch.isdigit())
+        if not digits:
+            digits = "".join(ch for ch in text if ch.isdigit())
+        return int(digits or 0)
+    for order, count in sorted(order_counts.items(), key=lambda item: _order_key(item[0])):
+        values.append((f"Jumlah sungai orde {_order_key(order)}", count, "sungai", "Jumlah sungai Strahler pada orde tersebut"))
+    for pair, ratio in sorted(rb_by_order.items(), key=lambda item: _order_key(item[0])):
+        first = _order_key(pair)
+        values.append((f"Rasio percabangan orde {first}", ratio, "-", f"Jumlah sungai orde {first} dibagi orde {first + 1}"))
+    values.extend([
         ("CN rata-rata tertimbang (CN-II)", cn.get("weighted_cn_ii"), "-", (cn.get("interpretations") or {}).get("weighted_cn")),
         ("Retensi potensial (S)", cn.get("potential_retention_mm"), "mm", (cn.get("interpretations") or {}).get("retention")),
         ("Luas area CN ≥ 80", cn.get("high_cn_pct"), "%", (cn.get("interpretations") or {}).get("high_cn_area")),
         ("Nilai CN tidak valid", cn.get("invalid_pct"), "%", "Nilai di luar rentang CN yang digunakan"),
-    ]
+    ])
     return [["Parameter", "Nilai", "Satuan", "Interpretasi"], *[list(item) for item in values]]
 
 
@@ -153,8 +181,64 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
     rows.extend([[item.get("class"), item.get("area_pct")] for item in (analysis.get("curve_number") or {}).get("distribution") or []])
     rows.extend([[], ["Waktu Konsentrasi"], ["Metode", "Estimasi (jam)", "Keterangan"]])
     tc = analysis.get("time_of_concentration") or {}
-    rows.extend([[item.get("label"), item.get("value_hours"), item.get("reason")] for item in tc.get("methods") or []])
+    rows.extend([[item.get("label"), item.get("value_hours"), item.get("reason")] for item in tc.get("methods") or [] if isinstance(item.get("value_hours"), (int, float))])
     rows.append(["Tc Representatif", tc.get("representative_hours") or tc.get("recommended_hours"), f"Dasar: {', '.join(tc.get('representative_methods') or tc.get('recommendation_methods') or [])}. Kesepakatan antar-metode: {tc.get('method_agreement') or tc.get('confidence') or 'Rendah'}. {tc.get('representative_basis') or tc.get('recommendation_basis') or ''}"])
+
+    # Pertahankan hubungan perhitungan utama sebagai formula Excel, bukan hanya angka hasil.
+    row_by_label = {str(row[0]): idx for idx, row in enumerate(rows, 1) if row and isinstance(row[0], str)}
+    def ref(label: str, column: str = "B") -> str | None:
+        row_no = row_by_label.get(label)
+        return f"{column}{row_no}" if row_no else None
+    def formula(label: str, expression: str | None) -> None:
+        row_no = row_by_label.get(label)
+        if not row_no or not expression:
+            return
+        current = rows[row_no - 1][1] if len(rows[row_no - 1]) > 1 else None
+        cached = float(current) if isinstance(current, (int, float)) and math.isfinite(float(current)) else None
+        rows[row_no - 1][1] = ExcelFormula(expression, cached)
+
+    A, P, L = ref("Luas DTA (A)"), ref("Keliling (P)"), ref("Panjang lintasan aliran (L)")
+    R = ref("Relief DTA (R)")
+    Lt, Nu, JN = ref("Panjang total sungai (Lt)"), ref("Jumlah sungai (Nu)"), ref("Jumlah percabangan")
+    if A and L:
+        formula("Faktor bentuk (Ff)", f"{A}/({L}^2)")
+        formula("Rasio elongasi (Re)", f"(2*SQRT({A}/PI()))/{L}")
+    if A and P:
+        formula("Rasio kebulatan (Rc)", f"4*PI()*{A}/({P}^2)")
+    if R and L:
+        formula("Rasio relief (Rh)", f"{R}/({L}*1000)")
+    if Lt and A:
+        formula("Kerapatan drainase (Dd)", f"{Lt}/{A}")
+    if Nu and A:
+        formula("Frekuensi sungai (Fs)", f"{Nu}/{A}")
+    if Nu and P:
+        formula("Tekstur drainase (Dt)", f"{Nu}/{P}")
+    dd, fs = ref("Kerapatan drainase (Dd)"), ref("Frekuensi sungai (Fs)")
+    if dd and fs:
+        formula("Intensitas drainase (Id)", f"{fs}/{dd}")
+        formula("Nomor infiltrasi (If)", f"{dd}*{fs}")
+    if dd:
+        formula("Panjang aliran permukaan (Lo)", f"1/(2*{dd})")
+        formula("Konstanta pemeliharaan saluran (C)", f"1/{dd}")
+    if JN and A:
+        formula("Kerapatan percabangan", f"{JN}/{A}")
+    if Lt and Nu:
+        formula("Panjang sungai rata-rata (Lm)", f"{Lt}/{Nu}")
+    cn_ref = ref("CN rata-rata tertimbang (CN-II)")
+    if cn_ref:
+        formula("Retensi potensial (S)", f"25400/{cn_ref}-254")
+    for label, row_no in list(row_by_label.items()):
+        if not label.startswith("Rasio percabangan orde "):
+            continue
+        try:
+            order = int(label.rsplit(" ", 1)[-1])
+        except ValueError:
+            continue
+        n1 = ref(f"Jumlah sungai orde {order}")
+        n2 = ref(f"Jumlah sungai orde {order + 1}")
+        if n1 and n2:
+            formula(label, f"{n1}/{n2}")
+
     section_titles = {1: 3, 2: 3}
     for row_index, row in enumerate(rows, 1):
         if row and row[0] in {"Indikator Kunci", "Karakteristik Wilayah", "Topografi, Morfometri, Jaringan Drainase, CN, dan Waktu Konsentrasi", "Distribusi Kelas Lereng", "Distribusi Curve Number", "Waktu Konsentrasi", "Sistem Lahan", "Penutupan Lahan"}:
@@ -169,7 +253,7 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("[Content_Types].xml", f'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>{content_overrides}</Types>')
         archive.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
-        archive.writestr("xl/workbook.xml", f'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>{sheet_entries}</sheets></workbook>')
+        archive.writestr("xl/workbook.xml", f'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>{sheet_entries}</sheets><calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>')
         archive.writestr("xl/_rels/workbook.xml.rels", f'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{relationships}<Relationship Id="rId{styles_id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>')
         archive.writestr("xl/styles.xml", '<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="0.0000"/></numFmts><fonts count="3"><font><sz val="10"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="10"/><name val="Aptos"/></font><font><b/><color rgb="FF223468"/><sz val="15"/><name val="Aptos Display"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF223468"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border/><border><bottom style="thin"><color rgb="FFD5DCE8"/></bottom></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="justify" vertical="top" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="justify" vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>')
         for index, (_, xml) in enumerate(sheets, 1):

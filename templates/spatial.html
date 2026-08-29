@@ -3,7 +3,7 @@
 {% block body_class %}spatial-page{% endblock %}
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.6.7-sidebar-polish" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.6.8-hss" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -65,6 +65,7 @@
         <section id="relationshipPanel" class="panel-section hidden"><h2>Hubungan Antar Titik</h2><div id="relationshipContent" class="relationship-content"></div></section>
 
         <div class="sidebar-actions">
+          <button id="hssAnalysisBtn" class="btn btn-neutral full hss-main-button" type="button" disabled><i data-lucide="activity"></i>Analisis HSS</button>
           <button id="downloadBtn" class="btn btn-download full" type="button" disabled><i data-lucide="download"></i>Unduh Hasil</button>
         </div>
 
@@ -183,16 +184,17 @@
             <label class="choice-card"><input class="geometry-mode" type="checkbox" value="raw" /><span><b>Asli</b><small>Batas hasil perhitungan sebelum perapihan.</small></span></label>
           </div>
           <div class="download-section"><strong>Format</strong><div class="format-grid">
-            <label class="check-card"><input class="download-format" type="checkbox" value="gpkg" checked /> GeoPackage</label>
-            <label class="check-card"><input class="download-format" type="checkbox" value="shp" /> Shapefile</label>
+            <label class="check-card"><input class="download-format" type="checkbox" value="shp" checked /> Shapefile</label>
+            <label class="check-card"><input class="download-format" type="checkbox" value="gpkg" /> GeoPackage</label>
             <label class="check-card"><input class="download-format" type="checkbox" value="geojson" /> GeoJSON</label>
             <label class="check-card"><input class="download-format" type="checkbox" value="kml" /> KML</label>
           </div></div>
-          <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" checked /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
-          <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" checked /> Sertakan analisis karakteristik DTA (PDF dan Excel)</label></div>
+          <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
+          <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" /> Sertakan analisis karakteristik DTA (PDF dan Excel)</label></div>
+          <div class="download-section"><label class="check-row"><input id="downloadHss" type="checkbox" disabled /> Sertakan analisis HSS (PDF dan Excel per DTA yang telah dianalisis)</label><small id="downloadHssHint" class="download-option-hint">Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
           <div id="downloadSummary" class="download-summary" aria-live="polite"></div>
           <div id="downloadStatus" class="download-status"></div>
-          <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh ZIP</button></div>
+          <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh</button></div>
         </div>
       </div>
 
@@ -200,6 +202,25 @@
         <div class="modal-card hydrologic-analysis-modal">
           <div class="modal-head"><div><span class="eyebrow">KARAKTERISTIK DAERAH TANGKAPAN AIR</span><h2 id="hydrologicAnalysisTitle">Karakteristik DTA</h2></div><button id="closeHydrologicAnalysisModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <div id="hydrologicAnalysisContent" class="hydrologic-analysis-content"></div>
+        </div>
+      </div>
+
+      <div id="hssAnalysisModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="hssAnalysisTitle">
+        <div class="modal-card hss-analysis-modal">
+          <div class="modal-head"><div><span class="eyebrow">HIDROGRAF SATUAN SINTETIS</span><h2 id="hssAnalysisTitle">Analisis HSS</h2></div><button id="closeHssAnalysisModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
+          <div class="hss-toolbar">
+            <label class="hss-dta-select">DTA yang dianalisis<select id="hssDtaSelect"></select></label>
+            <div id="hssDtaSummary" class="hss-dta-summary"></div>
+          </div>
+          <div class="hss-global-input-row">
+            <label><span>Durasi hujan efektif (Tr)</span><div><input id="hssGlobalTr" type="number" min="0.05" max="24" step="0.05" value="1"><b>jam</b></div></label>
+            <small>Tr digunakan satu kali untuk seluruh metode HSS yang memerlukan durasi hujan efektif.</small>
+          </div>
+          <div id="hssMorphometryControls" class="hss-morphometry-controls"></div>
+          <div id="hssMethodControls" class="hss-method-controls"></div>
+          <div class="hss-run-row"><div><strong>Hujan efektif satuan: 1 mm</strong><small>Parameter morfometri dapat disesuaikan untuk skenario HSS tanpa mengubah hasil karakteristik DTA asli.</small></div><button id="runHssBtn" class="btn btn-primary hss-calc-button" type="button"><i data-lucide="calculator"></i>Hitung HSS</button></div>
+          <div id="hssStatus" class="hss-status" aria-live="polite"></div>
+          <div id="hssResults" class="hss-results"></div>
         </div>
       </div>
 
@@ -297,5 +318,9 @@ window.DTA_CONFIG = {
 </script>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
-<script src="/static/js/spatial.js?v=1.6.5-river-data-sans"></script>
+<script src="/static/js/spatial.js?v=1.7.0-lazy-analysis"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="/static/js/hss.js?v=1.1.0-chartjs"></script>
 {% endblock %}

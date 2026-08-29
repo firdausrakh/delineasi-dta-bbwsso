@@ -20,7 +20,7 @@ from rasterio import features as rio_features
 from rasterio.enums import Resampling
 from rasterio.windows import Window, from_bounds
 from shapely.geometry import LineString, Point, mapping
-from shapely.ops import transform
+from shapely.ops import split, transform
 from pyproj import Transformer
 
 
@@ -960,8 +960,97 @@ def _strahler_stream_counts(rows: dict[int, Any], order_getter, downstream_gette
     return counts, ratios
 
 
+
+
+def _gama_cross_section(target, main_line: LineString, station: float) -> tuple[float | None, LineString | None]:
+    """Return DTA width and a long normal section through a main-channel station."""
+    if target is None or target.is_empty or main_line is None or main_line.length <= 0:
+        return None, None
+    station = max(0.0, min(float(main_line.length), float(station)))
+    point = main_line.interpolate(station)
+    delta = min(max(main_line.length * 0.01, 10.0), 250.0)
+    a = main_line.interpolate(max(0.0, station - delta))
+    b = main_line.interpolate(min(main_line.length, station + delta))
+    dx, dy = float(b.x - a.x), float(b.y - a.y)
+    norm = math.hypot(dx, dy)
+    if norm <= 1e-9:
+        return None, None
+    nx, ny = -dy / norm, dx / norm
+    minx, miny, maxx, maxy = target.bounds
+    reach = max(math.hypot(maxx - minx, maxy - miny) * 2.5, 1000.0)
+    section = LineString([(point.x - nx * reach, point.y - ny * reach), (point.x + nx * reach, point.y + ny * reach)])
+    intersection = target.intersection(section)
+    parts = _line_parts(intersection)
+    if not parts:
+        return None, section
+    selected = min(parts, key=lambda part: part.distance(point))
+    return (float(selected.length) if selected.length > 0 else None), section
+
+
+def _gama_rua_section(target, main_line: LineString) -> tuple[float | None, float | None]:
+    """Derive RUA using the SNI Gama-I centroid section definition.
+
+    The section passes through the main-channel point nearest the DTA centroid and is
+    perpendicular to the straight axis connecting that point to the outlet.
+    """
+    if target is None or target.is_empty or main_line is None or main_line.length <= 0 or target.area <= 0:
+        return None, None
+    centroid = target.centroid
+    station = float(main_line.project(centroid))
+    channel_point = main_line.interpolate(station)
+    outlet_xy = main_line.coords[0]
+    dx = float(channel_point.x - outlet_xy[0])
+    dy = float(channel_point.y - outlet_xy[1])
+    norm = math.hypot(dx, dy)
+    if norm <= 1e-9:
+        return None, station
+    nx, ny = -dy / norm, dx / norm
+    minx, miny, maxx, maxy = target.bounds
+    reach = max(math.hypot(maxx - minx, maxy - miny) * 2.5, 1000.0)
+    section = LineString([
+        (channel_point.x - nx * reach, channel_point.y - ny * reach),
+        (channel_point.x + nx * reach, channel_point.y + ny * reach),
+    ])
+    try:
+        pieces = [piece for piece in split(target, section).geoms if not piece.is_empty and piece.area > 0]
+    except Exception:
+        return None, station
+    if len(pieces) < 2:
+        return None, station
+    upstream_point = main_line.interpolate(main_line.length * 0.98)
+    upstream_piece = min(pieces, key=lambda piece: piece.distance(upstream_point))
+    rua = float(upstream_piece.area / target.area)
+    if not (0.0 < rua <= 1.0):
+        return None, station
+    return rua, station
+
+
+def _gama_shape_parameters(target, main_line: LineString) -> dict[str, float | None]:
+    """Derive WF and RUA spatial parameters for HSS Gama I."""
+    empty = {"width_upstream_km": None, "width_lower_km": None, "width_factor": None,
+             "upstream_area_km2": None, "relative_upstream_area": None, "symmetry_factor": None,
+             "rua_section_station_km": None}
+    if target is None or target.is_empty or main_line is None or main_line.length <= 0 or target.area <= 0:
+        return empty
+    # WF follows the SNI definition: DTA width at 3/4 L divided by width at 1/4 L,
+    # measured from the outlet along the main channel.
+    wu, _ = _gama_cross_section(target, main_line, main_line.length * 0.75)
+    wl, _ = _gama_cross_section(target, main_line, main_line.length * 0.25)
+    wf = (wu / wl) if wu is not None and wl is not None and wl > 0 else None
+    rua, rua_station = _gama_rua_section(target, main_line)
+    return {
+        "width_upstream_km": _round(wu / 1000.0, 4) if wu is not None else None,
+        "width_lower_km": _round(wl / 1000.0, 4) if wl is not None else None,
+        "width_factor": _round(wf, 5),
+        "upstream_area_km2": _round((rua * target.area) / 1_000_000.0, 5) if rua is not None else None,
+        "relative_upstream_area": _round(rua, 5),
+        "symmetry_factor": _round(wf * rua, 5) if wf is not None and rua is not None else None,
+        "rua_section_station_km": _round(rua_station / 1000.0, 4) if rua_station is not None else None,
+    }
+
 def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | None, area_km2: float,
-                            dem_path: Path | None = None) -> dict[str, Any]:
+                            dem_path: Path | None = None, *, expected_main_length_km: float | None = None,
+                            expected_centroidal_length_km: float | None = None) -> dict[str, Any]:
     empty = {"available": False, "source": None, "stream_count": None, "stream_order_max": None,
              "total_stream_length_km": None, "main_channel_length_km": None, "main_channel_slope_pct": None,
              "network_mean_slope_pct": None, "reach_slope_pct": None,
@@ -970,7 +1059,7 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
              "drainage_texture_per_km": None, "drainage_intensity": None, "overland_flow_length_km": None,
              "channel_maintenance_constant_km2_per_km": None, "infiltration_number": None,
              "junction_density_per_km2": None, "junction_count": None, "channel_sinuosity": None,
-             "main_channel_linknos": [], "missing": []}
+             "main_channel_linknos": [], "gama1": {}, "missing": []}
     if stream_path is None:
         empty["missing"].append("data jaringan sungai analisis")
         return empty
@@ -1012,6 +1101,15 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
                 lambda row: row.get(order_col, 0),
                 lambda row: row.get(ds_col, -1) if ds_col is not None else -1,
             )
+
+        source_length_m = 0.0
+        if order_col is not None:
+            for row in rows.values():
+                try:
+                    if int(row.get(order_col, 0) or 0) == 1:
+                        source_length_m += float(row.get("_clipped_length_m", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    continue
 
         slope_values: list[float] = []
         slope_weights: list[float] = []
@@ -1072,8 +1170,46 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
             memo[link] = ([link, *child_path], own + child_length)
             return memo[link]
 
-        root_paths = [best_upstream_path(link) for link in outlet_roots]
-        main_path, main_length_m = max(root_paths, key=lambda item: item[1])
+        root_paths = [(link, *best_upstream_path(link)) for link in outlet_roots]
+        selected_root, main_path, main_length_m = max(root_paths, key=lambda item: item[2])
+        main_root_reselected = False
+
+        # A clipped regional network can create a tiny artificial root immediately beside a very
+        # downstream outlet.  The old nearest-root rule then returned only that fragment even
+        # though the terrain-derived centroidal path was tens of kilometres long.  Keep the
+        # nearest-root behaviour whenever it is physically plausible; only search the other
+        # DTA-relative roots when L would otherwise be shorter than Lca.
+        try:
+            expected_centroid_m = float(expected_centroidal_length_km) * 1000.0 if expected_centroidal_length_km is not None else None
+        except (TypeError, ValueError):
+            expected_centroid_m = None
+        try:
+            expected_main_m = float(expected_main_length_km) * 1000.0 if expected_main_length_km is not None else None
+        except (TypeError, ValueError):
+            expected_main_m = None
+        if expected_centroid_m is not None and math.isfinite(expected_centroid_m) and expected_centroid_m > 0 \
+                and main_length_m < expected_centroid_m * 0.98:
+            nearest = float(nearest_root_distance)
+            # Correct alternative roots should still emerge near the outlet.  The tolerance is
+            # deliberately generous enough for clipped reach boundaries but far too small to
+            # jump to a headwater root at the DTA divide.
+            proximity = max(1000.0, min(5000.0, (expected_main_m or expected_centroid_m) * 0.03))
+            alternatives: list[tuple[int, list[int], float]] = []
+            for link in root_links:
+                path, length = best_upstream_path(link)
+                if length < expected_centroid_m * 0.98:
+                    continue
+                if root_distances.get(link, float("inf")) > nearest + proximity:
+                    continue
+                alternatives.append((link, path, length))
+            if alternatives:
+                if expected_main_m is not None and math.isfinite(expected_main_m) and expected_main_m > 0:
+                    chosen = min(alternatives, key=lambda item: (abs(item[2] - expected_main_m), root_distances.get(item[0], float("inf"))))
+                else:
+                    chosen = max(alternatives, key=lambda item: item[2])
+                selected_root, main_path, main_length_m = chosen
+                main_root_reselected = selected_root not in outlet_roots
+
         chain_coords, assembled_length = _assemble_main_channel(main_path, rows, outlet_target)
         if assembled_length > 0:
             main_length_m = assembled_length
@@ -1083,6 +1219,9 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
             straight_length = float(outlet_target.distance(upstream_point))
             if straight_length > 0:
                 channel_sinuosity = main_length_m / straight_length
+
+        main_line = LineString(chain_coords) if len(chain_coords) >= 2 else None
+        gama_shape = _gama_shape_parameters(target, main_line) if main_line is not None else {}
 
         main_channel_slope = None
         if dem_path is not None and upstream_point is not None and main_length_m > 0:
@@ -1157,8 +1296,20 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
             "junction_density_per_km2": _round(junction_count / area_km2, 3) if area_km2 > 0 else None,
             "channel_sinuosity": _round(channel_sinuosity, 3),
             "main_channel_linknos": [int(link) for link in main_path],
+            "main_channel_root_linkno": int(selected_root),
+            "main_channel_root_reselected": bool(main_root_reselected),
             "order_counts": {str(k): v for k, v in sorted(orders.items())},
             "bifurcation_ratios_by_order": {key: _round(value, 3) for key, value in order_ratios.items()},
+            "gama1": {
+                # Keep the source measurements as well as the ratios so HSS inputs and
+                # Excel formulas can be audited/recalculated without reverse-engineering
+                # rounded ratios.
+                "source_stream_length_km": _round(source_length_m / 1000.0, 5),
+                "source_stream_count": int(orders.get(1, 0)),
+                "source_factor": _round(source_length_m / total_length_m, 5) if total_length_m > 0 else None,
+                "source_frequency": _round(orders.get(1, 0) / stream_count, 5) if stream_count > 0 else None,
+                **gama_shape,
+            },
             "missing": [],
         }
     except (OSError, ValueError, KeyError, rasterio.errors.RasterioError):
@@ -1195,7 +1346,7 @@ def drainage_metrics(streams, upstream_ids: Iterable[int], upstream_by_downstrea
             "drainage_density_km_per_km2": None, "stream_frequency_per_km2": None,
             "bifurcation_ratio": None, "order_counts": {}, "bifurcation_ratios_by_order": {}, "mean_stream_length_km": None,
             "drainage_intensity": None, "infiltration_number": None, "junction_count": None,
-            "junction_density_per_km2": None, "channel_sinuosity": None,
+            "junction_density_per_km2": None, "channel_sinuosity": None, "gama1": {},
         }
     rows = {int(row["linkno"]): row for _, row in streams[streams["linkno"].isin(ids)].iterrows()}
     total_length_m = sum(float(row.get("length_m", row.geometry.length) or 0.0) for row in rows.values())
@@ -1232,6 +1383,11 @@ def drainage_metrics(streams, upstream_ids: Iterable[int], upstream_by_downstrea
         1 for link in ids
         if len([child for child in upstream_by_downstream.get(link, []) if int(child) in ids]) >= 2
     )
+    source_length_m = sum(
+        float(row.get("length_m", row.geometry.length) or 0.0)
+        for row in rows.values()
+        if int(row.get("strm_order", 0) or 0) == 1
+    )
     result = {
         "available": True,
         "stream_count": stream_count,
@@ -1252,6 +1408,12 @@ def drainage_metrics(streams, upstream_ids: Iterable[int], upstream_by_downstrea
         "channel_sinuosity": None,
         "order_counts": {str(k): v for k, v in sorted(orders.items())},
         "bifurcation_ratios_by_order": {key: _round(value, 3) for key, value in order_ratios.items()},
+        "gama1": {
+            "source_factor": _round(source_length_m / total_length_m, 5) if total_length_m > 0 else None,
+            "source_frequency": _round(orders.get(1, 0) / stream_count, 5) if stream_count > 0 else None,
+            "width_upstream_km": None, "width_lower_km": None, "width_factor": None,
+            "relative_upstream_area": None, "symmetry_factor": None, "rua_section_station_km": None,
+        },
     }
     return result
 
@@ -1577,6 +1739,63 @@ def refresh_characteristic_narratives(analysis: dict[str, Any], decimal_separato
     return analysis
 
 
+def _reconcile_main_channel_with_flowpath(drainage: dict[str, Any], terrain: dict[str, Any]) -> dict[str, Any]:
+    """Guard against a clipped regional-network fragment being mistaken for the main channel.
+
+    The detailed stream network and the terrain flowpath are independent datasets. Near the most
+    downstream outlet of a large DTA, a tiny clipped stream fragment can occasionally be selected
+    as the DTA-relative root. That produces an impossible combination such as L < Lca and often a
+    zero channel slope. When this happens, use the already-traced outlet-to-divide flowpath as the
+    consistent fallback for main-channel length/slope while preserving the raw network values for
+    audit. HSS equations themselves are not changed.
+    """
+    if not isinstance(drainage, dict) or not isinstance(terrain, dict):
+        return drainage
+    flow_length = terrain.get("longest_flow_path_km")
+    centroid_length = terrain.get("centroidal_flowpath_km")
+    flow_slope = (terrain.get("flowpath_slope") or {}).get("longest_flowpath_pct")
+    network_length = drainage.get("main_channel_length_km")
+    network_slope = drainage.get("main_channel_slope_pct")
+
+    def finite(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    fl = finite(flow_length)
+    cl = finite(centroid_length)
+    nl = finite(network_length)
+    fs = finite(flow_slope)
+    ns = finite(network_slope)
+    tolerance = max(0.01, (cl or 0.0) * 1e-4)
+    length_inconsistent = fl is not None and fl > 0 and (
+        nl is None or nl <= 0 or (cl is not None and cl > 0 and nl + tolerance < cl)
+    )
+    slope_inconsistent = fs is not None and fs > 0 and (ns is None or ns <= 0)
+    if not length_inconsistent and not slope_inconsistent:
+        drainage.setdefault("main_channel_method", "Jaringan sungai analisis")
+        drainage.setdefault("main_channel_corrected", False)
+        return drainage
+
+    drainage["main_channel_network_length_km"] = _round(nl, 3)
+    drainage["main_channel_network_slope_pct"] = _round(ns, 3)
+    reasons: list[str] = []
+    if length_inconsistent:
+        drainage["main_channel_length_km"] = _round(fl, 3)
+        reasons.append("Panjang jaringan terpilih lebih pendek daripada lintasan melalui sentroid.")
+    if slope_inconsistent or length_inconsistent:
+        if fs is not None:
+            drainage["main_channel_slope_pct"] = _round(fs, 3)
+    if slope_inconsistent:
+        reasons.append("Kemiringan jaringan utama kosong atau nol sehingga digunakan kemiringan lintasan aliran terpanjang.")
+    drainage["main_channel_method"] = "Lintasan aliran terpanjang (koreksi konsistensi outlet)"
+    drainage["main_channel_corrected"] = True
+    drainage["main_channel_correction_reason"] = " ".join(reasons)
+    return drainage
+
+
 def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float, streams,
                               upstream_ids: Iterable[int], upstream_by_downstream: dict[int, list[int]],
                               outlet_linkno: int | None, dem_path: Path | None, plen_path: Path | None,
@@ -1587,9 +1806,14 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
     terrain = terrain_metrics(geom, outlet, source_crs, dem_path, plen_path, flowdir_path)
     # Delineation remains tied to the 1 km² network. Morphometric drainage metrics
     # deliberately use the independent high-detail analysis stream data when supplied.
-    drainage = analysis_stream_metrics(geom, outlet, source_crs, analysis_stream_path, area_km2, dem_path) if analysis_stream_path else drainage_metrics(
+    drainage = analysis_stream_metrics(
+        geom, outlet, source_crs, analysis_stream_path, area_km2, dem_path,
+        expected_main_length_km=terrain.get("longest_flow_path_km"),
+        expected_centroidal_length_km=terrain.get("centroidal_flowpath_km"),
+    ) if analysis_stream_path else drainage_metrics(
         streams, upstream_ids, upstream_by_downstream, outlet_linkno, area_km2
     )
+    drainage = _reconcile_main_channel_with_flowpath(drainage, terrain)
     landcover = landcover_metrics(geom, source_crs, landcover_path, area_km2)
     landsystem = landsystem_metrics(geom, source_crs, landsystem_path)
     curve_number = curve_number_metrics(geom, source_crs, cn_path)
@@ -1720,7 +1944,6 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
             "relief_total_m": relief_m,
             "drainage_density_km_per_km2": dd,
             "stream_frequency_per_km2": drainage.get("stream_frequency_per_km2"),
-            "bifurcation_ratio": drainage.get("bifurcation_ratio"),
             "form_factor": morphometry["form_factor"],
             "longest_flow_path_km": terrain.get("longest_flow_path_km") or drainage.get("main_channel_length_km"),
             "main_channel_slope_pct": drainage.get("main_channel_slope_pct"),
@@ -1744,12 +1967,12 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
         {"label": "Relief DTA (R)", "value": keys.get("relief_total_m"), "unit": "m"},
         {"label": "Kerapatan drainase (Dd)", "value": keys.get("drainage_density_km_per_km2"), "unit": "km/km²"},
         {"label": "Frekuensi sungai (Fs)", "value": keys.get("stream_frequency_per_km2"), "unit": "sungai/km²"},
-        {"label": "Rasio percabangan (Rb)", "value": keys.get("bifurcation_ratio"), "unit": ""},
         {"label": "Faktor bentuk (Ff)", "value": keys.get("form_factor"), "unit": ""},
         {"label": "Lintasan aliran terpanjang (Lb)", "value": keys.get("longest_flow_path_km"), "unit": "km"},
         {"label": "Kemiringan alur utama (Sc)", "value": keys.get("main_channel_slope_pct"), "unit": "%"},
         {"label": "Curve Number (CN)", "value": keys.get("curve_number"), "unit": ""},
         {"label": "Waktu konsentrasi (Tc)", "value": keys.get("time_of_concentration_hours"), "unit": "jam"},
         {"label": "Kawasan terbangun", "value": keys.get("built_up_pct"), "unit": "%"},
+        {"label": "Orde sungai maksimum", "value": drainage.get("stream_order_max"), "unit": ""},
     ]
     return refresh_characteristic_narratives(result, ",")

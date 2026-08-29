@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import math
 from xml.sax.saxutils import escape
 
 from api.services.characteristics_workbook import _parameter_rows
@@ -56,6 +57,14 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
     font_dir = Path(reportlab.__file__).resolve().parent / "fonts"
     pdfmetrics.registerFont(TTFont("DTARegular", str(font_dir / "Vera.ttf")))
     pdfmetrics.registerFont(TTFont("DTABold", str(font_dir / "VeraBd.ttf")))
+    # Keep the report visual language aligned with the web cards/tables: navy primary,
+    # orange priority accent, light neutral surfaces, and white A4 paper.
+    primary = colors.HexColor("#223468")
+    accent = colors.HexColor("#D97706")
+    accent_soft = colors.HexColor("#FFF7ED")
+    border = colors.HexColor("#D8DEE8")
+    soft = colors.HexColor("#F7F9FC")
+    muted = colors.HexColor("#667085")
     is_en = False
     labels = {
         "title": "Laporan Karakteristik Daerah Tangkapan Air",
@@ -70,12 +79,12 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
     }
     styles = getSampleStyleSheet()
     title = ParagraphStyle("report-title", parent=styles["Title"], fontName="DTABold", fontSize=17,
-                           leading=21, textColor=colors.HexColor("#223468"), alignment=TA_CENTER, spaceAfter=12)
+                           leading=21, textColor=primary, alignment=TA_CENTER, spaceAfter=12)
     h2 = ParagraphStyle("report-h2", parent=styles["Heading2"], fontName="DTABold", fontSize=11,
-                        leading=13, textColor=colors.HexColor("#223468"), spaceBefore=7, spaceAfter=4)
+                        leading=13, textColor=primary, spaceBefore=7, spaceAfter=4)
     body = ParagraphStyle("report-body", parent=styles["BodyText"], fontName="DTARegular", fontSize=8.2,
                           leading=10.5, spaceAfter=4, alignment=TA_JUSTIFY)
-    small = ParagraphStyle("report-small", parent=body, fontSize=7.2, leading=8.5, textColor=colors.HexColor("#4d596b"))
+    small = ParagraphStyle("report-small", parent=body, fontSize=7.2, leading=8.5, textColor=muted)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     doc = SimpleDocTemplate(str(output_path), pagesize=A4, leftMargin=1.55 * cm, rightMargin=1.55 * cm,
                             topMargin=1.2 * cm, bottomMargin=1.0 * cm, title=labels["title"])
@@ -106,11 +115,20 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
             unit = _safe_text(item.get("unit") or "")
             data.append([_safe_text(item.get("label")), f"{_number(item.get('value'), decimal_separator=decimal_separator)}{(' ' + unit) if unit else ''}"])
         table = Table(data, colWidths=[8.8 * cm, 7.2 * cm], repeatRows=1)
-        table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#223468")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                                   ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"),
-                                   ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), .35, colors.HexColor("#cbd3df")),
-                                   ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#f7f9fc")), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                                   ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        indicator_style = [("BACKGROUND", (0, 0), (-1, 0), primary), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                           ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"),
+                           ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), .35, border),
+                           ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, soft]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                           ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
+        priority_labels = {"Kemiringan rata-rata (S)", "Kerapatan drainase (Dd)", "Curve Number (CN)", "Waktu konsentrasi (Tc)"}
+        for row_index, item in enumerate(analysis.get("key_indicator_items") or [], 1):
+            if item.get("label") in priority_labels:
+                indicator_style.extend([
+                    ("BACKGROUND", (0, row_index), (-1, row_index), accent_soft),
+                    ("TEXTCOLOR", (0, row_index), (-1, row_index), accent),
+                    ("FONTNAME", (0, row_index), (-1, row_index), "DTABold"),
+                ])
+        table.setStyle(TableStyle(indicator_style))
         story.append(KeepTogether([Paragraph(labels["indicators"], h2), table]))
         story.append(Paragraph("Karakteristik Wilayah", h2))
         for paragraph in analysis.get("territory_paragraphs") or []:
@@ -127,15 +145,15 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
                 Paragraph(_safe_text(note), detail_cell),
             ])
         detail_table = Table(technical, colWidths=[5.8 * cm, 3.1 * cm, 7.0 * cm], repeatRows=1)
-        detail_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.HexColor("#223468")),
+        detail_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), soft), ("TEXTCOLOR", (0, 0), (-1, 0), primary),
                                           ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.5),
-                                          ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#d4dbe5")), ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                          ("GRID", (0, 0), (-1, -1), .3, border), ("VALIGN", (0, 0), (-1, -1), "TOP"),
                                           ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
         story.append(KeepTogether([Paragraph(labels["technical"], h2), detail_table]))
         slope_names = {"Datar": "Datar (0-8%)", "Landai": "Landai (>8-15%)", "Agak curam": "Agak curam (>15-25%)", "Curam": "Curam (>25-40%)", "Sangat curam": "Sangat curam (>40%)"}
         slope_data = [["Kelas", "Persentase luas"]] + [[slope_names.get(item.get("class"), item.get("class")), _number(item.get("area_pct"), decimal_separator=decimal_separator) + " %"] for item in slope.get("distribution") or []]
         slope_table = Table(slope_data, colWidths=[11.0 * cm, 5.0 * cm], repeatRows=1)
-        slope_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#d4dbe5")), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        slope_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), soft), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("GRID", (0, 0), (-1, -1), .3, border), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
         story.append(KeepTogether([Paragraph("Distribusi Kelas Lereng", h2), slope_table]))
         lc_lines = [_safe_text(f"{item.get('name')}: {_number(item.get('area_km2'), 2, decimal_separator)} km2 ({_number(item.get('area_pct'), 2, decimal_separator)} %)") for item in (landcover.get("classes") or [])[:8]]
         story.append(KeepTogether([Paragraph(labels["landcover"], h2), Paragraph("; ".join(lc_lines) if lc_lines else ("Not available" if is_en else "Belum tersedia"), body)]))
@@ -152,14 +170,21 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
         story.append(KeepTogether([Paragraph(labels["curve"], h2), curve_summary]))
         cn_data = [["Kelas", "Persentase luas"]] + [[_safe_text(item.get("class")), _number(item.get("area_pct"), decimal_separator=decimal_separator) + " %"] for item in cn.get("distribution") or []]
         cn_table = Table(cn_data, colWidths=[11.0 * cm, 5.0 * cm], repeatRows=1)
-        cn_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#d4dbe5")), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        cn_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), soft), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.5), ("GRID", (0, 0), (-1, -1), .3, border), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
         story.append(KeepTogether([Paragraph("Distribusi Curve Number", h2), cn_table]))
         tc_data = [["Metode", "Estimasi", "Keterangan"]]
         for item in tc.get("methods") or []:
-            tc_data.append([_safe_text(item.get("label")), _number(item.get("value_hours"), decimal_separator=decimal_separator) + (" jam" if item.get("value_hours") is not None else ""), Paragraph(_safe_text(item.get("reason")), small)])
+            value = item.get("value_hours")
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+            if not math.isfinite(numeric_value):
+                continue
+            tc_data.append([_safe_text(item.get("label")), _number(numeric_value, decimal_separator=decimal_separator) + " jam", Paragraph(_safe_text(item.get("reason")), small)])
         tc_data.append(["Tc Representatif", _number(tc.get("representative_hours") or tc.get("recommended_hours"), decimal_separator=decimal_separator) + " jam", Paragraph(_safe_text(f"Dasar: {', '.join(tc.get('representative_methods') or tc.get('recommendation_methods') or [])}. Kesepakatan antar-metode {tc.get('method_agreement') or tc.get('confidence') or 'Rendah'}. {tc.get('representative_basis') or tc.get('recommendation_basis') or ''}"), small)])
         tc_table = Table(tc_data, colWidths=[4.0 * cm, 2.7 * cm, 9.3 * cm], repeatRows=1)
-        tc_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e8eef7")), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.1), ("GRID", (0, 0), (-1, -1), .3, colors.HexColor("#d4dbe5")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        tc_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), soft), ("FONTNAME", (0, 0), (-1, 0), "DTABold"), ("FONTNAME", (0, 1), (-1, -1), "DTARegular"), ("FONTSIZE", (0, 0), (-1, -1), 7.1), ("GRID", (0, 0), (-1, -1), .3, border), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
         story.append(KeepTogether([Paragraph(labels["tc"], h2), tc_table]))
         story.append(Paragraph(labels["limitations"], h2))
         for item in analysis.get("limitations") or []:

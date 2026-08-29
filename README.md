@@ -1,7 +1,7 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.2.0`
-**Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA terpadu
+**Version:** `1.4.0`
+**Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
 
@@ -35,6 +35,18 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 - Laporan PDF dan workbook XLSX satu-sheet dibuat terpisah untuk setiap DTA dan mengambil nilai dari hasil analisis yang sama dengan web.
 - Atribut analisis utama ikut disertakan pada layer DTA diperhalus hasil ekspor.
 - Nilai berbasis raster aktif otomatis saat `dem.tif` dan `plen.tif` tersedia di `data/shared/`; nilai yang belum memiliki sumber data ditandai belum tersedia.
+
+### Hidrograf Satuan Sintetis (HSS)
+
+- Tombol **Analisis HSS** ditempatkan tepat sebelum **Unduh Hasil** dan bekerja per DTA terpilih.
+- Metode tersedia: **NRCS/SCS, Nakayasu, Snyder–Alexeyev, Gama I, Limantara, ITB-1b, dan ITB-2b**.
+- Koefisien empiris/kalibrasi dapat diubah per DTA dan per metode tanpa memengaruhi DTA lainnya.
+- Hasil menampilkan `Tp`, `Qp`, `Tb`, limpasan ekuivalen, error konservasi volume, grafik perbandingan, dan grafik masing-masing metode.
+- Grafik dapat ditampilkan sebagai hasil asli metode atau kurva yang dinormalisasi menjadi volume limpasan 1 mm.
+- Perubahan koefisien setelah perhitungan menandai hasil sebagai **perlu dihitung ulang** dan mencegah ekspor hasil lama.
+- **Gama I** menurunkan `SF`, `SN`, `WF`, `RUA`, dan `SIM` dari jaringan sungai analisis serta geometri DTA bila data tersedia.
+- Pada menu **Unduh Hasil**, HSS merupakan pilihan opsional. Satu workbook `.xlsx` dibuat per DTA yang sudah dianalisis, berisi sheet `Ringkasan` dan satu sheet untuk setiap metode yang berhasil dihitung.
+- Pemeriksaan volume menggunakan hujan efektif satuan `1 mm`; HSS asli tidak dinormalisasi secara tersembunyi.
 
 ### Interaksi titik outlet
 
@@ -415,7 +427,7 @@ Respons harus memuat antara lain:
 
 ```json
 {
-  "app_version": "1.0.0.2",
+  "app_version": "1.4.0",
   "data_backend": "local",
   "active_dataset": "1km2"
 }
@@ -689,7 +701,7 @@ Tidak perlu commit data ke GitHub dan biasanya tidak perlu redeploy Vercel.
 Setelah URL production tersedia, cek minimal:
 
 - halaman utama dapat dimuat;
-- `/api/info` mengembalikan `app_version: 1.0.0.2`;
+- `/api/info` mengembalikan `app_version: 1.4.0`;
 - `data_backend` adalah `r2`;
 - `active_dataset` adalah `1km2`;
 - Batas DAS tampil;
@@ -819,7 +831,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Runtime API pada paket ini menggunakan versi `1.0.0.2`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.4.0`.
 
 ---
 
@@ -869,6 +881,28 @@ Perubahan utama:
 - rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
 - komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
 - tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
+
+
+### 1.4.0 — HSS interaktif dan analisis lazy — 29 August 2026
+
+- perhitungan karakteristik DTA dipindahkan dari proses delineasi ke analisis lazy saat pengguna membuka Karakteristik atau Analisis HSS;
+- memperbaiki pemilihan alur utama pada outlet paling hilir agar fragmen sungai pendek tidak menghasilkan L < Lca atau kemiringan 0%;
+- tombol Hitung HSS menggunakan aksen biru dengan ikon/teks putih dan grafik HSS memakai Chart.js dengan hover, pan, zoom, serta reset zoom;
+- nama analisis per DTA memakai kombinasi nama sungai dan nama titik;
+- Tr menjadi input global tunggal, sedangkan TR Gama I tetap merupakan waktu naik hasil perhitungan dan diperlakukan sebagai Tp;
+- parameter morfometri sumber HSS dapat disesuaikan dan di-reset, sedangkan parameter turunan dihitung otomatis;
+- menambahkan ekspor HSS PDF dan mempertahankan persamaan Excel sebagai formula yang dapat diaudit;
+- default Unduh Hasil diubah ke Shapefile tanpa laporan karakteristik/jaringan sungai terpotong;
+- tabel dan PDF karakteristik diselaraskan dengan tampilan web, rasio percabangan dijabarkan per orde, dan metode Tc tanpa nilai disembunyikan.
+
+### 1.3.0 — Analisis Hidrograf Satuan Sintetis — 29 August 2026
+
+- menambahkan HSS NRCS/SCS, Nakayasu, Snyder–Alexeyev, Gama I, Limantara, ITB-1b, dan ITB-2b;
+- analisis, parameter kalibrasi, grafik, dan state disimpan per DTA selama sesi;
+- menambahkan pemeriksaan konservasi volume serta tampilan kurva asli/ternormalisasi 1 mm;
+- menambahkan ekstraksi parameter Gama I dari jaringan sungai analisis dan bentuk DTA;
+- menambahkan ekspor HSS opsional sebagai workbook XLSX per DTA, dengan satu sheet per metode;
+- menambahkan regression test terhadap contoh Katulampa SNI 2415:2026 untuk SCS, Snyder–Alexeyev, dan parameter inti Gama I.
 
 ### Sebelum 1.0.0.0 — Internal development
 

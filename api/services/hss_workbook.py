@@ -239,7 +239,7 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
         add_calc("lambda", "Parameter Alexeyev lambda", derived.get("alexeyev_lambda"), "-", None)
         add_calc("alex_a", "Parameter Alexeyev a", derived.get("alexeyev_a"), "-", None)
     elif method_id == "gama1":
-        add_calc("TR", "Waktu naik / waktu puncak (TR = Tp)", derived.get("TR_hours"), "jam", f"0.43*({L}/(100*{SF}))^3+1.0665*{SIM}+1.2775" if L and SF and SIM else None, "TR Gama I adalah waktu naik dan diperlakukan sebagai Tp; berbeda dari Tr durasi hujan efektif")
+        add_calc("TR", "Waktu naik / waktu puncak (TR = Tp)", derived.get("TR_hours"), "jam", f"0.43*({L}/(100*{SF}))^3+1.0665*{SIM}+1.2775" if L and SF and SIM else None)
         add_calc("K", "Koefisien tampungan (K)", derived.get("K_hours"), "jam", f"0.5617*{A}^0.1798*{S}^-0.1446*{SF}^-1.0897*{D}^0.0452" if A and S and SF and D else None)
     elif method_id == "limantara":
         add_calc("Tg", "Waktu lag (Tg)", derived.get("Tg_hours"), "jam", f"IF({L}>=15,0.5279+0.058*{L},0.21*{L}^0.7)" if L else None)
@@ -301,7 +301,7 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
     elif method_id == "gama1":
         tp_expr = b.b("TR")
         qp_expr = f"0.1836*{A}^0.5886*{JN}^0.2381*{b.b('TR')}^-0.4008" if A and JN and b.b("TR") else None
-        tb_expr = f"MAX(27.4132*{b.b('TR')}^0.1457*{S}^-0.0956*{SN}^0.7344*{RUA}^0.2574,{b.b('TR')}+0.05)" if b.b("TR") and S and SN and RUA else None
+        tb_expr = f"MAX(27.4132*{b.b('TR')}^0.1457*{S}^-0.0986*{SN}^0.7344*{RUA}^0.2574,{b.b('TR')}+0.05)" if b.b("TR") and S and SN and RUA else None
     elif method_id == "limantara":
         n = param_refs.get("n")
         tp_expr = f"{b.b('Tg')}+0.8*{Tr}" if b.b("Tg") and Tr else None
@@ -372,7 +372,13 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
         elif method_id == "snyder_alexeyev" and b.b("alex_a"):
             ratio_expr = f"IF({tratio_cell}<=0,0,10^(-{b.b('alex_a')}*(1-{tratio_cell})^2/{tratio_cell}))"
         elif method_id == "gama1" and b.b("TR") and b.b("K"):
-            ratio_expr = f"IF({time_cell}<={b.b('TR')},{time_cell}/{b.b('TR')},EXP(-({time_cell}-{b.b('TR')})/{b.b('K')}))"
+            tail_start = f"MAX({b.b('TR')},{b.b('Tb')}-1)"
+            ratio_expr = (
+                f"IF({time_cell}<={b.b('TR')},{time_cell}/{b.b('TR')},"
+                f"IF({time_cell}<{tail_start},EXP(-({time_cell}-{b.b('TR')})/{b.b('K')}),"
+                f"IF({time_cell}<={b.b('Tb')},EXP(-({tail_start}-{b.b('TR')})/{b.b('K')})*"
+                f"({b.b('Tb')}-{time_cell})/({b.b('Tb')}-{tail_start}),0)))"
+            )
         elif method_id == "limantara" and b.b("Tp"):
             ratio_expr = f"IF({time_cell}<={b.b('Tp')},({time_cell}/{b.b('Tp')})^1.107,10^(0.175*({b.b('Tp')}-{time_cell})))"
         elif method_id == "itb1b" and b.b("shape"):

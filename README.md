@@ -1,6 +1,6 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.4.0`
+**Version:** `1.3.2`
 **Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
@@ -52,17 +52,17 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 
 Interaksi penambahan titik menggunakan dua state yang terpisah:
 
-1. **Mulai Tambah Titik / Selesai Tambah Titik** — mengaktifkan atau menonaktifkan fungsi klik peta untuk membuat kandidat outlet.
+1. **Mulai Tambah / Selesai** — mengaktifkan atau menonaktifkan fungsi klik peta untuk membuat kandidat outlet.
 2. **Satu Titik / Multi Titik** — menentukan apakah kandidat berikutnya mengganti `O1` atau ditambahkan sebagai outlet berikutnya.
 
 Perilaku utama:
 
 - saat mode tambah **tidak aktif**, klik area kosong peta tidak membuat titik;
 - cursor area peta pada state idle menggunakan perilaku navigasi `grab` / `grabbing`;
-- saat **Mulai Tambah Titik** aktif, cursor area peta menjadi `crosshair`;
+- saat **Mulai Tambah** aktif, cursor area peta menjadi `crosshair`;
 - hasil Search/Tampilkan Titik pada state idle hanya menjadi **location preview** dan belum didelineasi;
-- jika preview sudah ada, menekan **Mulai Tambah Titik** mengaktifkan preview tersebut sebagai kandidat delineasi;
-- menekan **Selesai Tambah Titik** membatalkan kandidat/request tertunda dan kembali ke state idle tanpa menghapus DTA yang sudah terbentuk;
+- jika preview sudah ada, menekan **Mulai Tambah** mengaktifkan preview tersebut sebagai kandidat delineasi;
+- menekan **Selesai** membatalkan kandidat/request tertunda dan kembali ke state idle tanpa menghapus DTA yang sudah terbentuk;
 - mode Multi Titik mendukung sampai `MAX_POINTS` yang didefinisikan backend (saat ini 10 titik).
 
 ### Interaksi outlet dan polygon DTA
@@ -427,7 +427,7 @@ Respons harus memuat antara lain:
 
 ```json
 {
-  "app_version": "1.4.0",
+  "app_version": "1.3.2",
   "data_backend": "local",
   "active_dataset": "1km2"
 }
@@ -701,7 +701,7 @@ Tidak perlu commit data ke GitHub dan biasanya tidak perlu redeploy Vercel.
 Setelah URL production tersedia, cek minimal:
 
 - halaman utama dapat dimuat;
-- `/api/info` mengembalikan `app_version: 1.4.0`;
+- `/api/info` mengembalikan `app_version: 1.3.2`;
 - `data_backend` adalah `r2`;
 - `active_dataset` adalah `1km2`;
 - Batas DAS tampil;
@@ -711,7 +711,7 @@ Setelah URL production tersedia, cek minimal:
 - prioritas collision label mengikuti orde sungai;
 - Search Nominatim bekerja;
 - preview lokasi tidak langsung delineasi saat mode tambah belum aktif;
-- Mulai/Selesai Tambah Titik bekerja;
+- Mulai Tambah/Selesai bekerja;
 - Satu Titik dan Multi Titik bekerja;
 - hover/klik outlet existing bekerja;
 - hit-area polygon DTA menggunakan incremental polygon;
@@ -831,7 +831,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.4.0`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.2`.
 
 ---
 
@@ -883,7 +883,17 @@ Perubahan utama:
 - tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
 
 
-### 1.4.0 — HSS interaktif dan analisis lazy — 29 August 2026
+### 1.3.2 — Penyempurnaan UI HSS dan Gama I — 29 August 2026
+
+- kartu DTA pada modal HSS diringkas sehingga badge status sejajar langsung dengan dropdown DTA dan Tr tetap kompak;
+- parameter turunan Gama I (`D`, `SF`, `SN`, `WF`, `RUA`, `SIM`) ditampilkan sebagai nilai otomatis read-only di kartu Gama I;
+- tombol **Analisis HSS** menggunakan latar biru PU dengan ikon dan teks putih;
+- indikator loading karakteristik memakai progress bar bertahap dan ikon loader yang berputar, termasuk ketika analisis karakteristik dipicu pertama kali dari HSS;
+- keterangan parameter morfometri menjelaskan bahwa parameter turunan Gama I dihitung otomatis dari input morfometri dan tidak dapat diedit langsung;
+- mempertahankan koreksi Gama I dari rilis sebelumnya: eksponen `S^-0,0986` pada `TB` serta segmen resesi linear `TB-1 → TB` hingga `Q(TB)=0`;
+- dokumentasi dan `APP_VERSION` diselaraskan menjadi `1.3.2`.
+
+### 1.3.1 — HSS interaktif dan analisis lazy — 29 August 2026
 
 - perhitungan karakteristik DTA dipindahkan dari proses delineasi ke analisis lazy saat pengguna membuka Karakteristik atau Analisis HSS;
 - memperbaiki pemilihan alur utama pada outlet paling hilir agar fragmen sungai pendek tidak menghasilkan L < Lca atau kemiringan 0%;

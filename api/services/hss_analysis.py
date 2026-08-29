@@ -349,16 +349,27 @@ def _gama1(inputs: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
     JN, SF, SN, RUA, SIM = (float(inputs[k]) for k in ("JN", "SF", "SN", "RUA", "SIM"))
     trise = 0.43 * (L / (100.0 * SF)) ** 3 + 1.0665 * SIM + 1.2775
     qp = 0.1836 * A ** 0.5886 * JN ** 0.2381 * trise ** -0.4008
-    tb = 27.4132 * trise ** 0.1457 * S ** -0.0956 * SN ** 0.7344 * RUA ** 0.2574
+    tb = 27.4132 * trise ** 0.1457 * S ** -0.0986 * SN ** 0.7344 * RUA ** 0.2574
     k_storage = 0.5617 * A ** 0.1798 * S ** -0.1446 * SF ** -1.0897 * D ** 0.0452
     tb = max(tb, trise + 0.05)
+    # Sri Harto Gama I: the exponential recession does not mathematically reach
+    # zero at TB. The final one-hour segment (TB-1 to TB) is therefore a
+    # straight line ending at Q(TB)=0. For pathological TB-TR < 1 h cases,
+    # start the terminal line at TR so the curve remains continuous.
+    tail_start = max(trise, tb - 1.0)
     dt = _adaptive_dt(trise, 1.0)
-    t = _time_grid(tb, dt, (trise,))
+    t = _time_grid(tb, dt, (trise, tail_start))
     q = np.zeros_like(t)
     rise = t <= trise
     q[rise] = qp * np.clip(t[rise] / trise, 0.0, 1.0)
-    recession = t > trise
+    recession = (t > trise) & (t < tail_start)
     q[recession] = qp * np.exp(-(t[recession] - trise) / k_storage)
+    tail = t >= tail_start
+    if np.any(tail):
+        q_tail = qp * math.exp(-(tail_start - trise) / k_storage) if tail_start > trise else qp
+        span = max(tb - tail_start, 1e-9)
+        q[tail] = q_tail * np.clip((tb - t[tail]) / span, 0.0, 1.0)
+    q[-1] = 0.0
     result = _pack(
         "gama1", inputs, {}, t, q, tp=trise, qp=qp, tb=tb,
         extra={
@@ -366,6 +377,7 @@ def _gama1(inputs: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
             "TR_equals_Tp": True,
             "K_hours": round(k_storage, 6),
             "global_Tr_used": False,
+            "terminal_linear_start_hours": round(tail_start, 6),
         },
     )
     result["available"] = True

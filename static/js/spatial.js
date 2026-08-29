@@ -360,7 +360,7 @@ function applyInterfaceLanguage(){
       'Nama DAS':'Basin labels','Jaringan Sungai':'River Network','Otomatis sesuai zoom':'Auto by zoom','Label sungai':'River labels',
       'DTA hasil delineasi':'Delineated DTA','Arsiran':'Hatching','Ketebalan garis':'Line width','Reset':'Reset','Koma (,)':'Comma (,)','Titik (.)':'Dot (.)',
       'Unduh Hasil':'Download Result','Analisis Morfometri':'Morphometric Analysis','Belum ada hasil delineasi.':'No delineation result yet.',
-      'Mode Satu Titik. Tekan Mulai Tambah Titik untuk memilih outlet.':'Single-point mode. Press Start Adding Point to select an outlet.'
+      'Mode Satu Titik. Tekan Mulai Tambah untuk memilih outlet.':'Single-point mode. Press Start Adding Point to select an outlet.'
     };
     const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
     const nodes=[];let node;while((node=walker.nextNode())){if(!['SCRIPT','STYLE'].includes(node.parentElement?.tagName))nodes.push(node);}
@@ -369,7 +369,7 @@ function applyInterfaceLanguage(){
   const button=(id,icon,value)=>{const el=$(id);if(el)el.innerHTML=`<i data-lucide="${icon}"></i>${value}`;};
   button('previewCoordinateBtn','map-pin',en?'Show Point':'Tampilkan Titik');
   button('downloadBtn','download',en?'Download Result':'Unduh Hasil');
-  button('addPointSessionBtn','crosshair',en?'Start Adding Point':'Mulai Tambah Titik');
+  button('addPointSessionBtn','crosshair',en?'Start Adding Point':'Mulai Tambah');
   button('pointModeBtn','map-pin',pointInputMode==='multi'?(en?'Multiple Points':'Multi Titik'):(en?'Single Point':'Satu Titik'));
   const select=$('languageSelect');if(select)select.value=uiLanguage;
   const decimal=$('decimalSeparatorSelect');if(decimal)decimal.value=decimalSeparator;
@@ -429,6 +429,28 @@ function formatNarrativeText(value){
   return String(value||'').replace(/(\d)[,.](\d)/g,`$1${separator}$2`);
 }
 const hydrologicAnalysisPromises=new Map();
+function startAnalysisProgress(target,label='Menghitung karakteristik DTA…'){
+  if(!target)return {complete(){},fail(){}};
+  const steps=[1,5,10,20,30,45,60,75,85,92],state={index:0,timer:null,raf:null,spinStart:null,done:false};
+  target.innerHTML=`<div class="analysis-loading"><div class="analysis-loading-head"><span class="analysis-spinner" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span class="analysis-progress-value">1%</span></div></div><div class="analysis-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="1"><i style="width:1%"></i></div></div>`;
+  const bar=target.querySelector('.analysis-progress-track'),fill=bar?.querySelector('i'),value=target.querySelector('.analysis-progress-value'),spinner=target.querySelector('.analysis-spinner');
+  const set=valueNow=>{const valueSafe=Math.max(0,Math.min(100,Number(valueNow)||0));if(fill)fill.style.width=`${valueSafe}%`;if(value)value.textContent=`${Math.round(valueSafe)}%`;bar?.setAttribute('aria-valuenow',String(Math.round(valueSafe)));};
+  const spin=timestamp=>{
+    if(state.done||!spinner?.isConnected)return;
+    if(state.spinStart==null)state.spinStart=timestamp;
+    const angle=((timestamp-state.spinStart)*0.32)%360;
+    spinner.style.transform=`rotate(${angle}deg)`;
+    state.raf=requestAnimationFrame(spin);
+  };
+  if(spinner&&typeof requestAnimationFrame==='function')state.raf=requestAnimationFrame(spin);
+  state.timer=setInterval(()=>{if(state.index>=steps.length-1)return;state.index+=1;set(steps[state.index]);},140);
+  const stop=()=>{state.done=true;if(state.timer){clearInterval(state.timer);state.timer=null;}if(state.raf!=null&&typeof cancelAnimationFrame==='function'){cancelAnimationFrame(state.raf);state.raf=null;}};
+  return {
+    complete(){stop();set(100);},
+    fail(){stop();},
+  };
+}
+window.startAnalysisProgress=startAnalysisProgress;
 async function ensureHydrologicAnalysis(id){
   const result=pointResult(id);
   if(!result)throw new Error('Hasil DTA tidak ditemukan.');
@@ -450,9 +472,9 @@ async function openHydrologicAnalysis(id){
   if(!result){showAppToast('Hasil DTA tidak ditemukan.');return;}
   if(!analysis){
     $('hydrologicAnalysisTitle').textContent=dtaAnalysisDisplayLabel(id);
-    $('hydrologicAnalysisContent').innerHTML='<div class="analysis-loading"><i data-lucide="loader-circle"></i><div><strong>Menghitung karakteristik DTA…</strong><span>Analisis hanya dijalankan saat dibutuhkan.</span></div></div>';
-    openMapModal($('hydrologicAnalysisModal'));refreshIcons($('hydrologicAnalysisModal'));
-    try{analysis=await ensureHydrologicAnalysis(id);}catch(error){$('hydrologicAnalysisContent').innerHTML=`<div class="analysis-data-note"><i data-lucide="triangle-alert"></i><span>${escapeHtml(error?.message||String(error))}</span></div>`;refreshIcons($('hydrologicAnalysisModal'));return;}
+    openMapModal($('hydrologicAnalysisModal'));
+    const progress=startAnalysisProgress($('hydrologicAnalysisContent'),'Menghitung karakteristik DTA…');
+    try{analysis=await ensureHydrologicAnalysis(id);progress.complete();await new Promise(resolve=>setTimeout(resolve,90));}catch(error){progress.fail();$('hydrologicAnalysisContent').innerHTML=`<div class="analysis-data-note"><i data-lucide="triangle-alert"></i><span>${escapeHtml(error?.message||String(error))}</span></div>`;refreshIcons($('hydrologicAnalysisModal'));return;}
   }
   const morph=analysis.morphometry||{},terrain=analysis.terrain||{},elev=terrain.elevation||{},slope=terrain.slope||{},drain=analysis.drainage||{},landcover=analysis.landcover||{},landsystem=analysis.landsystem||{},cn=analysis.curve_number||{},tc=analysis.time_of_concentration||{},flowSlope=terrain.flowpath_slope||{},keys=analysis.key_indicators||{},classes=analysis.classifications||{},summary=analysis.executive_summary||{};
   const rbByOrder=Object.entries(drain.bifurcation_ratios_by_order||{}).map(([pair,value])=>`${pair.replace('-', '→')}: ${formatDisplayNumber(value,2)}`).join('; ');
@@ -516,6 +538,7 @@ async function openHydrologicAnalysis(id){
         ${technicalRow('Orde sungai maksimum (Strahler)',drain.stream_order_max,'—','Orde Strahler tertinggi dalam DTA',{digits:0})}
         ${technicalRow('Kerapatan drainase (Dd)',drain.drainage_density_km_per_km2,classes.drainage_density,'Panjang sungai per luas DTA',{digits:3,unit:'km/km²'})}
         ${technicalRow('Frekuensi sungai (Fs)',drain.stream_frequency_per_km2,'—','Jumlah sungai Strahler per luas DTA',{digits:3,unit:'sungai/km²'})}
+        ${technicalRow('Rasio percabangan (Rb)',drain.bifurcation_ratio,'—','Rata-rata rasio jumlah sungai antar orde berurutan',{digits:3})}
         ${Object.entries(drain.bifurcation_ratios_by_order||{}).map(([pair,value])=>{const order=String(pair).split('-')[0];return technicalRow(`Rasio percabangan orde ${order}`,value,'—',`Perbandingan jumlah sungai orde ${order} terhadap orde berikutnya`,{digits:3});}).join('')}
       </tbody></table></div></div>
       <div class="technical-group"><h3>Parameter Lintasan Aliran</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
@@ -592,14 +615,14 @@ function defaultMapCursor(){return (movePointId||addingPoints)?'crosshair':'';}
 function restoreMapCursor(){try{map.getCanvas().style.cursor=defaultMapCursor();}catch(_){}}
 function interactionStatusText(){
   if(addingPoints)return pointInputMode==='multi'?'Tambah titik aktif · Multi Titik. Klik peta untuk menambahkan outlet berikutnya.':'Tambah titik aktif · Satu Titik. Klik peta untuk memilih atau mengganti outlet.';
-  return `Mode ${pointInputMode==='multi'?'Multi Titik':'Satu Titik'}. Tekan Mulai Tambah Titik untuk memilih outlet.`;
+  return `Mode ${pointInputMode==='multi'?'Multi Titik':'Satu Titik'}. Tekan Mulai Tambah untuk memilih outlet.`;
 }
 function cancelMovePoint(){movePointId=null;restoreMapCursor();setStatus(interactionStatusText(),'neutral');}
 function armMovePoint(id){if(!points.some(p=>p.point_id===id))return;closePointPopup();movePointId=id;setActivePoint(id,{openCard:true});try{map.getCanvas().style.cursor='crosshair';}catch(_){}setStatus(`Pindahkan ${pointName(id)}: klik lokasi baru pada peta. Tekan Esc untuk batal.`,'busy');showAppToast(`Klik lokasi baru untuk memindahkan ${pointName(id)}.`);}
 
 function snapWarningThreshold(radius){return Math.max(150,Math.min(500,Number(radius||300)*0.65));}
 function showAppToast(text,{duration=4200}={}){const toast=$('appToast');if(!toast)return;clearTimeout(appToastTimer);$('appToastText').textContent=text;toast.classList.remove('hidden');refreshIcons(toast);appToastTimer=setTimeout(()=>toast.classList.add('hidden'),duration);}
-function showMultiModeHintOnce(){try{if(sessionStorage.getItem(MULTI_MODE_HINT_KEY)==='shown')return;sessionStorage.setItem(MULTI_MODE_HINT_KEY,'shown');}catch(_){}showAppToast('Mode Multi Titik dipilih. Tekan Mulai Tambah Titik, lalu klik peta untuk menambahkan beberapa outlet.',{duration:5200});}
+function showMultiModeHintOnce(){try{if(sessionStorage.getItem(MULTI_MODE_HINT_KEY)==='shown')return;sessionStorage.setItem(MULTI_MODE_HINT_KEY,'shown');}catch(_){}showAppToast('Mode Multi Titik dipilih. Tekan Mulai Tambah, lalu klik peta untuk menambahkan beberapa outlet.',{duration:5200});}
 function isHeaderUiBlocked(){
   return Boolean(
     document.querySelector('.modal-backdrop:not(.hidden)') ||
@@ -1335,8 +1358,8 @@ function updateAddPointButton(){
     sessionBtn.classList.toggle('cancel-mode',addingPoints);
     sessionBtn.disabled=!addingPoints&&atMultiLimit;
     sessionBtn.innerHTML=addingPoints
-      ? '<i data-lucide="check"></i>Selesai Tambah Titik'
-      : (atMultiLimit?'<i data-lucide="circle-check"></i>Maksimal 10 Titik':'<i data-lucide="crosshair"></i>Mulai Tambah Titik');
+      ? '<i data-lucide="check"></i>Selesai'
+      : (atMultiLimit?'<i data-lucide="circle-check"></i>Maksimal 10 Titik':'<i data-lucide="crosshair"></i>Mulai Tambah');
     sessionBtn.setAttribute('aria-pressed',addingPoints?'true':'false');
   }
   if(modeBtn){
@@ -1565,10 +1588,10 @@ function showLocationPreview(lon,lat,source='search',label=null){
   const title=locationPreviewTitle(source,label),coord=`${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}`;
   locationPreviewPopup=new maplibregl.Popup({closeButton:true,closeOnClick:false,offset:13,className:'location-preview-popup'})
     .setLngLat([Number(lon),Number(lat)])
-    .setHTML(`<div class="location-preview-card"><strong>${escapeHtml(title)}</strong><span>${coord}</span><p>Lokasi pratinjau. Tekan <b>Mulai Tambah Titik</b> untuk menggunakan lokasi ini sebagai kandidat outlet.</p></div>`)
+    .setHTML(`<div class="location-preview-card"><strong>${escapeHtml(title)}</strong><span>${coord}</span><p>Lokasi pratinjau. Tekan <b>Mulai Tambah</b> untuk menggunakan lokasi ini sebagai kandidat outlet.</p></div>`)
     .addTo(map);
   locationPreviewPopup.on('close',()=>{locationPreviewPopup=null;locationPreview=null;const ps=map.getSource?.('location-preview');if(ps)try{ps.setData(emptyFC());}catch(_){}});
-  setStatus('Lokasi ditampilkan sebagai pratinjau. Tekan Mulai Tambah Titik untuk delineasi.','neutral');
+  setStatus('Lokasi ditampilkan sebagai pratinjau. Tekan Mulai Tambah untuk delineasi.','neutral');
   refreshIcons(locationPreviewPopup.getElement?.());
 }
 function consumeLocationPreview(){

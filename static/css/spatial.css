@@ -3617,8 +3617,10 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
    Hidrograf Satuan Sintetis (HSS)
    ============================================================ */
 .sidebar-actions{display:grid;gap:7px}
-.hss-main-button{border-color:color-mix(in srgb,var(--primary) 28%,var(--border-color))!important;color:var(--primary)!important;background:color-mix(in srgb,var(--primary) 4%,var(--card-bg))!important}
-.hss-main-button:hover:not(:disabled){border-color:var(--primary)!important;background:color-mix(in srgb,var(--primary) 8%,var(--card-bg))!important}
+.hss-main-button{border-color:var(--primary)!important;color:#fff!important;background:var(--primary)!important}
+.hss-main-button svg{color:#fff!important}
+.hss-main-button:hover:not(:disabled){border-color:var(--primary)!important;color:#fff!important;background:color-mix(in srgb,var(--primary) 88%,#000)!important}
+.hss-main-button:disabled{color:color-mix(in srgb,#fff 72%,transparent)!important;background:color-mix(in srgb,var(--primary) 58%,var(--card-bg))!important;border-color:transparent!important}
 .download-option-hint{display:block;margin:6px 0 0 22px;font-size:.52rem;line-height:1.4;color:var(--text-muted)}
 .hss-analysis-modal{width:min(1080px,calc(100vw - 28px))!important;max-width:1080px!important;max-height:min(92vh,930px)!important;overflow:auto!important;padding:20px!important}
 .hss-analysis-modal .modal-head{margin-bottom:13px!important}
@@ -3687,3 +3689,393 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 .hss-chart-canvas{position:relative;height:390px;min-height:320px;padding:12px 14px}.hss-chart-canvas canvas{width:100%!important;height:100%!important}
 @media(max-width:800px){.hss-global-input-row{align-items:stretch;flex-direction:column}.hss-global-input-row>label{min-width:0}.hss-morph-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.hss-derived-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.hss-derived-title{grid-column:1/-1}.hss-chart-toolbar{align-items:flex-start;flex-direction:column}.hss-chart-canvas{height:330px}}
 @media(max-width:430px){.hss-morph-grid{grid-template-columns:1fr 1fr}.hss-derived-grid{grid-template-columns:1fr 1fr}.hss-chart-canvas{height:285px;padding:8px}}
+
+/* HSS v1.2 — compact toolbar, per-field reset, shared analysis progress */
+.analysis-loading{display:grid;gap:10px;width:100%;padding:16px 2px;color:var(--text-muted)}
+.analysis-loading-head{display:flex;align-items:center;gap:10px}
+.analysis-spinner{width:20px;height:20px;flex:0 0 20px;display:grid;place-items:center;color:var(--primary);animation:analysis-spin .9s linear infinite;transform-origin:center}
+.analysis-spinner>svg{width:20px;height:20px;display:block}
+.analysis-loading-head>div{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;flex:1}
+.analysis-loading-head strong{font-size:.72rem;color:var(--text-strong)}
+.analysis-progress-value{font-size:.62rem;font-weight:800;color:var(--primary);font-variant-numeric:tabular-nums}
+.analysis-progress-track{height:7px;overflow:hidden;border-radius:999px;background:color-mix(in srgb,var(--primary) 10%,var(--border-color))}
+.analysis-progress-track>i{display:block;height:100%;border-radius:inherit;background:var(--primary);transition:width .14s ease}
+.hss-status .analysis-loading{padding:6px 0 4px}
+.hss-status .analysis-loading-head strong{font-size:.56rem}
+.hss-status .analysis-progress-track{height:5px}
+
+.hss-compact-toolbar{display:grid;grid-template-columns:minmax(320px,1fr) minmax(190px,240px);align-items:end;gap:12px;padding:11px 12px;border:1px solid var(--border-color);border-radius:10px;background:color-mix(in srgb,var(--primary) 2.5%,var(--card-bg))}
+.hss-dta-select{display:grid;gap:4px;min-width:0;font-size:.53rem;font-weight:800;color:var(--text-muted)}
+.hss-dta-control-row{display:flex;align-items:center;gap:9px;min-width:0}
+.hss-dta-select select{height:35px;min-width:0;flex:1;font-size:.61rem}
+.hss-dta-status-badge{display:inline-flex;align-items:center;justify-content:center;height:35px;padding:0 10px;border-radius:999px;font-size:.49rem;font-weight:800;white-space:nowrap;flex:0 0 auto}
+.hss-dta-status-badge.ready{background:color-mix(in srgb,#16836B 11%,var(--card-bg));color:#16745f;border:1px solid color-mix(in srgb,#16836B 22%,var(--border-color))}
+.hss-dta-status-badge.warn{background:color-mix(in srgb,#D97706 10%,var(--card-bg));color:#a65a00;border:1px solid color-mix(in srgb,#D97706 24%,var(--border-color))}
+.hss-dta-status-badge.hidden{display:none!important}
+.hss-tr-compact{display:grid;gap:4px;font-size:.53rem;font-weight:800;color:var(--text-muted)}
+.hss-tr-compact>div{display:flex;align-items:center;gap:6px}
+.hss-tr-compact input{width:82px;height:35px;padding:5px 8px;border:1px solid var(--border-strong);border-radius:7px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:.61rem;font-weight:700;font-variant-numeric:tabular-nums}
+.hss-tr-compact b{font-size:.49rem;font-weight:700;color:var(--text-muted)}
+.hss-tr-compact input:focus{outline:0;border-color:var(--primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--primary) 10%,transparent)}
+
+.hss-morph-grid label>div.hss-field-row{display:flex;align-items:center;gap:5px}
+.hss-input-shell{position:relative;min-width:0;flex:1}
+.hss-morph-grid .hss-input-shell input{padding-right:29px}
+.hss-field-reset{position:absolute;right:3px;top:50%;translate:0 -50%;display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--text-muted);cursor:pointer}
+.hss-field-reset:hover{background:color-mix(in srgb,var(--primary) 7%,transparent);color:var(--primary)}
+.hss-field-reset svg{width:12px;height:12px}
+.hss-morph-input[type=number]{appearance:textfield;-moz-appearance:textfield}
+.hss-morph-input[type=number]::-webkit-inner-spin-button,.hss-morph-input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+
+@media(max-width:800px){
+  .hss-compact-toolbar{grid-template-columns:minmax(0,1fr);align-items:end}
+  .hss-tr-compact>div{justify-content:flex-start}
+}
+@media(max-width:430px){
+  .hss-compact-toolbar{grid-template-columns:minmax(0,1fr);padding:9px}
+  .hss-dta-control-row{align-items:stretch;flex-wrap:wrap}
+  .hss-dta-select select{flex-basis:100%;width:100%}
+  .hss-dta-status-badge{height:28px;padding-inline:8px;font-size:.46rem}
+}
+.hss-gama-derived{display:grid;gap:7px;margin-top:4px}
+.hss-gama-derived-note{font-size:.48rem;line-height:1.3;color:var(--text-muted)}
+.hss-gama-derived-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.hss-readonly-param{display:grid;gap:3px;min-width:0;padding:7px 8px;border:1px solid var(--border-color);border-radius:7px;background:var(--surface-soft)}
+.hss-readonly-param>span{font-size:.45rem;line-height:1.2;color:var(--text-muted)}
+.hss-readonly-param>strong{font-size:.56rem;color:var(--text-strong);font-variant-numeric:tabular-nums}
+.hss-readonly-param>strong b{font-size:.42rem;font-weight:650;color:var(--text-muted)}
+@media(max-width:800px){.hss-gama-derived-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:430px){.hss-gama-derived-grid{grid-template-columns:1fr 1fr}}
+[data-theme="dark"] .hss-dta-status-badge.ready{color:#6fd4ba}
+[data-theme="dark"] .hss-dta-status-badge.warn{color:#f0b35d}
+@keyframes analysis-spin{to{transform:rotate(360deg)}}
+
+/* v1.3.2 patch — align DTA/status/Tr row and keep analysis spinner visibly rotating */
+.hss-compact-toolbar{align-items:stretch}
+.hss-dta-select,.hss-tr-compact{grid-template-rows:auto 35px;align-content:end}
+.hss-dta-select>span,.hss-tr-compact>span{display:flex;align-items:flex-end;min-height:14px;line-height:1.15}
+.hss-dta-control-row,.hss-tr-compact>div{height:35px;min-height:35px}
+.hss-tr-compact{align-self:end}
+
+/* Animate the Lucide SVG itself. The explicit reduced-motion override is intentional:
+   this is a process-state indicator rather than decorative motion. */
+.analysis-spinner{animation:none!important}
+.analysis-spinner>svg{animation:analysis-spin .9s linear infinite!important;transform-origin:center!important;transform-box:fill-box}
+@media (prefers-reduced-motion:reduce){
+  .analysis-spinner>svg{animation-name:analysis-spin!important;animation-duration:.9s!important;animation-timing-function:linear!important;animation-iteration-count:infinite!important}
+}
+@media(max-width:430px){
+  .hss-dta-select{grid-template-rows:auto auto}
+  .hss-dta-control-row{height:auto;min-height:35px}
+}
+
+
+/* ============================================================
+   v1.3.2 readability + map-panel placement patch
+   - description/help text uses a readable 12–13 px baseline
+   - loading spinner is a CSS ring with a visible rotating gap
+   - Layer & Tampilan is anchored in the lower-right on desktop
+   ============================================================ */
+:root{
+  --ui-subtext-size:.75rem;      /* 12 px at the 16 px root */
+  --ui-control-text-size:.8125rem; /* 13 px */
+}
+
+/* Readability baseline for descriptions, hints, captions and secondary copy. */
+.spatial-page .help,
+.spatial-page .input-note,
+.spatial-page .coordinate-example,
+.spatial-page .coordinate-example code,
+.spatial-page .processing-hint,
+.spatial-page .download-option-hint,
+.spatial-page .modal-subtitle,
+.spatial-page .choice-card small,
+.spatial-page .definition-modal p,
+.spatial-page .definition-modal li,
+.spatial-page .definition-modal cite,
+.spatial-page .source-modal p,
+.spatial-page .confirm-modal p,
+.spatial-page .warning-modal p,
+.spatial-page .usage-notice-modal p,
+.spatial-page .app-definition-note,
+.spatial-page .analysis-stage-note,
+.spatial-page .analysis-data-note,
+.spatial-page .analysis-limitations ul,
+.spatial-page .analysis-section-title small,
+.spatial-page .analysis-metric span,
+.spatial-page .analysis-metric small,
+.spatial-page .hss-gama-derived-note,
+.spatial-page .hss-readonly-param>span,
+.spatial-page .hss-derived-title small,
+.spatial-page .hss-derived-grid>span small,
+.spatial-page .hss-chart-toolbar,
+.spatial-page .hss-global-input-row>small,
+.spatial-page .point-limit-note{
+  font-size:var(--ui-subtext-size)!important;
+  line-height:1.5!important;
+}
+
+/* Form/supporting labels are one step above descriptions. */
+.spatial-page .panel-section>label,
+.spatial-page .settings-field,
+.spatial-page .status,
+.spatial-page .empty-state,
+.spatial-page .hss-dta-select,
+.spatial-page .hss-tr-compact,
+.spatial-page .hss-morph-grid label,
+.spatial-page .hss-global-input-row>label,
+.spatial-page .hss-derived-title b,
+.spatial-page .hss-readonly-param>strong,
+.spatial-page .download-section,
+.spatial-page .check-row,
+.spatial-page .check-card,
+.spatial-page .choice-card,
+.spatial-page .technical-table-wrap table,
+.spatial-page .slope-class-row{
+  font-size:var(--ui-control-text-size)!important;
+}
+
+.spatial-page .btn,
+.spatial-page .advanced summary,
+.spatial-page .definition-modal h3,
+.spatial-page .download-section>strong{
+  font-size:var(--ui-control-text-size)!important;
+}
+
+/* Keep compact units readable without competing with values. */
+.spatial-page .hss-tr-compact b,
+.spatial-page .hss-morph-grid b,
+.spatial-page .hss-readonly-param>strong b,
+.spatial-page .hss-derived-grid>span b,
+.spatial-page .analysis-progress-value{
+  font-size:var(--ui-subtext-size)!important;
+}
+
+/* Guaranteed process spinner: the asymmetric ring visibly rotates in all themes. */
+.analysis-spinner{
+  width:20px!important;
+  height:20px!important;
+  flex:0 0 20px!important;
+  display:block!important;
+  border:2px solid color-mix(in srgb,var(--primary) 24%,transparent)!important;
+  border-top-color:var(--primary)!important;
+  border-right-color:var(--primary)!important;
+  border-radius:50%!important;
+  animation:analysis-spin .72s linear infinite!important;
+  transform-origin:50% 50%!important;
+  will-change:transform;
+}
+.analysis-spinner>svg,.analysis-spinner>i{display:none!important}
+@media (prefers-reduced-motion:reduce){
+  .analysis-spinner{animation:analysis-spin .72s linear infinite!important}
+}
+
+/* Desktop: keep Layer & Tampilan near the lower map controls instead of the top. */
+@media (min-width:781px){
+  .layer-panel{
+    top:auto!important;
+    bottom:58px!important;
+    right:54px!important;
+    width:min(320px,calc(100% - 78px))!important;
+    max-height:min(68vh,560px)!important;
+    overflow-y:auto!important;
+    overscroll-behavior:contain;
+  }
+  #appHeader:not(.is-hidden) ~ #spatialWorkspace .layer-panel{
+    top:auto!important;
+  }
+}
+
+/* v1.3.2 final readability/alignment/spinner patch */
+:root{
+  --ui-min-meta:11px;
+  --ui-subtext:12px;
+  --ui-control:13px;
+}
+
+/* Raise the remaining undersized interface copy while retaining hierarchy. */
+.spatial-page .agency-copy span,
+.spatial-page .eyebrow,
+.spatial-page .step-badge,
+.spatial-page .small-title,
+.spatial-page .point-chip,
+.spatial-page .meta-box span,
+.spatial-page .point-color-row,
+.spatial-page .definition-link,
+.spatial-page .search-result span,
+.spatial-page .range-row span,
+.spatial-page .point-basin,
+.spatial-page .point-coords,
+.spatial-page .modal-meta,
+.spatial-page .choice-card small,
+.spatial-page .definition-modal cite,
+.spatial-page .hss-reset-method,
+.spatial-page .hss-volume-badge,
+.spatial-page .hss-chart-tab,
+.spatial-page .hss-chart-legend,
+.spatial-page .hss-chart-details,
+.spatial-page .hss-chart-details p,
+.spatial-page .hss-readonly-param>span,
+.spatial-page .hss-readonly-param>strong b{
+  font-size:var(--ui-min-meta)!important;
+}
+
+.spatial-page .agency-copy strong,
+.spatial-page .nav-link,
+.spatial-page .sidebar-title p,
+.spatial-page .help,
+.spatial-page label,
+.spatial-page .input-note,
+.spatial-page .status,
+.spatial-page .text-button,
+.spatial-page .empty-state,
+.spatial-page .point-summary-main strong,
+.spatial-page .point-summary-main span,
+.spatial-page .relationship-content,
+.spatial-page .search-result strong,
+.spatial-page .search-loading,
+.spatial-page .search-empty,
+.spatial-page .measure-panel,
+.spatial-page .point-popup label,
+.spatial-page .point-popup input,
+.spatial-page .point-actions-popup button,
+.spatial-page .warning-modal p,
+.spatial-page .confirm-modal p,
+.spatial-page .source-modal p,
+.spatial-page .download-section>strong,
+.spatial-page .choice-card b,
+.spatial-page .check-card,
+.spatial-page .download-status,
+.spatial-page .definition-modal p,
+.spatial-page .definition-modal li,
+.spatial-page .app-definition-note,
+.spatial-page .analysis-kicker,
+.spatial-page .analysis-section-title small,
+.spatial-page .analysis-metric-label>span,
+.spatial-page .analysis-metric>small,
+.spatial-page .analysis-stage-note,
+.spatial-page .analysis-data-note,
+.spatial-page .analysis-limitations ul,
+.spatial-page .technical-table-wrap table,
+.spatial-page .hss-method-heading small,
+.spatial-page .hss-method-toggle small,
+.spatial-page .hss-param-grid label,
+.spatial-page .hss-auto-parameter,
+.spatial-page .hss-run-row small,
+.spatial-page .hss-status,
+.spatial-page .hss-empty-result span,
+.spatial-page .hss-result-head small,
+.spatial-page .hss-normalized-toggle,
+.spatial-page .hss-summary-table,
+.spatial-page .hss-summary-table thead th,
+.spatial-page .hss-empty-chart,
+.spatial-page .hss-gama-derived-note{
+  font-size:var(--ui-subtext)!important;
+  line-height:1.45!important;
+}
+
+.spatial-page .panel-section h2,
+.spatial-page .btn,
+.spatial-page .advanced summary,
+.spatial-page input[type=text],
+.spatial-page input[type=search],
+.spatial-page input[type=number],
+.spatial-page textarea,
+.spatial-page select,
+.spatial-page .panel-title-row,
+.spatial-page .hss-dta-select,
+.spatial-page .hss-dta-select select,
+.spatial-page .hss-dta-status-badge,
+.spatial-page .hss-tr-compact,
+.spatial-page .hss-tr-compact input,
+.spatial-page .hss-tr-compact b,
+.spatial-page .hss-method-heading strong,
+.spatial-page .hss-method-toggle b,
+.spatial-page .hss-param-grid input,
+.spatial-page .hss-run-row strong,
+.spatial-page .hss-empty-result strong,
+.spatial-page .hss-result-head strong,
+.spatial-page .hss-readonly-param>strong{
+  font-size:var(--ui-control)!important;
+}
+
+/* DTA/status/Tr: identical label row and control row heights. */
+.spatial-page .hss-compact-toolbar{
+  grid-template-columns:minmax(0,1fr) auto!important;
+  align-items:start!important;
+  column-gap:14px!important;
+}
+.spatial-page .hss-dta-select,
+.spatial-page label.hss-tr-compact{
+  display:grid!important;
+  grid-template-rows:18px 40px!important;
+  row-gap:6px!important;
+  align-self:start!important;
+  align-content:start!important;
+  margin:0!important;
+  padding:0!important;
+  min-width:0!important;
+}
+.spatial-page .hss-dta-select>span,
+.spatial-page .hss-tr-compact>span{
+  display:flex!important;
+  align-items:center!important;
+  height:18px!important;
+  min-height:18px!important;
+  margin:0!important;
+  padding:0!important;
+  line-height:18px!important;
+}
+.spatial-page .hss-dta-control-row,
+.spatial-page .hss-tr-compact>div{
+  display:flex!important;
+  align-items:center!important;
+  height:40px!important;
+  min-height:40px!important;
+  margin:0!important;
+  padding:0!important;
+}
+.spatial-page .hss-dta-select select,
+.spatial-page .hss-dta-status-badge,
+.spatial-page .hss-tr-compact input{
+  height:40px!important;
+  min-height:40px!important;
+  margin:0!important;
+  box-sizing:border-box!important;
+}
+.spatial-page .hss-dta-status-badge{padding-inline:11px!important}
+.spatial-page .hss-tr-compact>div{gap:7px!important}
+.spatial-page .hss-tr-compact input{width:84px!important}
+.spatial-page .hss-tr-compact b{line-height:40px!important;white-space:nowrap!important}
+
+/* JS requestAnimationFrame drives transform; CSS only defines a visibly asymmetric ring. */
+.spatial-page .analysis-spinner{
+  width:20px!important;
+  height:20px!important;
+  flex:0 0 20px!important;
+  display:block!important;
+  box-sizing:border-box!important;
+  border:2.5px solid color-mix(in srgb,var(--primary) 22%,transparent)!important;
+  border-top-color:var(--primary)!important;
+  border-right-color:var(--primary)!important;
+  border-bottom-color:transparent!important;
+  border-radius:50%!important;
+  animation:none!important;
+  transform-origin:50% 50%!important;
+  will-change:transform!important;
+}
+.spatial-page .analysis-spinner>svg,
+.spatial-page .analysis-spinner>i{display:none!important}
+
+@media(max-width:800px){
+  .spatial-page .hss-compact-toolbar{grid-template-columns:1fr!important}
+  .spatial-page .hss-dta-select,
+  .spatial-page label.hss-tr-compact{grid-template-rows:18px 40px!important}
+}
+@media(max-width:430px){
+  .spatial-page .hss-dta-control-row{height:auto!important;min-height:40px!important;flex-wrap:wrap!important}
+  .spatial-page .hss-dta-select{grid-template-rows:18px auto!important}
+  .spatial-page .hss-dta-select select{flex-basis:100%!important}
+  .spatial-page .hss-dta-status-badge{height:32px!important;min-height:32px!important}
+}
+

@@ -113,6 +113,7 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
         ("Kemiringan lintasan 10-85 (S10-85)", flow_slope.get("flowpath_10_85_pct"), "%", "Beda elevasi dibagi panjang lintasan 10-85"),
         ("Kerapatan drainase (Dd)", drainage.get("drainage_density_km_per_km2"), "km/km²", "Panjang sungai per luas DTA"),
         ("Frekuensi sungai (Fs)", drainage.get("stream_frequency_per_km2"), "sungai/km²", "Jumlah sungai Strahler per luas DTA"),
+        ("Rasio percabangan (Rb)", drainage.get("bifurcation_ratio"), "-", "Rata-rata rasio jumlah sungai antar orde berurutan"),
         ("Tekstur drainase (Dt)", drainage.get("drainage_texture_per_km"), "sungai/km", "Jumlah sungai per keliling DTA"),
         ("Intensitas drainase (Id)", drainage.get("drainage_intensity"), "-", "Frekuensi sungai dibagi kerapatan drainase"),
         ("Panjang aliran permukaan (Lo)", drainage.get("overland_flow_length_km"), "km", "Jarak rata-rata menuju saluran terdekat"),
@@ -227,6 +228,7 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
     cn_ref = ref("CN rata-rata tertimbang (CN-II)")
     if cn_ref:
         formula("Retensi potensial (S)", f"25400/{cn_ref}-254")
+    rb_formula_refs = []
     for label, row_no in list(row_by_label.items()):
         if not label.startswith("Rasio percabangan orde "):
             continue
@@ -238,6 +240,11 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
         n2 = ref(f"Jumlah sungai orde {order + 1}")
         if n1 and n2:
             formula(label, f"{n1}/{n2}")
+            rb_ref = ref(label)
+            if rb_ref:
+                rb_formula_refs.append(rb_ref)
+    if rb_formula_refs:
+        formula("Rasio percabangan (Rb)", f"AVERAGE({','.join(rb_formula_refs)})")
 
     section_titles = {1: 3, 2: 3}
     for row_index, row in enumerate(rows, 1):

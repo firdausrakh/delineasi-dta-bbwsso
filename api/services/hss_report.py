@@ -126,9 +126,7 @@ def create_hss_report(payload: dict[str, Any], output_path: Path) -> Path:
     ], colWidths=[3.2*cm, 2.8*cm, 5.6*cm, 4.4*cm])
     info.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,-1),soft),("BOX",(0,0),(-1,-1),.5,border),("INNERGRID",(0,0),(-1,-1),.35,border),("FONTNAME",(0,0),(-1,-1),"DTARegular"),("FONTNAME",(0,0),(0,-1),"DTABold"),("FONTNAME",(2,0),(2,-1),"DTABold"),("FONTSIZE",(0,0),(-1,-1),7),("TEXTCOLOR",(0,0),(-1,-1),colors.HexColor("#344054")),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
     story.extend([
-        info, Spacer(1,5),
-        Paragraph("Tr adalah durasi hujan efektif global untuk metode yang memerlukannya. Pada Gama I, TR adalah waktu naik hasil persamaan Gama I dan diperlakukan sebagai waktu puncak (TR = Tp); TR berbeda dari Tr.", small),
-        Spacer(1,7), Paragraph("Perbandingan HSS", h2), _chart(payload.get("methods") or [])
+        info, Spacer(1,7), Paragraph("Perbandingan HSS", h2), _chart(payload.get("methods") or [])
     ])
 
     summary_rows = [["Metode","Tp (jam)","Qp (m3/s)","Tb (jam)","Limpasan (mm)","Error volume"]]

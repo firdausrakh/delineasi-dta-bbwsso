@@ -30,6 +30,7 @@
   const hssMorphometry = new Map();
   const hssMorphometryDefaults = new Map();
   const hssTr = new Map();
+  const hssMethodSelections = new Map();
   const hssDirty = new Set();
   let currentPointId = null;
   let currentChartMethod = 'comparison';
@@ -43,6 +44,7 @@
   function currentPointIds(){return points.filter(p=>pointResult(p.point_id)).map(p=>p.point_id);}
   function parameterState(pointId){if(!hssParameters.has(pointId))hssParameters.set(pointId,cloneDefaults());return hssParameters.get(pointId);}
   function trState(pointId){if(!hssTr.has(pointId))hssTr.set(pointId,1);return hssTr.get(pointId);}
+  function methodSelectionState(pointId){if(!hssMethodSelections.has(pointId))hssMethodSelections.set(pointId,new Set(METHOD_DEFS.map(item=>item.id)));return hssMethodSelections.get(pointId);}
   function hssNumber(value,digits=2){const number=Number(value);if(!Number.isFinite(number))return '—';const text=number.toFixed(digits);return decimalSeparator===','?text.replace('.',','):text;}
   function methodById(id){return METHOD_DEFS.find(item=>item.id===id);}
   function dtaDisplayLabel(id){
@@ -105,53 +107,84 @@
   window.getHssDownloadPayload=()=>{
     const payload={};for(const id of currentPointIds()){const value=hssResults.get(id);if(!hssDirty.has(id)&&value?.available_method_count>0)payload[id]={...value,label:dtaDisplayLabel(id)};}return payload;
   };
-  window.invalidateHssForPoint=pointId=>{hssResults.delete(pointId);hssParameters.delete(pointId);hssMorphometry.delete(pointId);hssMorphometryDefaults.delete(pointId);hssTr.delete(pointId);hssDirty.delete(pointId);refreshDownloadOption();if(currentPointId===pointId&&!$('hssAnalysisModal')?.classList.contains('hidden'))renderHssResults(pointId);};
+  window.invalidateHssForPoint=pointId=>{hssResults.delete(pointId);hssParameters.delete(pointId);hssMorphometry.delete(pointId);hssMorphometryDefaults.delete(pointId);hssTr.delete(pointId);hssMethodSelections.delete(pointId);hssDirty.delete(pointId);refreshDownloadOption();if(currentPointId===pointId&&!$('hssAnalysisModal')?.classList.contains('hidden'))renderHssResults(pointId);};
   window.invalidateAllHss=()=>{hssResults.clear();hssDirty.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();refreshDownloadOption();};
-  window.clearHssResults=()=>{hssResults.clear();hssParameters.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();hssTr.clear();hssDirty.clear();refreshDownloadOption();};
+  window.clearHssResults=()=>{hssResults.clear();hssParameters.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();hssTr.clear();hssMethodSelections.clear();hssDirty.clear();refreshDownloadOption();};
   window.refreshHssUiState=()=>{const button=$('hssAnalysisBtn');if(button)button.disabled=currentPointIds().length===0;refreshDownloadOption();};
 
   function renderDtaSelector(preferredId=null){
-    const ids=currentPointIds(),select=$('hssDtaSelect');if(!select)return null;if(!ids.length){select.innerHTML='';currentPointId=null;return null;}
+    const ids=currentPointIds(),select=$('hssDtaSelect');if(!select)return null;if(!ids.length){select.innerHTML='';currentPointId=null;renderDtaSummary(null);return null;}
     const chosen=(preferredId&&ids.includes(preferredId))?preferredId:(activePointId&&ids.includes(activePointId)?activePointId:ids[0]);currentPointId=chosen;
-    select.innerHTML=ids.map(id=>{const suffix=hssDirty.has(id)?' · ⚠ perlu dihitung ulang':(hssResults.get(id)?.available_method_count>0?' · ✓ HSS':'');return `<option value="${escapeHtml(id)}" ${id===chosen?'selected':''}>${escapeHtml(dtaDisplayLabel(id)+suffix)}</option>`;}).join('');
+    select.innerHTML=ids.map(id=>`<option value="${escapeHtml(id)}" ${id===chosen?'selected':''}>${escapeHtml(dtaDisplayLabel(id))}</option>`).join('');
+    renderDtaSummary(chosen);
     return chosen;
   }
   function renderDtaSummary(pointId){
-    const el=$('hssDtaSummary'),state=morphometryState(pointId);if(!el)return;
-    el.innerHTML=`<span><small>Luas DTA</small><b>${hssNumber(state.A,2)} km²</b></span><span><small>Panjang alur utama</small><b>${hssNumber(state.L,2)} km</b></span><span><small>Panjang ke sentroid</small><b>${hssNumber(state.Lc,2)} km</b></span><span><small>Kemiringan alur</small><b>${hssNumber(state.S_pct,3)}%</b></span>`;
+    const badge=$('hssDtaStatusBadge');if(!badge)return;
+    if(!pointId){badge.className='hss-dta-status-badge hidden';badge.textContent='';return;}
+    if(hssDirty.has(pointId)){badge.className='hss-dta-status-badge warn';badge.textContent='⚠ Perlu hitung ulang';return;}
+    if(hssResults.get(pointId)?.available_method_count>0){badge.className='hss-dta-status-badge ready';badge.textContent='✓ HSS';return;}
+    badge.className='hss-dta-status-badge hidden';badge.textContent='';
   }
   function renderMorphometryControls(pointId){
-    const root=$('hssMorphometryControls');if(!root)return;const state=morphometryState(pointId),derived=derivedMorphometry(state);
-    root.innerHTML=`<div class="hss-method-heading hss-morph-heading"><div><strong>Parameter morfometri HSS</strong><small>Nilai awal berasal dari karakteristik DTA. Perubahan hanya berlaku pada perhitungan HSS ini.</small></div><button id="hssResetMorph" class="text-button hss-reset-with-icon" type="button"><i data-lucide="rotate-ccw"></i>Reset</button></div>
-      <div class="hss-morph-grid">${MORPH_FIELDS.map(([key,label,unit,min,max,step])=>`<label><span>${escapeHtml(label)}</span><div><input class="hss-morph-input" data-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${Number.isFinite(Number(state[key]))?state[key]:''}"><b>${escapeHtml(unit)}</b></div></label>`).join('')}</div>
-      <div class="hss-derived-grid"><div class="hss-derived-title"><b>Parameter turunan otomatis</b><small>Tidak dapat diisi manual; dihitung dari parameter morfometri di atas.</small></div>${[['D','Kerapatan drainase (D)','km/km²'],['SF','Faktor sumber (SF)',''],['SN','Frekuensi sumber (SN)',''],['WF','Faktor lebar (WF)',''],['RUA','Luas relatif hulu (RUA)',''],['SIM','Faktor simetri (SIM)','']].map(([key,label,unit])=>`<span><small>${label}</small><b>${hssNumber(derived[key],key==='D'?3:5)}${unit?` ${unit}`:''}</b></span>`).join('')}</div>`;
-    root.querySelectorAll('.hss-morph-input').forEach(input=>input.addEventListener('input',()=>{const value=Number(input.value);state[input.dataset.key]=Number.isFinite(value)?value:null;renderDtaSummary(pointId);renderMorphometryDerived(pointId);markDirty(pointId,'Parameter morfometri berubah. Hitung ulang HSS agar hasil, PDF, dan Excel diperbarui.');}));
-    $('hssResetMorph')?.addEventListener('click',()=>{const defaults=hssMorphometryDefaults.get(pointId)||extractedMorphometry(pointId);hssMorphometry.set(pointId,{...defaults});renderDtaSummary(pointId);renderMorphometryControls(pointId);markDirty(pointId,'Parameter morfometri dikembalikan ke hasil ekstraksi. Hitung ulang HSS untuk memperbarui hasil.');refreshIcons(root);});
+    const root=$('hssMorphometryControls');if(!root)return;const state=morphometryState(pointId),defaults=hssMorphometryDefaults.get(pointId)||extractedMorphometry(pointId);
+    root.innerHTML=`<div class="hss-method-heading hss-morph-heading"><div><strong>Parameter morfometri HSS</strong><small>Nilai awal berasal dari karakteristik DTA. Perubahan hanya berlaku pada perhitungan HSS ini.</small></div><button id="hssResetMorph" class="text-button hss-reset-with-icon" type="button"><i data-lucide="rotate-ccw"></i>Reset semua</button></div>
+      <div class="hss-morph-grid">${MORPH_FIELDS.map(([key,label,unit,min,max,step])=>`<label><span>${escapeHtml(label)}</span><div class="hss-field-row"><div class="hss-input-shell"><input class="hss-morph-input" data-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${Number.isFinite(Number(state[key]))?state[key]:''}"><button class="hss-field-reset" data-key="${key}" type="button" aria-label="Reset ${escapeHtml(label)}" title="Reset ke nilai awal"><i data-lucide="rotate-ccw"></i></button></div><b>${escapeHtml(unit)}</b></div></label>`).join('')}</div>`;
+    root.querySelectorAll('.hss-morph-input').forEach(input=>input.addEventListener('input',()=>{const value=Number(input.value);state[input.dataset.key]=Number.isFinite(value)?value:null;refreshGamaDerived(pointId);markDirty(pointId,'Parameter morfometri berubah. Hitung ulang HSS agar hasil, PDF, dan Excel diperbarui.');}));
+    root.querySelectorAll('.hss-field-reset').forEach(button=>button.addEventListener('click',()=>{const key=button.dataset.key;state[key]=defaults[key]??null;const input=root.querySelector(`.hss-morph-input[data-key="${key}"]`);if(input)input.value=Number.isFinite(Number(state[key]))?state[key]:'';refreshGamaDerived(pointId);markDirty(pointId,'Parameter morfometri dikembalikan ke nilai awal. Hitung ulang HSS untuk memperbarui hasil.');refreshIcons(root);}));
+    $('hssResetMorph')?.addEventListener('click',()=>{hssMorphometry.set(pointId,{...defaults});renderMorphometryControls(pointId);refreshGamaDerived(pointId);markDirty(pointId,'Seluruh parameter morfometri dikembalikan ke hasil ekstraksi. Hitung ulang HSS untuk memperbarui hasil.');refreshIcons(root);});
     refreshIcons(root);
   }
-  function renderMorphometryDerived(pointId){
-    const root=$('hssMorphometryControls');if(!root)return;const d=derivedMorphometry(morphometryState(pointId));const cells=root.querySelectorAll('.hss-derived-grid>span');const keys=['D','SF','SN','WF','RUA','SIM'];cells.forEach((cell,i)=>{const b=cell.querySelector('b');if(b)b.textContent=hssNumber(d[keys[i]],keys[i]==='D'?3:5)+(keys[i]==='D'?' km/km²':'');});
+  function renderMorphometryDerived(){/* Parameter turunan ditampilkan khusus sebagai read-only di kartu Gama I. */}
+  function gamaDerivedItems(pointId){
+    const derived=derivedMorphometry(morphometryState(pointId));
+    return [
+      ['D','Kerapatan drainase (D)',derived.D,'km/km²',3],
+      ['SF','Faktor sumber (SF)',derived.SF,'',3],
+      ['SN','Frekuensi sumber (SN)',derived.SN,'',3],
+      ['WF','Faktor lebar (WF)',derived.WF,'',3],
+      ['RUA','Luas relatif hulu (RUA)',derived.RUA,'',3],
+      ['SIM','Faktor simetri (SIM)',derived.SIM,'',3],
+    ];
+  }
+  function gamaDerivedMarkup(pointId){
+    return `<div class="hss-gama-derived"><small class="hss-gama-derived-note">Dihitung otomatis dari parameter morfometri HSS.</small><div class="hss-gama-derived-grid">${gamaDerivedItems(pointId).map(([key,label,value,unit,digits])=>`<div class="hss-readonly-param" data-gama-derived="${key}"><span>${escapeHtml(label)}</span><strong>${hssNumber(value,digits)}${unit?` <b>${escapeHtml(unit)}</b>`:''}</strong></div>`).join('')}</div></div>`;
+  }
+  function refreshGamaDerived(pointId){
+    const root=$('hssMethodControls');if(!root)return;
+    for(const [key,,value,unit,digits] of gamaDerivedItems(pointId)){
+      const target=root.querySelector(`[data-gama-derived="${key}"] strong`);
+      if(target)target.innerHTML=`${hssNumber(value,digits)}${unit?` <b>${escapeHtml(unit)}</b>`:''}`;
+    }
   }
 
-  function methodGamaHint(pointId){const d=derivedMorphometry(morphometryState(pointId));return `D ${hssNumber(d.D,3)} · SF ${hssNumber(d.SF,3)} · SN ${hssNumber(d.SN,3)} · WF ${hssNumber(d.WF,3)} · RUA ${hssNumber(d.RUA,3)} · SIM ${hssNumber(d.SIM,3)} · TR Gama I dihitung sebagai waktu naik (TR = Tp), berbeda dari Tr durasi hujan efektif global.`;}
+  function methodGamaHint(){return 'Parameter Gama I dihitung otomatis dari parameter morfometri yang relevan.';}
   function renderMethodControls(pointId){
-    const root=$('hssMethodControls');if(!root)return;const state=parameterState(pointId);
-    root.innerHTML=`<div class="hss-method-heading"><div><strong>Metode & koefisien kalibrasi</strong><small>Pilih metode yang dihitung. Tombol Reset mengembalikan koefisien metode ke nilai awal.</small></div><button id="hssSelectAll" class="text-button" type="button">Pilih Semua</button></div><div class="hss-method-grid">${METHOD_DEFS.map((method,index)=>{
-      const paramInputs=method.params.length?`<div class="hss-param-grid">${method.params.map(([key,label,defaultValue,min,max,step])=>`<label><span>${escapeHtml(label)}</span><input class="hss-param-input" data-method="${method.id}" data-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${state[method.id]?.[key]??defaultValue}"></label>`).join('')}</div>`:`<p class="hss-auto-parameter">${escapeHtml(methodGamaHint(pointId))}</p>`;
-      return `<section class="hss-method-card" style="--hss-color:${METHOD_COLORS[index]}"><div class="hss-method-card-head"><label class="hss-method-toggle"><input class="hss-method-check" type="checkbox" value="${method.id}" checked><span><b>${escapeHtml(method.label)}</b><small>${escapeHtml(method.subtitle)}</small></span></label><button class="hss-reset-method" data-method="${method.id}" type="button" ${method.params.length?'':'disabled'}><i data-lucide="rotate-ccw"></i>Reset</button></div>${paramInputs}</section>`;
+    const root=$('hssMethodControls');if(!root)return;const state=parameterState(pointId),selected=methodSelectionState(pointId);
+    root.innerHTML=`<div class="hss-method-heading"><div><strong>Metode & koefisien kalibrasi</strong><small>Pilih metode yang dihitung. Tombol Reset mengembalikan koefisien metode ke nilai awal.</small></div><button id="hssSelectAll" class="text-button" type="button"></button></div><div class="hss-method-grid">${METHOD_DEFS.map((method,index)=>{
+      const paramInputs=method.params.length?`<div class="hss-param-grid">${method.params.map(([key,label,defaultValue,min,max,step])=>`<label><span>${escapeHtml(label)}</span><input class="hss-param-input" data-method="${method.id}" data-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${state[method.id]?.[key]??defaultValue}"></label>`).join('')}</div>`:(method.id==='gama1'?gamaDerivedMarkup(pointId):`<p class="hss-auto-parameter">${escapeHtml(methodGamaHint())}</p>`);
+      return `<section class="hss-method-card" style="--hss-color:${METHOD_COLORS[index]}"><div class="hss-method-card-head"><label class="hss-method-toggle"><input class="hss-method-check" type="checkbox" value="${method.id}" ${selected.has(method.id)?'checked':''}><span><b>${escapeHtml(method.label)}</b><small>${escapeHtml(method.subtitle)}</small></span></label><button class="hss-reset-method" data-method="${method.id}" type="button" ${method.params.length?'':'disabled'}><i data-lucide="rotate-ccw"></i>Reset</button></div>${paramInputs}</section>`;
     }).join('')}</div>`;
+    const toggleButton=$('hssSelectAll');
+    const updateToggle=()=>{const checks=[...root.querySelectorAll('.hss-method-check')],all=checks.length>0&&checks.every(input=>input.checked);if(toggleButton)toggleButton.textContent=all?'Hapus semua':'Pilih semua';};
+    root.querySelectorAll('.hss-method-check').forEach(input=>input.addEventListener('change',()=>{if(input.checked)selected.add(input.value);else selected.delete(input.value);updateToggle();}));
     root.querySelectorAll('.hss-param-input').forEach(input=>input.addEventListener('input',()=>{const method=input.dataset.method,key=input.dataset.key,value=Number(input.value);if(Number.isFinite(value)){parameterState(pointId)[method][key]=value;markDirty(pointId,'Koefisien kalibrasi berubah. Hitung ulang HSS agar hasil, PDF, dan Excel diperbarui.');}}));
     root.querySelectorAll('.hss-reset-method').forEach(button=>button.addEventListener('click',()=>{const method=methodById(button.dataset.method);if(!method)return;const target=parameterState(pointId)[method.id];method.params.forEach(([key,,value])=>target[key]=value);renderMethodControls(pointId);markDirty(pointId,'Koefisien dikembalikan ke nilai awal. Hitung ulang HSS untuk memperbarui hasil.');refreshIcons(root);}));
-    $('hssSelectAll')?.addEventListener('click',()=>root.querySelectorAll('.hss-method-check').forEach(input=>input.checked=true));refreshIcons(root);
+    toggleButton?.addEventListener('click',()=>{const checks=[...root.querySelectorAll('.hss-method-check')],all=checks.length>0&&checks.every(input=>input.checked);checks.forEach(input=>{input.checked=!all;if(input.checked)selected.add(input.value);else selected.delete(input.value);});updateToggle();});
+    updateToggle();refreshIcons(root);
   }
 
   async function loadPointForHss(pointId){
-    const status=$('hssStatus');if(status)status.textContent='Menghitung karakteristik DTA yang diperlukan untuk HSS…';
+    const status=$('hssStatus'),needsAnalysis=!pointResult(pointId)?.hydrologic_analysis;let progress=null;
+    if(needsAnalysis&&status&&typeof window.startAnalysisProgress==='function')progress=window.startAnalysisProgress(status,'Menghitung karakteristik DTA…');
+    else if(status)status.textContent='';
     try{
       if(window.ensureHydrologicAnalysis)await window.ensureHydrologicAnalysis(pointId);
+      progress?.complete?.();
       morphometryState(pointId);renderDtaSummary(pointId);renderMorphometryControls(pointId);renderMethodControls(pointId);renderHssResults(pointId);
-      if($('hssGlobalTr'))$('hssGlobalTr').value=String(trState(pointId));if(status)status.textContent=hssDirty.has(pointId)?'Parameter berubah. Hitung ulang HSS untuk memperbarui hasil.':'';
-    }catch(error){if(status)status.textContent=error?.message||String(error);}
+      if($('hssGlobalTr'))$('hssGlobalTr').value=String(trState(pointId));if(status&&!needsAnalysis)status.textContent=hssDirty.has(pointId)?'Parameter berubah. Hitung ulang HSS untuk memperbarui hasil.':'';
+      if(status&&needsAnalysis)setTimeout(()=>{if(status&&!hssDirty.has(pointId))status.textContent='';},220);
+    }catch(error){progress?.fail?.();if(status)status.textContent=error?.message||String(error);}
   }
   async function openHssAnalysis(){
     const pointId=renderDtaSelector(activePointId);if(!pointId){showAppToast('Belum ada DTA yang dapat dianalisis.');return;}
@@ -198,13 +231,13 @@
     if(!series.length){canvas.parentElement.innerHTML='<div class="hss-empty-chart">Kurva HSS belum tersedia.</div>';if(details)details.innerHTML='';return;}
     if(!window.Chart){canvas.parentElement.innerHTML='<div class="hss-empty-chart">Chart.js belum termuat. Muat ulang halaman untuk menampilkan grafik interaktif.</div>';return;}
     chartInstance=new Chart(canvas,{type:'line',data:{datasets:series.map(item=>({label:item.label,data:item.points,borderColor:item.color,backgroundColor:item.color,borderWidth:2.2,pointRadius:0,pointHoverRadius:4,pointHitRadius:9,tension:.12,fill:false}))},options:{responsive:true,maintainAspectRatio:false,animation:{duration:180},normalized:true,interaction:{mode:'nearest',intersect:false,axis:'xy'},plugins:{legend:{display:methodId==='comparison',position:'bottom',labels:{usePointStyle:true,boxWidth:8,boxHeight:8,font:{size:10}}},tooltip:{enabled:true,callbacks:{title:(items)=>items.length?`Waktu: ${hssNumber(items[0].parsed.x,3)} jam`:'',label:(ctx)=>`${ctx.dataset.label}: ${hssNumber(ctx.parsed.y,4)} m³/s`}},zoom:{limits:{x:{min:0,minRange:.05},y:{min:0,minRange:.0001}},pan:{enabled:true,mode:'xy'},zoom:{wheel:{enabled:true,speed:.08},pinch:{enabled:true},drag:{enabled:true,borderWidth:1},mode:'xy'}}},scales:{x:{type:'linear',title:{display:true,text:'Waktu (jam)',font:{weight:'600'}},min:0,grid:{color:cssColor('--border-color','#e0e5ed')}},y:{type:'linear',title:{display:true,text:'Debit (m³/s)',font:{weight:'600'}},beginAtZero:true,grid:{color:cssColor('--border-color','#e0e5ed')}}}}});
-    if(details){if(methodId==='comparison')details.innerHTML='<span>Tooltip menampilkan waktu dan debit setiap kurva. Gunakan tab metode untuk melihat parameter individual.</span>';else{const method=series[0].method,paramText=Object.entries(method.parameters||{}).map(([key,value])=>`${key}=${hssNumber(value,3)}`).join(' · '),tpLabel=method.method==='gama1'?'TR = Tp':'Tp',gamaNote=method.method==='gama1'?'<p>TR Gama I adalah waktu naik hasil perhitungan dan diperlakukan sebagai Tp; berbeda dari Tr durasi hujan efektif global.</p>':'';details.innerHTML=`<div><b>${tpLabel}</b><span>${hssNumber(method.Tp_hours,3)} jam</span></div><div><b>Qp</b><span>${hssNumber(normalized?method.Qp_m3s*method.normalization_factor:method.Qp_m3s,4)} m³/s</span></div><div><b>Tb</b><span>${hssNumber(method.Tb_hours,3)} jam</span></div><div><b>Volume</b><span>${normalized?'1,000 mm':`${hssNumber(method.equivalent_runoff_mm,4)} mm`}</span></div>${paramText?`<p>${escapeHtml(paramText)}</p>`:''}${gamaNote}`;}}
+    if(details){if(methodId==='comparison')details.innerHTML='<span>Tooltip menampilkan waktu dan debit setiap kurva. Gunakan tab metode untuk melihat parameter individual.</span>';else{const method=series[0].method,paramText=Object.entries(method.parameters||{}).map(([key,value])=>`${key}=${hssNumber(value,3)}`).join(' · '),tpLabel=method.method==='gama1'?'TR = Tp':'Tp';details.innerHTML=`<div><b>${tpLabel}</b><span>${hssNumber(method.Tp_hours,3)} jam</span></div><div><b>Qp</b><span>${hssNumber(normalized?method.Qp_m3s*method.normalization_factor:method.Qp_m3s,4)} m³/s</span></div><div><b>Tb</b><span>${hssNumber(method.Tb_hours,3)} jam</span></div><div><b>Volume</b><span>${normalized?'1,000 mm':`${hssNumber(method.equivalent_runoff_mm,4)} mm`}</span></div>${paramText?`<p>${escapeHtml(paramText)}</p>`:''}`;}}
   }
 
   $('hssAnalysisBtn')?.addEventListener('click',openHssAnalysis);
   $('closeHssAnalysisModal')?.addEventListener('click',()=>{if(chartInstance){chartInstance.destroy();chartInstance=null;}closeMapModal($('hssAnalysisModal'));});
   $('hssDtaSelect')?.addEventListener('change',async event=>{currentPointId=event.currentTarget.value;currentChartMethod='comparison';await loadPointForHss(currentPointId);refreshIcons($('hssAnalysisModal'));});
-  $('hssGlobalTr')?.addEventListener('input',event=>{if(!currentPointId)return;const value=Number(event.currentTarget.value);if(Number.isFinite(value)){hssTr.set(currentPointId,value);markDirty(currentPointId,'Tr berubah. Hitung ulang HSS agar metode yang memerlukan durasi hujan efektif menggunakan nilai terbaru. Gama I tetap menghitung TR sebagai waktu naik (TR = Tp).');}});
+  $('hssGlobalTr')?.addEventListener('input',event=>{if(!currentPointId)return;const value=Number(event.currentTarget.value);if(Number.isFinite(value)){hssTr.set(currentPointId,value);markDirty(currentPointId,'Tr berubah. Hitung ulang HSS agar metode yang memerlukan durasi hujan efektif menggunakan nilai terbaru.');}});
   $('runHssBtn')?.addEventListener('click',calculateCurrentHss);
   $('hssAnalysisModal')?.addEventListener('click',event=>{if(event.target.id==='hssAnalysisModal'){if(chartInstance){chartInstance.destroy();chartInstance=null;}closeMapModal(event.currentTarget);}});
   window.refreshHssUiState();

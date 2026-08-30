@@ -1,14 +1,15 @@
-// package.json
-var name = "@vercel/speed-insights";
-var version = "1.3.1";
-
 // src/queue.ts
 var initQueue = () => {
   if (window.si) return;
   window.si = function a(...params) {
-    (window.siq = window.siq || []).push(params);
+    window.siq = window.siq || [];
+    window.siq.push(params);
   };
 };
+
+// package.json
+var name = "@vercel/speed-insights";
+var version = "2.0.0";
 
 // src/utils.ts
 function isBrowser() {
@@ -20,7 +21,7 @@ function detectEnvironment() {
     if (env === "development" || env === "test") {
       return "development";
     }
-  } catch (e) {
+  } catch {
   }
   return "production";
 }
@@ -51,7 +52,7 @@ function computeRoute(pathname, pathParams) {
       }
     }
     return result;
-  } catch (e) {
+  } catch {
     return pathname;
   }
 }
@@ -63,7 +64,7 @@ function escapeRegExp(string) {
 }
 function getScriptSrc(props) {
   if (props.scriptSrc) {
-    return props.scriptSrc;
+    return makeAbsolute(props.scriptSrc);
   }
   if (isDevelopment()) {
     return "https://va.vercel-scripts.com/v1/speed-insights/script.debug.js";
@@ -72,42 +73,68 @@ function getScriptSrc(props) {
     return "https://va.vercel-scripts.com/v1/speed-insights/script.js";
   }
   if (props.basePath) {
-    return `${props.basePath}/speed-insights/script.js`;
+    return makeAbsolute(`${props.basePath}/speed-insights/script.js`);
   }
   return "/_vercel/speed-insights/script.js";
 }
+function loadProps(explicitProps, confString) {
+  var _a;
+  let props = explicitProps;
+  if (confString) {
+    try {
+      props = {
+        ...(_a = JSON.parse(confString)) == null ? void 0 : _a.speedInsights,
+        ...explicitProps
+      };
+    } catch {
+    }
+  }
+  const dataset = {
+    sdkn: name + (props.framework ? `/${props.framework}` : ""),
+    sdkv: version
+  };
+  if (props.sampleRate) {
+    dataset.sampleRate = props.sampleRate.toString();
+  }
+  if (props.route) {
+    dataset.route = props.route;
+  }
+  if (isDevelopment() && props.debug === false) {
+    dataset.debug = "false";
+  }
+  if (props.dsn) {
+    dataset.dsn = props.dsn;
+  }
+  if (props.endpoint) {
+    dataset.endpoint = makeAbsolute(props.endpoint);
+  } else if (props.basePath) {
+    dataset.endpoint = makeAbsolute(`${props.basePath}/speed-insights/vitals`);
+  }
+  return {
+    src: getScriptSrc(props),
+    beforeSend: props.beforeSend,
+    dataset
+  };
+}
+function makeAbsolute(url) {
+  return url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/") ? url : `/${url}`;
+}
 
 // src/generic.ts
-function injectSpeedInsights(props = {}) {
+function injectSpeedInsights(props = {}, confString) {
   var _a;
   if (!isBrowser() || props.route === null) return null;
   initQueue();
-  const src = getScriptSrc(props);
+  const { beforeSend, src, dataset } = loadProps(props, confString);
   if (document.head.querySelector(`script[src*="${src}"]`)) return null;
-  if (props.beforeSend) {
-    (_a = window.si) == null ? void 0 : _a.call(window, "beforeSend", props.beforeSend);
+  if (beforeSend) {
+    (_a = window.si) == null ? void 0 : _a.call(window, "beforeSend", beforeSend);
   }
   const script = document.createElement("script");
   script.src = src;
   script.defer = true;
-  script.dataset.sdkn = name + (props.framework ? `/${props.framework}` : "");
-  script.dataset.sdkv = version;
-  if (props.sampleRate) {
-    script.dataset.sampleRate = props.sampleRate.toString();
-  }
-  if (props.route) {
-    script.dataset.route = props.route;
-  }
-  if (props.endpoint) {
-    script.dataset.endpoint = props.endpoint;
-  } else if (props.basePath) {
-    script.dataset.endpoint = `${props.basePath}/speed-insights/vitals`;
-  }
-  if (props.dsn) {
-    script.dataset.dsn = props.dsn;
-  }
-  if (isDevelopment() && props.debug === false) {
-    script.dataset.debug = "false";
+  for (const [key, value] of Object.entries(dataset)) {
+    script.dataset[key] = value;
   }
   script.onerror = () => {
     console.log(

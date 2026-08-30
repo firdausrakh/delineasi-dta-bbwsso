@@ -304,7 +304,8 @@
     try{
       const tr=Number($('hssGlobalTr')?.value);hssTr.set(pointId,Number.isFinite(tr)?tr:1);
       const response=await fetch('/api/hss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_id:pointId,label:dtaDisplayLabel(pointId),hydrologic_analysis:result.hydrologic_analysis,methods,parameters:parameterState(pointId),input_overrides:morphometryState(pointId),global_tr_hours:trState(pointId)})});
-      const payload=await response.json();if(!response.ok)throw new Error(payload?.detail||'Analisis HSS gagal.');
+      const payload=window.readApiJsonResponse?await window.readApiJsonResponse(response,'Analisis HSS gagal.'):await response.json();
+      if(!response.ok)throw new Error(payload?.detail||'Analisis HSS gagal.');
       hssResults.set(pointId,payload);hssDirty.delete(pointId);persistHssState();
       const gamaReady=(payload.methods||[]).some(method=>method.method==='gama1'&&method.available);
       if(gamaReady&&payload.gama1_spatial)window.setGamaSpatialForPoint?.(pointId,payload.gama1_spatial);else window.clearGamaSpatialForPoint?.(pointId);

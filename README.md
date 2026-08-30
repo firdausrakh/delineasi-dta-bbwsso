@@ -843,7 +843,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.1`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.2`.
 
 ---
 
@@ -891,6 +891,14 @@ Riwayat versi diurutkan dari rilis terbaru hingga rilis web pertama.
 - rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
 - komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
 - tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
+
+### 1.3.2 — Vercel Payload Guard — 30 August 2026
+
+- payload rekonsiliasi multi-DTA tidak lagi mengirim analisis, RAW polygon, incremental polygon, atau alias geometry yang duplikat;
+- RAW hydrology direkonstruksi dari cache raster server ketika topology membutuhkannya;
+- koordinat GeoJSON tampilan memakai presisi tetap yang jauh melampaui resolusi raster sumber;
+- respons teks Vercel 413/504 ditampilkan sebagai pesan yang dapat dipahami dan tidak lagi memicu `Unexpected token`;
+- benchmark empat titik Serayu menurunkan respons multi dari 4,234 MB menjadi 1,671 MB dan request rekonsiliasi menjadi 0,713 MB.
 
 ### 1.3.1 — Runtime Performance — 30 August 2026
 

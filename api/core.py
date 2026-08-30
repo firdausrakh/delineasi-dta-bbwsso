@@ -38,7 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from pyproj import Transformer
-from shapely import make_valid, union_all
+from shapely import make_valid, set_precision, union_all
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, mapping, shape
 from shapely.ops import nearest_points, transform
 
@@ -113,7 +113,7 @@ LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsy
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.3.2"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 
@@ -250,6 +250,11 @@ def to_export_geom(geom):
     if str(streams.crs).upper() == CRS_EXPORT:
         return geom
     return transform(to_export.transform, geom)
+
+
+def _web_mapping(geometry_web) -> dict[str, Any]:
+    """Compact display GeoJSON without changing native calculation geometry."""
+    return mapping(set_precision(geometry_web, 1e-7, mode="pointwise"))
 
 
 def largest_polygon_component(geom):
@@ -1000,9 +1005,9 @@ def build_point_result(
             "official_river": official_river,
             "boundary_mode": "official_direct",
             "boundary_stitch": {"mode": "official_direct"},
-            "dta_geojson": mapping(raw_web),
-            "dta_raw_geojson": mapping(raw_web),
-            "watershed_geojson": mapping(raw_web),
+            "dta_geojson": _web_mapping(raw_web),
+            "dta_raw_geojson": _web_mapping(raw_web),
+            "watershed_geojson": _web_mapping(raw_web),
             "processing": {"total_ms": round((time.perf_counter() - started) * 1000.0, 1)},
         }
         result["processing"]["total_ms"] = round((time.perf_counter() - started) * 1000.0, 1)
@@ -1091,9 +1096,9 @@ def build_point_result(
         "official_river": official_river,
         "boundary_mode": boundary_mode,
         "boundary_stitch": boundary_stitch,
-        "dta_geojson": mapping(geom_web),
-        "dta_raw_geojson": mapping(raw_web),
-        "watershed_geojson": mapping(geom_web),
+        "dta_geojson": _web_mapping(geom_web),
+        "dta_raw_geojson": _web_mapping(raw_web),
+        "watershed_geojson": _web_mapping(geom_web),
         "processing": {
             "snap_ms": round(snap_ms, 1),
             "union_ms": round(union_ms, 1),
@@ -1158,10 +1163,46 @@ def analyze_point_network(results: list[dict[str, Any]], upstream_sets: list[set
 
 
 def _result_native_geometry(result: dict[str, Any], key: str = "dta_geojson"):
+    if key == "dta_raw_geojson":
+        native = result.get("_dta_raw_geometry")
+        if native is not None:
+            return native
     value = result.get(key)
     if not value:
         return None
     return transform(to_data.transform, shape(value))
+
+
+def _hydrate_raw_geometry(result: dict[str, Any]) -> None:
+    """Rebuild RAW hydrology server-side so clients never round-trip it."""
+    if result.get("dta_raw_geojson") or result.get("_dta_raw_geometry") is not None:
+        return
+    link = result.get("outlet_linkno")
+    if link is None:
+        raw = _result_native_geometry(result)
+    elif HYBRID_RASTER_AVAILABLE:
+        processing = result.get("processing") or {}
+        try:
+            row = int(processing["outlet_raster_row"])
+            col = int(processing["outlet_raster_col"])
+            raw, *_ = _hybrid_watershed_cached(int(link), row, col)
+        except (KeyError, TypeError, ValueError):
+            snapped = Point(*to_data.transform(float(result["snapped_lon"]), float(result["snapped_lat"])))
+            raw, _ = hybrid_watershed_projected(int(link), snapped)
+    else:
+        raw = watershed_union_projected(int(link))
+    result["_dta_raw_geometry"] = clean_dta_polygon(raw)
+
+
+def _transport_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Remove server-only/duplicate geometry from multi-point HTTP payloads."""
+    public = dict(result)
+    public.pop("dta_raw_geojson", None)
+    public.pop("watershed_geojson", None)
+    public.pop("_dta_raw_geometry", None)
+    if public.get("dta_incremental_geojson") == public.get("dta_geojson"):
+        public.pop("dta_incremental_geojson", None)
+    return public
 
 
 def _compute_hydrologic_analysis_for_result(result: dict[str, Any], *, decimal_separator: str = ",") -> dict[str, Any]:
@@ -1515,7 +1556,7 @@ def reconcile_final_geometries(
             cancel_check()
         geom = clean_dta_polygon(finals[i])
         raw = raws[i]
-        result["dta_geojson"] = mapping(transform(to_web.transform, geom))
+        result["dta_geojson"] = _web_mapping(transform(to_web.transform, geom))
         result["watershed_geojson"] = result["dta_geojson"]
         result["area_km2"] = area_km2_equal(geom)
         if raw is not None:
@@ -1567,7 +1608,7 @@ def apply_incremental_geometries(results: list[dict[str, Any]], upstream_sets: l
                     incremental = make_valid(incremental)
             except Exception:
                 incremental = projected_final[j]
-        result["dta_incremental_geojson"] = mapping(transform(to_web.transform, incremental))
+        result["dta_incremental_geojson"] = _web_mapping(transform(to_web.transform, incremental))
         result["incremental_area_km2"] = area_km2_equal(incremental)
 
 
@@ -2206,7 +2247,7 @@ def delineate_multi(req: MultiDelineateRequest, request: Request):
             apply_incremental_geometries(results, upstream_sets)
             LATEST_REQUESTS.ensure_current(token)
             return {
-                "results": results,
+                "results": [_transport_result(result) for result in results],
                 "network_analysis": analyze_point_network(results, upstream_sets),
                 "performance": {"queue_ms": round(ticket.queue_ms, 1)},
             }
@@ -2233,6 +2274,7 @@ def reconcile_results(req: CachedResultsRequest, request: Request):
                 raise HTTPException(status_code=400, detail="Cached point_id harus unik dan tidak kosong.")
             upstream_sets = []
             for result in results:
+                _hydrate_raw_geometry(result)
                 link = result.get("outlet_linkno")
                 upstream_sets.append(set(collect_upstream_ids(int(link))) if link is not None else set())
             LATEST_REQUESTS.ensure_current(token)
@@ -2244,7 +2286,7 @@ def reconcile_results(req: CachedResultsRequest, request: Request):
             apply_incremental_geometries(results, upstream_sets)
             LATEST_REQUESTS.ensure_current(token)
             return {
-                "results": results,
+                "results": [_transport_result(result) for result in results],
                 "network_analysis": analyze_point_network(results, upstream_sets),
                 "performance": {"queue_ms": round(ticket.queue_ms, 1)},
             }

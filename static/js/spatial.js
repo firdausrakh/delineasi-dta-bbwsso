@@ -316,6 +316,27 @@ async function parseErrorResponse(response,fallback='Proses gagal.'){
   }catch(_){}
   return {message:`${fallback} Server mengembalikan HTTP ${response.status}.`};
 }
+async function readApiJsonResponse(response,fallback='Proses gagal.'){
+  let text='';
+  try{text=await response.text();}catch(_){}
+  let payload=null;
+  if(text){try{payload=JSON.parse(text);}catch(_){}}
+  if(!response.ok){
+    let detail=payload?parseApiError(payload,fallback):null;
+    const platformText=String(text||'').trim();
+    if(response.status===413||/payload too large|request entity too large|response payload too large/i.test(platformText)){
+      detail={code:'payload_too_large',message:'Data multi-DTA melebihi batas payload Vercel. Kurangi jumlah titik besar atau jalankan kembali setelah hasil lama dibersihkan.'};
+    }else if(response.status===504||/invocation.*timeout|request.*timeout/i.test(platformText)){
+      detail={code:'request_timeout',message:'Perhitungan melewati batas waktu Vercel. Coba ulang; warm worker biasanya lebih cepat.'};
+    }else if(!detail){
+      detail={message:platformText&&!/^internal server error$/i.test(platformText)?platformText:`${fallback} Server mengembalikan HTTP ${response.status}.`};
+    }
+    const error=new Error(detail.message||fallback);Object.assign(error,detail);throw error;
+  }
+  if(payload===null)throw new Error(`${fallback} Respons server bukan JSON yang valid.`);
+  return payload;
+}
+window.readApiJsonResponse=readApiJsonResponse;
 function pointName(id){const p=points.find(x=>x.point_id===id);return p?.label?.trim()||id;}
 function pointNameDraft(id){return pointNameDrafts.has(id)?String(pointNameDrafts.get(id)):pointName(id);}
 function pointNameDirty(id){return pointNameDraft(id).trim()!==pointName(id).trim();}
@@ -480,8 +501,7 @@ async function ensureCharacteristicAnalysisStreams(id){
   if(characteristicStreamPromises.has(id))return characteristicStreamPromises.get(id);
   const promise=(async()=>{
     const response=await fetch('/api/characteristic-streams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_result:result,decimal_separator:decimalSeparator})});
-    const payload=await response.json();
-    if(!response.ok)throw new Error(payload?.detail||'Jaringan karakteristik tidak dapat dimuat.');
+    const payload=await readApiJsonResponse(response,'Jaringan karakteristik tidak dapat dimuat.');
     window.setCharacteristicAnalysisStreamsForPoint?.(id,payload);
     return payload;
   })().finally(()=>characteristicStreamPromises.delete(id));
@@ -541,8 +561,7 @@ async function ensureHydrologicAnalysis(id){
   if(hydrologicAnalysisPromises.has(id))return hydrologicAnalysisPromises.get(id);
   const promise=(async()=>{
     const response=await fetch('/api/characteristics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_result:result,decimal_separator:decimalSeparator})});
-    const payload=await response.json();
-    if(!response.ok)throw new Error(payload?.detail||'Perhitungan karakteristik DTA gagal.');
+    const payload=await readApiJsonResponse(response,'Perhitungan karakteristik DTA gagal.');
     result.hydrologic_analysis=payload;
     window.setCharacteristicSpatialForPoint?.(id,payload.characteristic_spatial);
     window.setCharacteristicAnalysisStreamsForPoint?.(id,payload.analysis_streams_geojson);
@@ -1950,10 +1969,15 @@ async function reconcileCachedResults({guard=null}={}){
   if(!cached.length){clearResults();return true;}
   if(delineationAbortController){try{delineationAbortController.abort();}catch(_){}delineationAbortController=null;}
   const reconcileRequestId=`${Date.now()}-reconcile-${++delineationRequestSerial}`;
-  const response=await fetch('/api/reconcile-results',{method:'POST',headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':reconcileRequestId},body:JSON.stringify({results:cached})});
-  const payload=await response.json();
+  const compact=cached.map(result=>{const copy={...result};delete copy.hydrologic_analysis;delete copy.dta_incremental_geojson;delete copy.watershed_geojson;delete copy.dta_raw_geojson;return copy;});
+  const response=await fetch('/api/reconcile-results',{method:'POST',headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':reconcileRequestId},body:JSON.stringify({results:compact})});
+  const payload=await readApiJsonResponse(response,'Pembaruan hubungan DTA gagal.');
   if(!operationIsCurrent())return false;
-  if(!response.ok)throw parseApiError(payload,'Pembaruan hubungan DTA gagal.');
+  const previousById=new Map(cached.map(result=>[result.point_id,result]));
+  for(const result of (payload.results||[])){
+    const previous=previousById.get(result.point_id);
+    if(previous?.hydrologic_analysis&&result?.topology_qa?.status!=='reconciled')result.hydrologic_analysis=previous.hydrologic_analysis;
+  }
   batchResult=payload;renderDtaLayers();renderRequestedPoints();renderPointCards();renderRelationship(payload.network_analysis);$('downloadBtn').disabled=false;if($('hssAnalysisBtn'))$('hssAnalysisBtn').disabled=false;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=false;persistState();
   return true;
 }
@@ -1983,9 +2007,8 @@ async function runBatchDelineation({fit=true,onlyPointId=null,preserveDerived=fa
       signal:requestController.signal,
       body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4,decimal_separator:decimalSeparator})
     });
-    const payload=await response.json();
+    const payload=await readApiJsonResponse(response,'Delineasi gagal.');
     if(!requestIsCurrent())return null;
-    if(!response.ok)throw parseApiError(payload,'Delineasi gagal.');
     if(target&&batchResult?.results?.length){
       const byId=new Map(batchResult.results.map(r=>[r.point_id,r]));byId.set(target.point_id,payload.results[0]);
       batchResult={results:points.map(p=>byId.get(p.point_id)).filter(Boolean),network_analysis:null};
@@ -2488,8 +2511,7 @@ map.on('load',async()=>{
   try{
     if(window.DTA_CORE_WARM_PROMISE)await window.DTA_CORE_WARM_PROMISE;
     const response=await fetch('/api/info',{cache:'no-store'});
-    if(!response.ok)throw new Error('info unavailable');
-    info=await response.json();
+    info=await readApiJsonResponse(response,'Info backend gagal dimuat.');
     backendLastWarmAt=Date.now();
     studyBounds=[[info.bounds_wgs84[0],info.bounds_wgs84[1]],[info.bounds_wgs84[2],info.bounds_wgs84[3]]];
     if(!restoredState.camera)map.fitBounds(studyBounds,{padding:40,maxZoom:8});

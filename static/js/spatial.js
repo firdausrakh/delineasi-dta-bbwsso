@@ -4,8 +4,15 @@ const POINT_PALETTE = ['#d94841','#6f56a8','#2f8b57','#d17b27','#2878b8','#a74e8
 const POINT_COLORS = Object.fromEntries(Array.from({length:MAX_POINTS},(_,i)=>[`O${i+1}`,POINT_PALETTE[i]]));
 const DEFAULT_BASIN_COLOR = '#9b7300';
 const DEFAULT_RIVER_COLOR = '#0083d7';
+const DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR = '#D946A8';
+const DEFAULT_CHARACTERISTIC_L_COLOR = '#173B6C';
+const DEFAULT_CHARACTERISTIC_LCA_COLOR = '#D94841';
+const DEFAULT_CHARACTERISTIC_L1085_COLOR = '#16836B';
+const DEFAULT_CHARACTERISTIC_STREAM_COLOR = '#0000FF';
 const DEFAULT_BASEMAP = 'world-topo';
 const APP_STATE_KEY = 'delineasiDtaUiStateV85';
+const DERIVED_LAYER_PREF_VERSION = 4;
+const HYDROLOGIC_ANALYSIS_CACHE_VERSION = 3;
 const MULTI_MODE_HINT_KEY = 'delineasiDtaMultiModeHintV1';
 const USAGE_NOTICE_KEY = 'delineasiDtaUsageNoticeV1';
 const RIVER_ZOOM = {1:6.5,2:6.5,3:10.5,other:12.5};
@@ -67,11 +74,16 @@ function clearLegacyPersistentState(){
 clearLegacyPersistentState();
 function readAppState(){try{return JSON.parse(sessionStorage.getItem(APP_STATE_KEY)||'{}')||{};}catch(_){return {};}}
 const restoredState = readAppState();
+const restoredHydrologicAnalyses = (restoredState.hydrologicAnalysisCacheVersion===HYDROLOGIC_ANALYSIS_CACHE_VERSION && restoredState.hydrologicAnalyses && typeof restoredState.hydrologicAnalyses==='object') ? restoredState.hydrologicAnalyses : {};
 if(restoredState.pointColors&&typeof restoredState.pointColors==='object'){for(let i=1;i<=MAX_POINTS;i++){const id=`O${i}`;if(restoredState.pointColors[id])POINT_COLORS[id]=restoredState.pointColors[id];}}
 let info = {};
 const uiLanguage = 'id';
 let decimalSeparator = restoredState.decimalSeparator === '.' ? '.' : ',';
 let points = Array.isArray(restoredState.points)?restoredState.points.slice(0,MAX_POINTS).map(p=>({...p,label:clampPointName(p?.label)})):[];
+const hiddenDtaLayerIds = new Set(
+  (Array.isArray(restoredState.hiddenDtaLayerIds)?restoredState.hiddenDtaLayerIds:[])
+    .filter(id=>points.some(point=>point.point_id===id))
+);
 let batchResult = null;
 let studyBounds = null;
 let pointPopup = null;
@@ -109,6 +121,7 @@ let hoverCandidateKind = null;
 let hoverShownKind = null;
 let hoverEmphasisId = null;
 let hoverEmphasisKind = null;
+let lastHighlightSignature = '';
 let pointListSortable = null;
 let suppressCardToggleUntil = 0;
 let previewSnapState = null;
@@ -149,6 +162,22 @@ let currentRiverAssetKey = null;
 let hiddenRiverLabelIds = [];
 let lastRiverLabelFilterSignature = '';
 const modalCameraContext = new WeakMap();
+// Spatial source parameters used by Characteristic analysis and HSS Gama I.
+// Characteristic flowpaths are generated once by the hydrologic analysis.
+// Gama I reuses canonical L/Lca geometry but keeps its AU construction controls separate.
+const characteristicSpatialByPoint = new Map();
+const characteristicAnalysisStreamsByPoint = new Map();
+const gamaSpatialByPoint = new Map();
+
+// Startup / wake-up resilience.  The visible map should respond immediately even
+// while the heavy GIS backend is cold, and operational GeoJSON sources should
+// recover automatically from a transient first-request failure.
+let backendWarmPromise = null;
+let backendLastWarmAt = 0;
+const BACKEND_WARM_TTL_MS = 90_000;
+const mapAssetRetryAttempts = new Map();
+const mapAssetRetryTimers = new Map();
+const MAP_ASSET_RETRY_DELAYS_MS = [700, 2200, 5200, 11000, 20000];
 
 const $ = id => document.getElementById(id);
 const statusEl = $('status');
@@ -163,23 +192,34 @@ const searchResultsEl = $('searchResults');
 
 function restorePreferenceControls(){
   const c=restoredState.controls||{};
-  const values={snapRadius:c.snapRadius,boundaryMatch:c.boundaryMatch,hillshadeOpacity:c.hillshadeOpacity,hatchOpacity:c.hatchOpacity,lineWidth:c.lineWidth,basinColor:c.basinColor,riverColor:c.riverColor};
+  const values={snapRadius:c.snapRadius,boundaryMatch:c.boundaryMatch,hillshadeOpacity:c.hillshadeOpacity,hatchOpacity:c.hatchOpacity,lineWidth:c.lineWidth,basinColor:c.basinColor,riverColor:c.riverColor,characteristicMainChannelColor:c.characteristicMainChannelColor,characteristicLColor:c.characteristicLColor,characteristicLcaColor:c.characteristicLcaColor,characteristicL1085Color:c.characteristicL1085Color,characteristicStreamsColor:c.characteristicStreamsColor};
   for(const [id,value] of Object.entries(values)){if(value!==undefined&&$(id))$(id).value=String(value);}
-  const checks={showHillshade:c.showHillshade,showBasins:c.showBasins,showBasinLabels:c.showBasinLabels,showRivers:c.showRivers,autoRiverZoom:c.autoRiverZoom,showRiverLabels:c.showRiverLabels,showHatch:c.showHatch};
+  const derivedPrefsValid=restoredState.derivedLayerPrefVersion===DERIVED_LAYER_PREF_VERSION;
+  const checks={showHillshade:c.showHillshade,showBasins:c.showBasins,showBasinLabels:c.showBasinLabels,showRivers:c.showRivers,autoRiverZoom:c.autoRiverZoom,showRiverLabels:c.showRiverLabels,showHatch:c.showHatch,showCharacteristicMainChannel:derivedPrefsValid?c.showCharacteristicMainChannel:false,showCharacteristicL:derivedPrefsValid?c.showCharacteristicL:false,showCharacteristicLca:derivedPrefsValid?c.showCharacteristicLca:false,showCharacteristicL1085:derivedPrefsValid?c.showCharacteristicL1085:false,showCharacteristicCentroid:derivedPrefsValid?c.showCharacteristicCentroid:false,showCharacteristicAnalysisStreams:derivedPrefsValid?c.showCharacteristicAnalysisStreams:false,showGamaAu:derivedPrefsValid?c.showGamaAu:false,showGamaWl:derivedPrefsValid?c.showGamaWl:false,showGamaWu:derivedPrefsValid?c.showGamaWu:false,showGamaConstruction:derivedPrefsValid?c.showGamaConstruction:false};
   for(const [id,value] of Object.entries(checks)){if(value!==undefined&&$(id))$(id).checked=Boolean(value);}
   if(c.riverOrders){document.querySelectorAll('.river-order-toggle').forEach(x=>{if(c.riverOrders[x.dataset.order]!==undefined)x.checked=Boolean(c.riverOrders[x.dataset.order]);});}
+  if(c.characteristicRiverOrders){document.querySelectorAll('.characteristic-order-toggle').forEach(x=>{if(c.characteristicRiverOrders[x.dataset.order]!==undefined)x.checked=Boolean(c.characteristicRiverOrders[x.dataset.order]);});}
   if($('hillshadeOpacityValue'))$('hillshadeOpacityValue').textContent=`${$('hillshadeOpacity').value}%`;
   if($('hatchOpacityValue'))$('hatchOpacityValue').textContent=`${$('hatchOpacity').value}%`;
 }
 function getCameraState(){try{const c=map.getCenter();return {center:[c.lng,c.lat],zoom:map.getZoom(),bearing:map.getBearing(),pitch:map.getPitch()};}catch(_){return restoredState.camera||null;}}
+function hydrologicAnalysisForSession(analysis){
+  if(!analysis||typeof analysis!=='object')return analysis;
+  const copy={...analysis};
+  delete copy.analysis_streams_geojson;
+  return copy;
+}
 function persistState(){
   try{
     const riverOrders={};document.querySelectorAll('.river-order-toggle').forEach(x=>riverOrders[x.dataset.order]=x.checked);
+    const characteristicRiverOrders={};document.querySelectorAll('.characteristic-order-toggle').forEach(x=>characteristicRiverOrders[x.dataset.order]=x.checked);
     sessionStorage.setItem(APP_STATE_KEY,JSON.stringify({
       points:points.map(p=>({point_id:p.point_id,lon:p.lon,lat:p.lat,source:p.source,label:p.label})),
+      hydrologicAnalysisCacheVersion:HYDROLOGIC_ANALYSIS_CACHE_VERSION,
+      hydrologicAnalyses:Object.fromEntries((batchResult?.results||[]).filter(r=>r?.point_id&&r?.hydrologic_analysis).map(r=>[r.point_id,hydrologicAnalysisForSession(r.hydrologic_analysis)])),
       nameDrafts:Object.fromEntries(points.map(p=>[p.point_id,pointNameDraft(p.point_id)])),
-      pointColors:{...POINT_COLORS},sidebarCollapsed,currentBasemap,selectedLightBasemap,activePointId,pointInputMode,multiPointMode:pointInputMode==='multi',language:uiLanguage,decimalSeparator,camera:getCameraState(),
-      controls:{snapRadius:snapRadiusEl?.value,boundaryMatch:boundaryMatchEl?.value,showHillshade:$('showHillshade')?.checked,hillshadeOpacity:$('hillshadeOpacity')?.value,showBasins:$('showBasins')?.checked,showBasinLabels:$('showBasinLabels')?.checked,showRivers:$('showRivers')?.checked,autoRiverZoom:$('autoRiverZoom')?.checked,riverOrders,showRiverLabels:$('showRiverLabels')?.checked,showHatch:$('showHatch')?.checked,hatchOpacity:$('hatchOpacity')?.value,lineWidth:$('lineWidth')?.value,basinColor:$('basinColor')?.value,riverColor:$('riverColor')?.value}
+      pointColors:{...POINT_COLORS},hiddenDtaLayerIds:[...hiddenDtaLayerIds],derivedLayerPrefVersion:DERIVED_LAYER_PREF_VERSION,sidebarCollapsed,currentBasemap,selectedLightBasemap,activePointId,pointInputMode,multiPointMode:pointInputMode==='multi',language:uiLanguage,decimalSeparator,camera:getCameraState(),
+      controls:{snapRadius:snapRadiusEl?.value,boundaryMatch:boundaryMatchEl?.value,showHillshade:$('showHillshade')?.checked,hillshadeOpacity:$('hillshadeOpacity')?.value,showBasins:$('showBasins')?.checked,showBasinLabels:$('showBasinLabels')?.checked,showRivers:$('showRivers')?.checked,autoRiverZoom:$('autoRiverZoom')?.checked,riverOrders,showRiverLabels:$('showRiverLabels')?.checked,showHatch:$('showHatch')?.checked,hatchOpacity:$('hatchOpacity')?.value,showCharacteristicMainChannel:$('showCharacteristicMainChannel')?.checked,showCharacteristicL:$('showCharacteristicL')?.checked,showCharacteristicLca:$('showCharacteristicLca')?.checked,showCharacteristicL1085:$('showCharacteristicL1085')?.checked,showCharacteristicCentroid:$('showCharacteristicCentroid')?.checked,showCharacteristicAnalysisStreams:$('showCharacteristicAnalysisStreams')?.checked,characteristicRiverOrders,characteristicMainChannelColor:$('characteristicMainChannelColor')?.value,characteristicLColor:$('characteristicLColor')?.value,characteristicLcaColor:$('characteristicLcaColor')?.value,characteristicL1085Color:$('characteristicL1085Color')?.value,characteristicStreamsColor:$('characteristicStreamsColor')?.value,showGamaAu:$('showGamaAu')?.checked,showGamaWl:$('showGamaWl')?.checked,showGamaWu:$('showGamaWu')?.checked,showGamaConstruction:$('showGamaConstruction')?.checked,lineWidth:$('lineWidth')?.value,basinColor:$('basinColor')?.value,riverColor:$('riverColor')?.value}
     }));
   }catch(_){}
 }
@@ -342,7 +382,7 @@ function applyAnalysisLanguage(){
   if(uiLanguage!=='en')return;
   const content=$('hydrologicAnalysisContent');if(!content?.innerHTML)return;
   const replacements={
-    'RESPONS HIDROLOGI DTA':'DTA HYDROLOGIC RESPONSE','Indikator Kuantitatif Kunci':'Key Quantitative Indicators','Ringkasan untuk pengambilan keputusan':'Decision-making summary','Lihat Analisis Teknis':'View Technical Analysis','Topografi & Bentuk DTA':'Terrain & Basin Morphometry','Jaringan Drainase':'Drainage Network','Parameter Lintasan Aliran':'Flowpath Parameters','Penutupan Lahan':'Land Cover','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number (CN)':'Curve Number (CN)','Orde sungai maksimum':'Maximum stream order','Tc Representatif':'Representative multi-method Tc','Waktu Konsentrasi':'Time of Concentration','Batasan interpretasi':'Interpretation limitations','Luas DTA':'Basin area','Rata-rata kemiringan':'Mean slope','Relief DTA (R)':'Basin relief (R)','Rentang elevasi (ΔZ)':'Elevation range (ΔZ)','Kesepakatan antar-metode':'Inter-method agreement','Kerapatan drainase':'Drainage density','Faktor bentuk':'Form factor','Lintasan aliran terpanjang':'Longest flow path','CN-II tertimbang':'Weighted CN-II','Keliling':'Perimeter','Elevasi minimum':'Minimum elevation','Elevasi rata-rata':'Mean elevation','Elevasi maksimum':'Maximum elevation','Elevasi outlet':'Outlet elevation','Rasio elongasi':'Elongation ratio','Rasio kebulatan':'Circularity ratio','Rasio relief':'Relief ratio','Integral hipsometrik':'Hypsometric integral','Panjang total sungai':'Total stream length','Panjang sungai utama':'Main channel length','Kemiringan ruas sungai':'Reach slope','Kemiringan lintasan aliran terpanjang':'Longest flowpath slope','Kemiringan lintasan melalui sentroid':'Centroidal flowpath slope','Kemiringan lintasan 10-85':'10-85 flowpath slope','Distribusi Kelas Lereng':'Slope Class Distribution','Klasifikasi':'Interpretation','Implikasi':'Definition','Nilai':'Value','Parameter':'Parameter','Definisi':'Definition','Keterangan':'Notes','Rekomendasi':'Recommended'
+    'INTERPRETASI RESPONS HIDROLOGI':'HYDROLOGIC RESPONSE INTERPRETATION','RESPONS HIDROLOGI DTA':'DTA HYDROLOGIC RESPONSE','Indikator Kuantitatif Kunci':'Key Quantitative Indicators','Ringkasan untuk pengambilan keputusan':'Decision-making summary','Lihat Analisis Teknis':'View Technical Analysis','Topografi & Bentuk DTA':'Terrain & Basin Morphometry','Jaringan Drainase':'Drainage Network','Parameter Lintasan Aliran':'Flowpath Parameters','Penutupan Lahan':'Land Cover','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number dan Potensi Limpasan':'Curve Number & Runoff Potential','Curve Number (CN)':'Curve Number (CN)','Orde sungai maksimum':'Maximum stream order','Tc Representatif':'Representative multi-method Tc','Waktu Konsentrasi':'Time of Concentration','Batasan interpretasi':'Interpretation limitations','Luas DTA':'Basin area','Rata-rata kemiringan':'Mean slope','Relief DTA (R)':'Basin relief (R)','Rentang elevasi (ΔZ)':'Elevation range (ΔZ)','Kesepakatan antar-metode':'Inter-method agreement','Kerapatan drainase':'Drainage density','Faktor bentuk':'Form factor','Lintasan aliran terpanjang':'Longest flow path','CN-II tertimbang':'Weighted CN-II','Keliling':'Perimeter','Elevasi minimum':'Minimum elevation','Elevasi rata-rata':'Mean elevation','Elevasi median':'Median elevation','Elevasi maksimum':'Maximum elevation','Elevasi outlet':'Outlet elevation','Rasio elongasi':'Elongation ratio','Rasio kebulatan':'Circularity ratio','Rasio relief':'Relief ratio','Rasio relief (RR)':'Relief ratio (RR)','Integral hipsometrik':'Hypsometric integral','Panjang total sungai':'Total stream length','Panjang sungai utama':'Main channel length','Panjang sungai utama (Lm)':'Main channel length (Lm)','Kemiringan sungai utama':'Main channel slope','Sinuositas sungai utama':'Main channel sinuosity','Kemiringan ruas sungai':'Reach slope','Lintasan aliran melalui sentroid':'Centroidal flowpath','Lintasan aliran 10-85':'10-85 flowpath','Kemiringan lintasan aliran terpanjang':'Longest flowpath slope','Kemiringan lintasan melalui sentroid':'Centroidal flowpath slope','Kemiringan lintasan 10-85':'10-85 flowpath slope','Distribusi Kelas Lereng':'Slope Class Distribution','Klasifikasi':'Interpretation','Implikasi':'Definition','Nilai':'Value','Parameter':'Parameter','Definisi':'Definition','Keterangan':'Notes','Rekomendasi':'Recommended'
   };
   let html=content.innerHTML;for(const [id,en] of Object.entries(replacements))html=html.replaceAll(id,en);content.innerHTML=html;refreshIcons(content);
 }
@@ -383,7 +423,7 @@ function analysisMetric(label,value,options={}){
   const tooltip=options.tooltip?String(options.tooltip):'';
   const help=tooltip?` data-help="${escapeHtml(tooltip)}"`:'';
   const info=tooltip?`<button class="info-tooltip analysis-metric-info" type="button" aria-label="Informasi ${escapeHtml(label)}">i</button>`:'';
-  return `<div class="analysis-metric${options.priorityAccent?' analysis-metric--priority':''}"${help}><span class="analysis-metric-label"><span>${escapeHtml(label)}</span>${info}</span><strong>${formatAnalysisValue(value,options)}</strong>${options.interpretation?`<small>${escapeHtml(options.interpretation)}</small>`:''}</div>`;
+  return `<div class="analysis-metric"${help}><span class="analysis-metric-label"><span>${escapeHtml(label)}</span>${info}</span><strong>${formatAnalysisValue(value,options)}</strong>${options.interpretation?`<small>${escapeHtml(options.interpretation)}</small>`:''}</div>`;
 }
 function analysisIndicatorTooltip(label,value,{tc={}}={}){
   const hasValue=value!==null&&value!==undefined&&Number.isFinite(Number(value));
@@ -397,8 +437,8 @@ function analysisIndicatorTooltip(label,value,{tc={}}={}){
     'Frekuensi sungai (Fs)':'Dasar interpretasi: jumlah sungai Strahler per km²; tidak diterapkan ambang universal karena sensitif terhadap skala dan detail jaringan. Tingkat kepercayaan: Sedang, bergantung pada kelengkapan jaringan sungai.',
     'Orde sungai maksimum':'Dasar interpretasi: orde Strahler tertinggi pada jaringan sungai di dalam DTA. Tingkat kepercayaan: Sedang, bergantung pada kelengkapan dan konsistensi jaringan sungai.',
     'Faktor bentuk (Ff)':'Dasar interpretasi: Sangat memanjang <0,30; Memanjang 0,30–<0,50; Agak kompak 0,50–<0,75; Kompak ≥0,75. Tingkat kepercayaan: Tinggi, dihitung dari luas dan panjang karakteristik DTA.',
-    'Lintasan aliran terpanjang (Lb)':'Dasar interpretasi: panjang lintasan hidrologis terpanjang menuju outlet; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan konektivitas lintasan aliran.',
-    'Kemiringan alur utama (Sc)':'Dasar interpretasi: beda elevasi ujung alur utama terhadap outlet dibagi panjang alur utama; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan representasi alur utama.',
+    'Lintasan aliran terpanjang (L)':'Dasar interpretasi: panjang lintasan hidrologis terpanjang menuju outlet; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan konektivitas lintasan aliran.',
+    'Kemiringan sungai utama (Sc)':'Dasar interpretasi: beda elevasi hulu sungai utama terhadap outlet dibagi panjang sungai utama; tidak digunakan dengan ambang universal. Tingkat kepercayaan: Sedang–tinggi, bergantung pada data ketinggian dan representasi jaringan sungai.',
     'Curve Number (CN)':'Dasar interpretasi: nilai CN-II tertimbang; semakin tinggi CN, semakin kecil potensi retensi dan semakin besar kecenderungan limpasan. Tingkat kepercayaan: Sedang, dipengaruhi ketelitian penutupan lahan serta kelompok tanah hidrologi.',
     'Waktu konsentrasi (Tc)':`Dasar interpretasi: nilai representatif dari beberapa metode waktu konsentrasi yang tersedia. Tingkat kepercayaan: ${tcAgreement}; menunjukkan kesepakatan antar-metode, bukan ukuran kepercayaan statistik.`,
     'Kawasan terbangun':'Dasar interpretasi: persentase area kelas penutupan lahan terbangun di dalam DTA; tidak diterapkan ambang universal. Tingkat kepercayaan: Sedang, mengikuti resolusi dan akurasi penutupan lahan.'
@@ -429,6 +469,42 @@ function formatNarrativeText(value){
   return String(value||'').replace(/(\d)[,.](\d)/g,`$1${separator}$2`);
 }
 const hydrologicAnalysisPromises=new Map();
+const characteristicStreamPromises=new Map();
+async function ensureCharacteristicAnalysisStreams(id){
+  if(characteristicAnalysisStreamsByPoint.has(id))return characteristicAnalysisStreamsByPoint.get(id);
+  const result=pointResult(id);if(!result?.hydrologic_analysis)return null;
+  if(result.hydrologic_analysis.analysis_streams_geojson?.features?.length){
+    window.setCharacteristicAnalysisStreamsForPoint?.(id,result.hydrologic_analysis.analysis_streams_geojson);
+    return result.hydrologic_analysis.analysis_streams_geojson;
+  }
+  if(characteristicStreamPromises.has(id))return characteristicStreamPromises.get(id);
+  const promise=(async()=>{
+    const response=await fetch('/api/characteristic-streams',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_result:result,decimal_separator:decimalSeparator})});
+    const payload=await response.json();
+    if(!response.ok)throw new Error(payload?.detail||'Jaringan karakteristik tidak dapat dimuat.');
+    window.setCharacteristicAnalysisStreamsForPoint?.(id,payload);
+    return payload;
+  })().finally(()=>characteristicStreamPromises.delete(id));
+  characteristicStreamPromises.set(id,promise);
+  return promise;
+}
+window.ensureCharacteristicAnalysisStreams=ensureCharacteristicAnalysisStreams;
+function characteristicAnalyzedPointIds(){
+  return points.filter(point=>Boolean(pointResult(point.point_id)?.hydrologic_analysis)).map(point=>point.point_id);
+}
+function refreshAnalysisDownloadOption(){
+  const checkbox=$('downloadAnalysisReport'),hint=$('downloadAnalysisHint');
+  if(!checkbox)return;
+  const analyzed=characteristicAnalyzedPointIds().length,total=points.filter(point=>pointResult(point.point_id)).length;
+  const ready=total>0&&analyzed===total;
+  checkbox.disabled=!ready;
+  if(!ready)checkbox.checked=false;
+  if(hint){
+    hint.textContent=ready?`${analyzed} DTA memiliki hasil Analisis Karakteristik.`:(analyzed?`${analyzed} dari ${total} DTA sudah dianalisis. Jalankan Analisis Karakteristik untuk seluruh DTA agar pilihan ini aktif.`:'Jalankan Analisis Karakteristik terlebih dahulu untuk mengaktifkan pilihan ini.');
+  }
+  try{updateDownloadSummary();}catch(_){}
+}
+window.refreshAnalysisDownloadOption=refreshAnalysisDownloadOption;
 function startAnalysisProgress(target,label='Menghitung karakteristik DTA…'){
   if(!target)return {complete(){},fail(){}};
   const steps=[1,5,10,20,30,45,60,75,85,92],state={index:0,timer:null,raf:null,spinStart:null,done:false};
@@ -454,13 +530,24 @@ window.startAnalysisProgress=startAnalysisProgress;
 async function ensureHydrologicAnalysis(id){
   const result=pointResult(id);
   if(!result)throw new Error('Hasil DTA tidak ditemukan.');
-  if(result.hydrologic_analysis)return result.hydrologic_analysis;
+  if(result.hydrologic_analysis?.characteristic_spatial)window.setCharacteristicSpatialForPoint?.(id,result.hydrologic_analysis.characteristic_spatial);
+  if(result.hydrologic_analysis?.analysis_streams_geojson)window.setCharacteristicAnalysisStreamsForPoint?.(id,result.hydrologic_analysis.analysis_streams_geojson);
+  if(result.hydrologic_analysis?.characteristic_spatial){
+    refreshAnalysisDownloadOption();
+    try{await ensureCharacteristicAnalysisStreams(id);}catch(_){}
+    return result.hydrologic_analysis;
+  }
+
   if(hydrologicAnalysisPromises.has(id))return hydrologicAnalysisPromises.get(id);
   const promise=(async()=>{
     const response=await fetch('/api/characteristics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_result:result,decimal_separator:decimalSeparator})});
     const payload=await response.json();
     if(!response.ok)throw new Error(payload?.detail||'Perhitungan karakteristik DTA gagal.');
     result.hydrologic_analysis=payload;
+    window.setCharacteristicSpatialForPoint?.(id,payload.characteristic_spatial);
+    window.setCharacteristicAnalysisStreamsForPoint?.(id,payload.analysis_streams_geojson);
+    refreshAnalysisDownloadOption();
+    persistState();
     return payload;
   })().finally(()=>hydrologicAnalysisPromises.delete(id));
   hydrologicAnalysisPromises.set(id,promise);
@@ -487,10 +574,8 @@ async function openHydrologicAnalysis(id){
   $('hydrologicAnalysisTitle').textContent=dtaAnalysisDisplayLabel(id);
   const slopeRanges={'Datar':'Datar (0–8%)','Landai':'Landai (>8–15%)','Agak curam':'Agak curam (>15–25%)','Curam':'Curam (>25–40%)','Sangat curam':'Sangat curam (>40%)'};
   const slopeBars=(slope.distribution||[]).map(item=>`<div class="slope-class-row"><span>${escapeHtml(slopeRanges[item.class]||item.class)}</span><div><i style="width:${Math.max(0,Math.min(100,Number(item.area_pct)||0))}%"></i></div><strong>${formatAnalysisValue(item.area_pct,{digits:1,unit:'%'})}</strong></div>`).join('');
-  const priorityIndicatorLabels=new Set(['Kemiringan rata-rata (S)','Kerapatan drainase (Dd)','Curve Number (CN)','Waktu konsentrasi (Tc)']);
   const indicatorItems=(analysis.key_indicator_items||[]).map(item=>analysisMetric(item.label,item.value,{
     unit:item.unit||'',
-    priorityAccent:priorityIndicatorLabels.has(item.label),
     tooltip:analysisIndicatorTooltip(item.label,item.value,{tc})
   })).join('');
   const cnInterpretations=cn.interpretations||{};
@@ -498,8 +583,8 @@ async function openHydrologicAnalysis(id){
   const missing=(terrain.missing||[]).length?`<div class="analysis-data-note"><i data-lucide="database-zap"></i><span>Data opsional belum lengkap: ${escapeHtml(terrain.missing.join(', '))}. Lengkapi sumber data agar metrik terkait aktif otomatis.</span></div>`:'';
   const limitations=(analysis.limitations||[]).map(x=>`<li>${escapeHtml(x)}</li>`).join('');
   $('hydrologicAnalysisContent').innerHTML=`
-    <section class="analysis-executive"><div><span class="analysis-kicker">RESPONS HIDROLOGI</span><strong>${escapeHtml(String(summary.response_class||'Belum dapat dinilai').toUpperCase())}</strong></div><p>${escapeHtml(formatNarrativeText(summary.narrative||''))}</p></section>
-    <section><div class="analysis-section-title"><span>Indikator Kunci</span><small class="analysis-priority-legend"><i></i><span>Oranye = indikator prioritas respons hidrologis</span></small></div><div class="analysis-indicator-grid">
+    <section class="analysis-executive"><div><span class="analysis-kicker">${uiLanguage==='en'?'HYDROLOGIC RESPONSE<br>INTERPRETATION':'INTERPRETASI<br>RESPONS HIDROLOGI'}</span><strong>${escapeHtml(String(summary.response_class||'Belum dapat dinilai').toUpperCase())}</strong></div><p>${escapeHtml(formatNarrativeText(summary.narrative||''))}</p></section>
+    <section><div class="analysis-section-title"><span>Indikator Kunci</span></div><div class="analysis-indicator-grid">
       ${indicatorItems}
     </div>${missing}</section>
     <details class="technical-analysis"><summary><span><i data-lucide="table-properties"></i>Lihat Karakteristik Detail</span><i data-lucide="chevron-down"></i></summary><div id="analysisTechnicalBody" class="technical-analysis-body">
@@ -507,9 +592,9 @@ async function openHydrologicAnalysis(id){
       <div class="technical-group"><h3>Topografi & Bentuk DTA</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
         ${technicalRow('Luas DTA (A)',morph.area_km2,'—','Luas wilayah tangkapan pada batas DTA',{digits:2,unit:'km²'})}
         ${technicalRow('Keliling (P)',morph.perimeter_km,'—','Keliling batas DTA yang telah diperhalus',{digits:2,unit:'km'})}
-        ${technicalRow('Panjang DTA (Lb)',morph.basin_length_km,'—','Lintasan aliran terpanjang dari outlet ke hulu',{digits:2,unit:'km'})}
         ${technicalRow('Elevasi minimum',elev.min_m,'—','Titik ketinggian terendah dalam DTA',{digits:1,unit:'mdpl'})}
         ${technicalRow('Elevasi rata-rata',elev.mean_m,'—','Rata-rata ketinggian seluruh wilayah DTA',{digits:1,unit:'mdpl'})}
+        ${technicalRow('Elevasi median',elev.median_m??terrain.hypsometry?.elevation_percentiles_m?.['50'],'—','Nilai tengah distribusi ketinggian wilayah DTA',{digits:1,unit:'mdpl'})}
         ${technicalRow('Elevasi maksimum',elev.max_m,'—','Titik ketinggian tertinggi dalam DTA',{digits:1,unit:'mdpl'})}
         ${technicalRow('Elevasi outlet',elev.outlet_m,'—','Ketinggian pada titik outlet DTA',{digits:1,unit:'mdpl'})}
         ${technicalRow('Elevasi batas tertinggi',elev.divide_max_m,'—','Titik tertinggi sepanjang batas DTA',{digits:1,unit:'mdpl'})}
@@ -521,20 +606,17 @@ async function openHydrologicAnalysis(id){
         ${technicalRow('Faktor bentuk (Ff)',morph.form_factor,classes.shape,'Perbandingan luas terhadap kuadrat panjang DTA',{digits:3})}
         ${technicalRow('Rasio elongasi (Re)',morph.elongation_ratio,classes.elongation,'Perbandingan diameter setara terhadap panjang DTA',{digits:3})}
         ${technicalRow('Rasio kebulatan (Rc)',morph.circularity_ratio,Number.isFinite(Number(morph.circularity_ratio))?(morph.circularity_ratio>=.5?'Relatif membulat':'Relatif tidak membulat'):'—','Luas dibandingkan dengan kuadrat keliling DTA',{digits:3})}
-        ${technicalRow('Rasio relief',morph.relief_ratio,'—','Relief dibagi panjang DTA',{digits:4})}
+        ${technicalRow('Rasio relief (RR)',morph.relief_ratio,'—','Relief dibagi lintasan aliran terpanjang',{digits:4})}
         ${technicalRow('Integral hipsometrik (HI)',terrain.hypsometry?.integral,terrain.hypsometry?.stage||'—','Tahap perkembangan bentuk lahan berdasarkan distribusi elevasi',{digits:3})}
       </tbody></table></div></div>
       <div class="technical-group"><h3>Jaringan Drainase</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
         ${technicalRow('Panjang total sungai',drain.total_stream_length_km,'—','Jumlah panjang seluruh sungai dalam DTA',{digits:2,unit:'km'})}
         ${technicalRow('Panjang sungai utama',drain.main_channel_length_km,'—','Panjang jalur sungai utama menuju outlet',{digits:2,unit:'km'})}
-        ${technicalRow('Lintasan aliran terpanjang',terrain.longest_flow_path_km,'—','Jarak aliran terpanjang dari outlet ke hulu',{digits:2,unit:'km'})}
-        ${technicalRow('Kemiringan alur utama',drain.main_channel_slope_pct,'—','Beda elevasi dibagi panjang alur utama',{digits:3,unit:'%'})}
+        ${technicalRow('Kemiringan sungai utama',drain.main_channel_slope_pct,'—','Beda elevasi dibagi panjang sungai utama',{digits:3,unit:'%'})}
         ${technicalRow('Kemiringan rata-rata jaringan',drain.network_mean_slope_pct,'—','Rata-rata kemiringan ruas berbobot panjang',{digits:3,unit:'%'})}
-        ${technicalRow('Sinuositas alur utama',drain.channel_sinuosity,'—','Panjang alur dibagi jarak lurus ujungnya',{digits:3})}
+        ${technicalRow('Sinuositas sungai utama',drain.channel_sinuosity,'—','Panjang sungai utama dibagi jarak lurus ujungnya',{digits:3})}
         ${technicalRow('Jumlah percabangan',drain.junction_count,'—','Titik pertemuan sedikitnya dua ruas sungai',{digits:0})}
         ${technicalRow('Kerapatan percabangan',drain.junction_density_per_km2,'—','Jumlah percabangan per luas DTA',{digits:3,unit:'percabangan/km²'})}
-        ${technicalRow('Intensitas drainase (Id)',drain.drainage_intensity,'—','Frekuensi sungai dibagi kerapatan drainase',{digits:3})}
-        ${technicalRow('Nomor infiltrasi (If)',drain.infiltration_number,'—','Kerapatan drainase dikali frekuensi sungai',{digits:3})}
         ${technicalRow('Orde sungai maksimum (Strahler)',drain.stream_order_max,'—','Orde Strahler tertinggi dalam DTA',{digits:0})}
         ${technicalRow('Kerapatan drainase (Dd)',drain.drainage_density_km_per_km2,classes.drainage_density,'Panjang sungai per luas DTA',{digits:3,unit:'km/km²'})}
         ${technicalRow('Frekuensi sungai (Fs)',drain.stream_frequency_per_km2,'—','Jumlah sungai Strahler per luas DTA',{digits:3,unit:'sungai/km²'})}
@@ -542,9 +624,9 @@ async function openHydrologicAnalysis(id){
         ${Object.entries(drain.bifurcation_ratios_by_order||{}).map(([pair,value])=>{const order=String(pair).split('-')[0];return technicalRow(`Rasio percabangan orde ${order}`,value,'—',`Perbandingan jumlah sungai orde ${order} terhadap orde berikutnya`,{digits:3});}).join('')}
       </tbody></table></div></div>
       <div class="technical-group"><h3>Parameter Lintasan Aliran</h3><div class="technical-table-wrap"><table><thead><tr><th>Parameter</th><th>Nilai</th><th>Interpretasi</th><th>Definisi</th></tr></thead><tbody>
-        ${technicalRow('Panjang lintasan aliran (L)',terrain.longest_flow_path_km,'—','Jarak aliran terpanjang dari outlet ke hulu',{digits:3,unit:'km'})}
-        ${technicalRow('Panjang lintasan aliran melalui sentroid (Lca)',terrain.centroidal_flowpath_km,'—','Jarak outlet ke titik lintasan terdekat sentroid',{digits:3,unit:'km'})}
-        ${technicalRow('Panjang lintasan aliran 10-85 (L10-85)',terrain.flowpath_10_85_km,'—','Bagian lintasan antara posisi 10% dan 85%',{digits:3,unit:'km'})}
+        ${technicalRow('Lintasan aliran terpanjang (L)',terrain.longest_flow_path_km,'—','Jarak aliran terpanjang dari outlet ke hulu',{digits:3,unit:'km'})}
+        ${technicalRow('Lintasan aliran melalui sentroid (Lca)',terrain.centroidal_flowpath_km,'—','Jarak outlet ke titik lintasan terdekat sentroid',{digits:3,unit:'km'})}
+        ${technicalRow('Lintasan aliran 10-85 (L10-85)',terrain.flowpath_10_85_km,'—','Panjang geometri lintasan antara posisi 10% dan 85%',{digits:3,unit:'km'})}
         ${technicalRow('Kemiringan lintasan aliran terpanjang (SL)',flowSlope.longest_flowpath_pct,'—','Beda elevasi dibagi panjang lintasan terpanjang',{digits:3,unit:'%'})}
         ${technicalRow('Kemiringan lintasan melalui sentroid (Sca)',flowSlope.centroidal_flowpath_pct,'—','Beda elevasi dibagi panjang lintasan melalui sentroid',{digits:3,unit:'%'})}
         ${technicalRow('Kemiringan lintasan 10-85 (S10-85)',flowSlope.flowpath_10_85_pct,'—','Beda elevasi dibagi panjang lintasan 10–85',{digits:3,unit:'%'})}
@@ -606,6 +688,10 @@ function closePointPopup({cancelPending=true}={}){
 }
 function schedulePointPopupFromMap(lon,lat,{moveTargetId=null}={}){
   cancelScheduledPointPopup();
+  // Give immediate visual feedback on pointer click. The short debounce below is
+  // retained only to distinguish a navigation double-click. openPointPopup() still
+  // performs /api/location-check before any point can be confirmed/delineated.
+  renderSnapPreview({lon:Number(lon),lat:Number(lat)},null);
   mapPointClickTimer=setTimeout(()=>{
     mapPointClickTimer=null;
     openPointPopup(lon,lat,'map',null,{moveTargetId});
@@ -627,6 +713,14 @@ function isHeaderUiBlocked(){
   return Boolean(
     document.querySelector('.modal-backdrop:not(.hidden)') ||
     document.querySelector('.map-panel:not(.hidden)') ||
+    document.querySelector('.dta-colorpicker-panel:not(.hidden)')
+  );
+}
+function isMapHoverBlocked(){
+  // Layer & Tampilan intentionally remains interactive while open, so derived
+  // spatial layers can be inspected immediately after a visibility toggle.
+  return Boolean(
+    document.querySelector('.modal-backdrop:not(.hidden)') ||
     document.querySelector('.dta-colorpicker-panel:not(.hidden)')
   );
 }
@@ -652,7 +746,7 @@ function closeMapModal(el){
   updateHeaderHandleInteractivity();
 }
 function copyText(text,button=null){const done=()=>{if(button){const old=button.innerHTML;button.innerHTML='<i data-lucide="check"></i>';refreshIcons(button);setTimeout(()=>{button.innerHTML=old;refreshIcons(button);},1200);}};if(navigator.clipboard?.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>{});}else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');done();}catch(_){}t.remove();}}
-function resultUiStatus(r,processing=false){if(processing)return {label:'Memproses',cls:'processing'};if(!r)return {label:'Menunggu',cls:'pending'};const pairs=r?.topology_qa?.pairs||[];const warning=pairs.some(x=>x?.status==='warning');if(warning)return {label:'Periksa batas',cls:'warning'};return null;}
+function resultUiStatus(r,processing=false){if(processing)return {label:'Memproses',cls:'processing'};if(!r)return {label:'Menunggu',cls:'pending'};const pairs=r?.topology_qa?.pairs||[];const unresolved=pairs.some(x=>x?.status==='warning'&&x?.auto_repair_failed);if(unresolved)return {label:'Batas belum terkoreksi',cls:'warning'};return null;}
 function reindexPoints(){/* Internal IDs are stable; deleted slots may be reused by nextPointId(). */}
 
 function dmsToDecimal(deg,min,sec,hem){
@@ -730,6 +824,7 @@ class ExistingControl{
 }
 
 const savedCamera=restoredState.camera||{};
+try{maplibregl.prewarm?.();}catch(_){}
 const map=new maplibregl.Map({
   container:'map',center:Array.isArray(savedCamera.center)?savedCamera.center:[110.1,-7.55],zoom:Number.isFinite(savedCamera.zoom)?savedCamera.zoom:7,bearing:Number.isFinite(savedCamera.bearing)?savedCamera.bearing:0,pitch:0,minPitch:0,maxPitch:0,pitchWithRotate:false,touchPitch:false,style:buildMapStyle(),
   locale:{'NavigationControl.ZoomIn':'Perbesar','NavigationControl.ZoomOut':'Perkecil','NavigationControl.ResetBearing':'Atur ulang arah','FullscreenControl.Enter':'Layar penuh','FullscreenControl.Exit':'Keluar layar penuh'}
@@ -760,15 +855,69 @@ function riverDisplayAssetKeyForZoom(zoom=map?.getZoom?.()??0){
   if(zoom>=8.5)return 'official-rivers-z8-10';
   return 'official-rivers-z6-8';
 }
-function mapAssetUrl(key){
-  const filename=MAP_ASSET_FILES[key];
-  if(MAP_ASSETS_BASE&&filename){
-    const suffix=MAP_ASSETS_VERSION?`?v=${encodeURIComponent(MAP_ASSETS_VERSION)}`:'';
-    return `${MAP_ASSETS_BASE}/${filename}${suffix}`;
-  }
-  return `/api/map-assets/${key}`;
+function appendQuery(url,key,value){
+  const join=url.includes('?')?'&':'?';
+  return `${url}${join}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
-function riverDisplayAssetUrl(key=riverDisplayAssetKeyForZoom()){return mapAssetUrl(key);}
+function mapAssetUrl(key,{retryToken=null}={}){
+  const filename=MAP_ASSET_FILES[key];
+  let url=(MAP_ASSETS_BASE&&filename)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
+  if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
+  if(retryToken!==null)url=appendQuery(url,'retry',retryToken);
+  return url;
+}
+function riverDisplayAssetUrl(key=riverDisplayAssetKeyForZoom(),options={}){return mapAssetUrl(key,options);}
+
+async function warmBackend({force=false}={}){
+  const now=Date.now();
+  if(!force&&backendWarmPromise)return backendWarmPromise;
+  if(!force&&now-backendLastWarmAt<BACKEND_WARM_TTL_MS)return true;
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),12_000);
+  backendWarmPromise=fetch('/api/health',{cache:'no-store',signal:controller.signal})
+    .then(r=>{if(r.ok)backendLastWarmAt=Date.now();return r.ok;})
+    .catch(()=>false)
+    .finally(()=>{clearTimeout(timer);backendWarmPromise=null;});
+  return backendWarmPromise;
+}
+
+function operationalAssetKeyForSource(sourceId){
+  if(sourceId==='official-basins')return 'official-basins';
+  if(sourceId==='official-rivers')return currentRiverAssetKey||riverDisplayAssetKeyForZoom();
+  return null;
+}
+function resetMapAssetRetry(sourceId){
+  mapAssetRetryAttempts.delete(sourceId);
+  const timer=mapAssetRetryTimers.get(sourceId);
+  if(timer)clearTimeout(timer);
+  mapAssetRetryTimers.delete(sourceId);
+}
+function retryOperationalSource(sourceId,{force=false}={}){
+  const source=map?.getSource?.(sourceId);
+  if(!source?.setData)return;
+  if(!force){try{if(map.isSourceLoaded(sourceId)){resetMapAssetRetry(sourceId);return;}}catch(_){}}
+  if(mapAssetRetryTimers.has(sourceId))return;
+  const attempt=mapAssetRetryAttempts.get(sourceId)||0;
+  if(attempt>=MAP_ASSET_RETRY_DELAYS_MS.length)return;
+  const delay=force?0:MAP_ASSET_RETRY_DELAYS_MS[attempt];
+  const timer=setTimeout(()=>{
+    mapAssetRetryTimers.delete(sourceId);
+    const key=operationalAssetKeyForSource(sourceId);
+    if(!key)return;
+    mapAssetRetryAttempts.set(sourceId,attempt+1);
+    try{source.setData(mapAssetUrl(key,{retryToken:`${attempt+1}-${Date.now()}`}));}catch(_){}
+    setTimeout(()=>retryOperationalSource(sourceId),Math.min(2200,700+(attempt*450)));
+  },delay);
+  mapAssetRetryTimers.set(sourceId,timer);
+}
+function verifyOperationalSources(){
+  for(const sourceId of ['official-basins','official-rivers']){
+    try{
+      if(map.getSource(sourceId)&&!map.isSourceLoaded(sourceId))retryOperationalSource(sourceId);
+      else if(map.getSource(sourceId))resetMapAssetRetry(sourceId);
+    }catch(_){}
+  }
+}
 function updateRiverDisplaySource({force=false}={}){
   const source=map?.getSource?.('official-rivers');
   if(!source)return;
@@ -778,7 +927,8 @@ function updateRiverDisplaySource({force=false}={}){
   riverLabelData=null;
   riverLabelDataKey=null;
   lastRiverLabelFilterSignature='';
-  try{source.setData(riverDisplayAssetUrl(key));}catch(_){}
+  resetMapAssetRetry('official-rivers');
+  try{source.setData(riverDisplayAssetUrl(key));}catch(_){retryOperationalSource('official-rivers',{force:true});}
   updateRiverLabelFilter({force:true});
   if(batchResult?.results?.length)updateLabelDeclutter();
 }
@@ -842,10 +992,298 @@ function updateRiverLabelFilter({force=false}={}){
 }
 function lineBase(){return Number($('lineWidth')?.value||2);}
 function riverWidth(k){const b=lineBase(),m={1:1,2:.70,3:.48,other:.34}[k];return Math.max(.55,b*m);}
+function isDtaLayerVisible(pointId){return !hiddenDtaLayerIds.has(pointId);}
+
+// The backend incremental polygons are the atomic non-overlapping pieces for the
+// complete multi-point result.  Show/hide must not leave holes: when an upstream
+// DTA is hidden, its atomic piece belongs to the nearest visible downstream DTA
+// on the same flow path.  Reassigning the existing pieces avoids expensive
+// client-side polygon difference/union operations and keeps hatch + hit-testing
+// perfectly synchronized with visibility.
+function visibleIncrementalAssignments(){
+  const results=batchResult?.results||[];
+  const visibleResults=results.filter(result=>isDtaLayerVisible(String(result.point_id)));
+  const visibleIds=new Set(visibleResults.map(result=>String(result.point_id)));
+  const resultById=new Map(results.map(result=>[String(result.point_id),result]));
+  const relations=batchResult?.network_analysis?.pair_relations||[];
+  const downstreamByUpstream=new Map();
+  for(const relation of relations){
+    if(relation?.relation!=='same_flow_path')continue;
+    const upstream=String(relation?.upstream_point||''),downstream=String(relation?.downstream_point||'');
+    if(!upstream||!downstream)continue;
+    if(!downstreamByUpstream.has(upstream))downstreamByUpstream.set(upstream,[]);
+    downstreamByUpstream.get(upstream).push(downstream);
+  }
+  const areaOf=id=>{
+    const area=Number(resultById.get(String(id))?.area_km2);
+    return Number.isFinite(area)?area:Infinity;
+  };
+  const assignments=new Map(visibleResults.map(result=>[String(result.point_id),[]]));
+  for(const result of results){
+    const sourceId=String(result.point_id);
+    let ownerId=null;
+    if(visibleIds.has(sourceId)){
+      ownerId=sourceId;
+    }else{
+      const candidates=(downstreamByUpstream.get(sourceId)||[])
+        .filter(id=>visibleIds.has(String(id)))
+        .sort((a,b)=>areaOf(a)-areaOf(b)||String(a).localeCompare(String(b)));
+      ownerId=candidates[0]||null;
+    }
+    if(!ownerId)continue;
+    const geometry=result.dta_incremental_geojson||result.dta_geojson;
+    if(!geometry)continue;
+    assignments.get(String(ownerId))?.push({sourceId,geometry});
+  }
+  return assignments;
+}
+function refreshVisibleIncrementalSources(){
+  if(!map?.getSource)return;
+  const assignments=visibleIncrementalAssignments();
+  for(let i=1;i<=MAX_POINTS;i++){
+    const id=`O${i}`,source=map.getSource(`dta-incremental-${id}`);
+    if(!source?.setData)continue;
+    const pieces=assignments.get(id)||[];
+    source.setData({type:'FeatureCollection',features:pieces.map(piece=>({
+      type:'Feature',
+      properties:{point_id:id,incremental_source_point_id:piece.sourceId},
+      geometry:piece.geometry
+    }))});
+  }
+}
+function applyPerDtaLayerVisibility(){
+  const showHatch=$('showHatch')?.checked===true;
+  refreshVisibleIncrementalSources();
+  for(let i=1;i<=MAX_POINTS;i++){
+    const id=`O${i}`,visible=isDtaLayerVisible(id);
+    setLayerVisibility(`dta-${id}-line`,visible);
+    setLayerVisibility(`dta-${id}-hover`,visible);
+    setLayerVisibility(`dta-${id}-hit`,visible);
+    setLayerVisibility(`dta-${id}-hatch`,visible&&showHatch);
+  }
+}
+function setDtaLayerVisibility(pointId,visible,{renderCard=true,save=true}={}){
+  if(!pointId)return;
+  if(visible)hiddenDtaLayerIds.delete(pointId);else hiddenDtaLayerIds.add(pointId);
+  if(!visible&&(hoverPointId===pointId||hoverEmphasisId===pointId))clearDtaHover();
+  applyPerDtaLayerVisibility();
+  renderRequestedPoints();
+  refreshCharacteristicSpatialSource();
+  refreshGamaSpatialSource();
+  updateLabelDeclutter();
+  if(renderCard)renderPointCards();
+  syncLayerSummaryEyes();
+  if(save)schedulePersistState();
+}
+window.setDtaLayerVisibility=setDtaLayerVisibility;
+
+function updateAllDtaVisibilityButton(){
+  const button=$('toggleAllDtaVisibilityBtn');if(!button)return;
+  const hasPoints=points.length>0,allVisible=hasPoints&&points.every(point=>isDtaLayerVisible(point.point_id));
+  button.disabled=!hasPoints;
+  const label=allVisible?'Sembunyikan semua DTA':'Tampilkan semua DTA';
+  button.setAttribute('aria-label',label);button.title=label;
+  button.innerHTML=`<i data-lucide="${allVisible?'eye':'eye-off'}"></i>`;
+  refreshIcons(button);
+  syncLayerSummaryEyes();
+}
+function toggleAllDtaVisibility(){
+  if(!points.length)return;
+  const allVisible=points.every(point=>isDtaLayerVisible(point.point_id));
+  if(allVisible)points.forEach(point=>hiddenDtaLayerIds.add(point.point_id));
+  else points.forEach(point=>hiddenDtaLayerIds.delete(point.point_id));
+  clearDtaHover();applyPerDtaLayerVisibility();renderRequestedPoints();refreshCharacteristicSpatialSource();refreshGamaSpatialSource();updateLabelDeclutter();renderPointCards();syncLayerSummaryEyes();schedulePersistState();
+}
+
+function characteristicLayerColors(){
+  const mainChannel=$('characteristicMainChannelColor')?.value||DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR;
+  const l=$('characteristicLColor')?.value||DEFAULT_CHARACTERISTIC_L_COLOR;
+  const lca=$('characteristicLcaColor')?.value||DEFAULT_CHARACTERISTIC_LCA_COLOR;
+  const l1085=$('characteristicL1085Color')?.value||DEFAULT_CHARACTERISTIC_L1085_COLOR;
+  return {MAIN_CHANNEL:mainChannel,L:l,LCA:lca,L10_85:l1085,L10:l1085,L85:l1085};
+}
+function characteristicSpatialFeatureCollection(){
+  const features=[];
+  const parameterColors=characteristicLayerColors();
+  for(const [pointId,spatial] of characteristicSpatialByPoint.entries()){
+    if(!isDtaLayerVisible(pointId))continue;
+    for(const parameter of ['MAIN_CHANNEL','L','LCA','L10_85','L10','L85','C']){
+      const feature=spatial?.[parameter];
+      if(!feature?.geometry)continue;
+      const color=parameter==='C'?(POINT_COLORS[pointId]||POINT_PALETTE[0]):(parameterColors[parameter]||'#173B6C');
+      features.push({type:'Feature',properties:{...(feature.properties||{}),point_id:pointId,parameter,color,display_group:'characteristic'},geometry:feature.geometry});
+    }
+  }
+  return {type:'FeatureCollection',features};
+}
+
+function applyCharacteristicColors(){
+  const colors=characteristicLayerColors();
+  if(map?.getLayer?.('characteristic-main-channel-line'))map.setPaintProperty('characteristic-main-channel-line','line-color',colors.MAIN_CHANNEL);
+  if(map?.getLayer?.('characteristic-l-line'))map.setPaintProperty('characteristic-l-line','line-color',colors.L);
+  if(map?.getLayer?.('characteristic-lca-line'))map.setPaintProperty('characteristic-lca-line','line-color',colors.LCA);
+  if(map?.getLayer?.('characteristic-l1085-line'))map.setPaintProperty('characteristic-l1085-line','line-color',colors.L10_85);
+  for(const id of ['characteristic-main-channel-label','characteristic-l-label','characteristic-lca-label','characteristic-l1085-label','characteristic-l1085-station-labels'])if(map?.getLayer?.(id))map.setPaintProperty(id,'text-color',['get','color']);
+  if(map?.getLayer?.('characteristic-l1085-stations'))map.setPaintProperty('characteristic-l1085-stations','circle-color',colors.L10_85);
+  const streamColor=$('characteristicStreamsColor')?.value||DEFAULT_CHARACTERISTIC_STREAM_COLOR;
+  for(let order=1;order<=10;order++)if(map?.getLayer?.(`characteristic-analysis-stream-order-${order}`))map.setPaintProperty(`characteristic-analysis-stream-order-${order}`,'line-color',streamColor);
+}
+function refreshCharacteristicSpatialSource(){
+  const source=map?.getSource?.('characteristic-spatial');
+  if(source?.setData)source.setData(characteristicSpatialFeatureCollection());
+  const group=$('characteristicLayerGroup');if(group)group.classList.toggle('hidden',characteristicSpatialByPoint.size===0);
+  applyCharacteristicColors();
+  applyCharacteristicSpatialVisibility();
+}
+function analysisStreamsFeatureCollection(){
+  const features=[];
+  for(const [pointId,geojson] of characteristicAnalysisStreamsByPoint.entries()){
+    if(!isDtaLayerVisible(pointId))continue;
+    for(const feature of (geojson?.features||[])){
+      if(!feature?.geometry)continue;
+      const props={...(feature.properties||{}),point_id:pointId,display_group:'analysis_streams'};
+      const order=Number(props.strahler_order ?? props.strmOrder ?? props.strm_order ?? props.STRAHLER ?? 0);
+      props.strahler_order=Number.isFinite(order)?order:0;
+      features.push({type:'Feature',properties:props,geometry:feature.geometry});
+    }
+  }
+  return {type:'FeatureCollection',features};
+}
+function characteristicAnalysisOrderValues(){
+  const values=new Set();
+  for(const geojson of characteristicAnalysisStreamsByPoint.values())for(const feature of (geojson?.features||[])){
+    const order=Number(feature?.properties?.strahler_order ?? feature?.properties?.strmOrder ?? feature?.properties?.strm_order ?? feature?.properties?.STRAHLER ?? 0);
+    if(Number.isFinite(order)&&order>0)values.add(Math.round(order));
+  }
+  return [...values].sort((a,b)=>a-b);
+}
+function renderCharacteristicStreamOrderControls(){
+  const root=$('characteristicStreamOrders');if(!root)return;
+  const orders=characteristicAnalysisOrderValues();
+  if(!orders.length){root.innerHTML='';return;}
+  const current={};root.querySelectorAll('.characteristic-order-toggle').forEach(input=>current[String(input.dataset.order)]=input.checked);
+  const saved=(restoredState.controls||{}).characteristicRiverOrders||{};
+  root.innerHTML=orders.map(order=>{const key=String(order);const checked=current[key]!==undefined?current[key]:saved[key]!==false;return `<label class="check-row"><input class="characteristic-order-toggle" data-order="${order}" type="checkbox" ${checked?'checked':''} /> Orde ${order}</label>`;}).join('');
+  root.querySelectorAll('.characteristic-order-toggle').forEach(input=>input.addEventListener('change',()=>{applyCharacteristicSpatialVisibility();persistState();syncLayerSummaryEyes();}));
+  refreshIcons(root);
+}
+function refreshCharacteristicAnalysisStreamsSource(){
+  const source=map?.getSource?.('characteristic-analysis-streams');
+  if(source?.setData)source.setData(analysisStreamsFeatureCollection());
+  renderCharacteristicStreamOrderControls();
+  applyCharacteristicColors();
+  applyCharacteristicSpatialVisibility();
+}
+function applyCharacteristicSpatialVisibility(){
+  const mainChannel=$('showCharacteristicMainChannel')?.checked===true;
+  const l=$('showCharacteristicL')?.checked===true;
+  const lca=$('showCharacteristicLca')?.checked===true;
+  const l1085=$('showCharacteristicL1085')?.checked===true;
+  const c=$('showCharacteristicCentroid')?.checked===true;
+  const analysisStreams=$('showCharacteristicAnalysisStreams')?.checked===true;
+  setLayerVisibility('characteristic-main-channel-line',mainChannel);setLayerVisibility('characteristic-main-channel-label',mainChannel);setLayerVisibility('characteristic-main-channel-hit',mainChannel);
+  setLayerVisibility('characteristic-l-line',l);setLayerVisibility('characteristic-l-label',l);setLayerVisibility('characteristic-l-hit',l);
+  setLayerVisibility('characteristic-lca-line',lca);setLayerVisibility('characteristic-lca-label',lca);setLayerVisibility('characteristic-lca-hit',lca);
+  setLayerVisibility('characteristic-l1085-line',l1085);setLayerVisibility('characteristic-l1085-label',l1085);setLayerVisibility('characteristic-l1085-hit',l1085);
+  setLayerVisibility('characteristic-l1085-stations',l1085);setLayerVisibility('characteristic-l1085-station-labels',l1085);
+  setLayerVisibility('characteristic-centroid-point',c);setLayerVisibility('characteristic-centroid-label',c);
+  const selectedOrders=new Set([...document.querySelectorAll('.characteristic-order-toggle:checked')].map(input=>String(input.dataset.order)));
+  const allOrders=characteristicAnalysisOrderValues();
+  for(const order of allOrders){
+    const visible=analysisStreams&&selectedOrders.has(String(order));
+    setLayerVisibility(`characteristic-analysis-stream-order-${order}`,visible);
+  }
+  const group=$('characteristicLayerGroup');
+  if(group)group.classList.toggle('hidden',characteristicSpatialByPoint.size===0&&characteristicAnalysisStreamsByPoint.size===0);
+  syncLayerSummaryEyes();
+}
+
+window.setCharacteristicSpatialForPoint=(pointId,spatial)=>{
+  if(!pointId)return;
+  const hasSpatial=['MAIN_CHANNEL','L','LCA','L10_85','C'].some(key=>spatial?.[key]?.geometry);
+  if(spatial&&hasSpatial)characteristicSpatialByPoint.set(pointId,spatial);
+  else characteristicSpatialByPoint.delete(pointId);
+  refreshCharacteristicSpatialSource();
+};
+window.clearCharacteristicSpatialForPoint=pointId=>{if(pointId)characteristicSpatialByPoint.delete(pointId);refreshCharacteristicSpatialSource();};
+window.clearAllCharacteristicSpatial=()=>{characteristicSpatialByPoint.clear();refreshCharacteristicSpatialSource();};
+window.setCharacteristicAnalysisStreamsForPoint=(pointId,geojson)=>{if(!pointId)return;if(geojson?.features?.length)characteristicAnalysisStreamsByPoint.set(pointId,geojson);else characteristicAnalysisStreamsByPoint.delete(pointId);refreshCharacteristicAnalysisStreamsSource();};
+window.clearCharacteristicAnalysisStreamsForPoint=pointId=>{if(pointId)characteristicAnalysisStreamsByPoint.delete(pointId);refreshCharacteristicAnalysisStreamsSource();};
+window.clearAllCharacteristicAnalysisStreams=()=>{characteristicAnalysisStreamsByPoint.clear();refreshCharacteristicAnalysisStreamsSource();};
+
+function gamaSpatialFeatureCollection(){
+  const features=[];
+  // Untuk DTA bertingkat pada satu aliran, gambar DTA/AU yang lebih besar lebih
+  // dahulu. Fitur DTA yang lebih kecil kemudian berada di atas secara visual,
+  // sehingga hasil titik lama/hulu tidak tertutup sepenuhnya oleh hasil hilir.
+  const entries=[...gamaSpatialByPoint.entries()].sort(([idA],[idB])=>{
+    const areaA=Number(pointResult(idA)?.area_km2),areaB=Number(pointResult(idB)?.area_km2);
+    const safeA=Number.isFinite(areaA)?areaA:-Infinity,safeB=Number.isFinite(areaB)?areaB:-Infinity;
+    if(safeA!==safeB)return safeB-safeA;
+    const seqA=Number((String(idA).match(/(\d+)$/)||[])[1]||0),seqB=Number((String(idB).match(/(\d+)$/)||[])[1]||0);
+    return seqB-seqA;
+  });
+  for(const [pointId,spatial] of entries){
+    if(!isDtaLayerVisible(pointId))continue;
+    const color=POINT_COLORS[pointId]||'#223468';
+    for(const parameter of ['AU','WL','WU']){
+      const feature=spatial?.[parameter];
+      if(!feature?.geometry)continue;
+      features.push({type:'Feature',properties:{...(feature.properties||{}),point_id:pointId,parameter,color,display_group:'result'},geometry:feature.geometry});
+    }
+    for(const [parameter,feature] of Object.entries(spatial?.construction||{})){
+      if(!feature?.geometry)continue;
+      features.push({type:'Feature',properties:{...(feature.properties||{}),point_id:pointId,parameter:feature?.properties?.parameter||parameter,color,display_group:'construction'},geometry:feature.geometry});
+    }
+  }
+  return {type:'FeatureCollection',features};
+}
+function refreshGamaSpatialSource(){
+  const source=map?.getSource?.('hss-gama-spatial');
+  if(source?.setData)source.setData(gamaSpatialFeatureCollection());
+  const group=$('hssGamaLayerGroup');if(group)group.classList.toggle('hidden',gamaSpatialByPoint.size===0);
+  applyGamaSpatialVisibility();
+}
+function applyGamaSpatialVisibility(){
+  const au=$('showGamaAu')?.checked===true,wl=$('showGamaWl')?.checked===true,wu=$('showGamaWu')?.checked===true;
+  const construction=$('showGamaConstruction')?.checked===true;
+  setLayerVisibility('hss-gama-au-fill',au);setLayerVisibility('hss-gama-au-line',au);setLayerVisibility('hss-gama-au-label',au);
+  setLayerVisibility('hss-gama-wl-line',wl);setLayerVisibility('hss-gama-wl-label',wl);setLayerVisibility('hss-gama-wl-hit',wl);
+  setLayerVisibility('hss-gama-wu-line',wu);setLayerVisibility('hss-gama-wu-label',wu);setLayerVisibility('hss-gama-wu-hit',wu);
+  for(const id of ['hss-gama-construction-axis','hss-gama-construction-axis-label','hss-gama-construction-point','hss-gama-construction-centroid-point','hss-gama-construction-point-label'])setLayerVisibility(id,construction);
+  for(const id of ['hss-gama-construction-axis-halo','hss-gama-construction-perp-halo','hss-gama-construction-perp','hss-gama-construction-perp-label','hss-gama-construction-right-angle'])setLayerVisibility(id,false);
+  syncLayerSummaryEyes();
+}
+
+window.setGamaSpatialForPoint=(pointId,spatial)=>{
+  if(!pointId)return;
+  const hasResult=['AU','WL','WU'].some(key=>spatial?.[key]?.geometry);
+  const hasConstruction=Object.values(spatial?.construction||{}).some(feature=>feature?.geometry);
+  if(spatial&&(hasResult||hasConstruction))gamaSpatialByPoint.set(pointId,spatial);
+  else gamaSpatialByPoint.delete(pointId);
+  refreshGamaSpatialSource();
+};
+window.clearGamaSpatialForPoint=pointId=>{if(pointId)gamaSpatialByPoint.delete(pointId);refreshGamaSpatialSource();};
+window.clearAllGamaSpatial=()=>{gamaSpatialByPoint.clear();refreshGamaSpatialSource();};
+
+function setLayerEyeIcon(button,visible){if(!button)return;button.dataset.visible=visible?'true':'false';button.setAttribute('aria-pressed',visible?'true':'false');button.innerHTML=`<i data-lucide="${visible?'eye':'eye-off'}"></i>`;refreshIcons(button);}
+function characteristicAnyVisible(){return ['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams'].some(id=>$(id)?.checked===true);}
+function gamaAnyVisible(){return ['showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'].some(id=>$(id)?.checked===true);}
+function syncLayerSummaryEyes(){
+  const basinsButton=document.querySelector('.layer-eye-toggle[data-layer-group="basins"]');
+  const riversButton=document.querySelector('.layer-eye-toggle[data-layer-group="rivers"]');
+  const dtaButton=document.querySelector('.layer-eye-toggle[data-layer-group="dta"]');
+  const characteristicButton=document.querySelector('.layer-eye-toggle[data-layer-group="characteristic"]');
+  const gamaButton=document.querySelector('.layer-eye-toggle[data-layer-group="gama"]');
+  setLayerEyeIcon(basinsButton,$('showBasins')?.checked===true||$('showBasinLabels')?.checked===true);
+  setLayerEyeIcon(riversButton,$('showRivers')?.checked===true||$('showRiverLabels')?.checked===true);
+  setLayerEyeIcon(dtaButton,points.length>0&&points.some(point=>isDtaLayerVisible(point.point_id)));
+  setLayerEyeIcon(characteristicButton,characteristicAnyVisible());
+  setLayerEyeIcon(gamaButton,gamaAnyVisible());
+}
 
 function addOperationalLayers(){
-  const darkMap=document.documentElement.getAttribute('data-theme')==='dark';
-  const labelHalo=darkMap?'rgba(10,17,29,.92)':'rgba(255,255,255,.97)';
+  const labelHalo='rgba(255,255,255,.97)';
   if(!map.getSource('esri-hillshade'))map.addSource('esri-hillshade',{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16,attribution:'Hillshade © Esri'});
   if(!map.getLayer('esri-hillshade-layer'))map.addLayer({id:'esri-hillshade-layer',type:'raster',source:'esri-hillshade',layout:{visibility:$('showHillshade')?.checked?'visible':'none'},paint:{'raster-opacity':Number($('hillshadeOpacity')?.value||100)/100,'raster-fade-duration':0}});
 
@@ -864,6 +1302,7 @@ function addOperationalLayers(){
     if(!map.getLayer(`dta-${id}-hover`))map.addLayer({id:`dta-${id}-hover`,type:'line',source:`dta-${id}`,layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':POINT_COLORS[id],'line-width':0,'line-opacity':0}});
     if(!map.getLayer(`dta-${id}-line`))map.addLayer({id:`dta-${id}-line`,type:'line',source:`dta-${id}`,layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':POINT_COLORS[id],'line-width':lineBase(),'line-opacity':1}});
   }
+
 
   if(!map.getSource('official-rivers')){currentRiverAssetKey=riverDisplayAssetKeyForZoom();map.addSource('official-rivers',{type:'geojson',data:riverDisplayAssetUrl(currentRiverAssetKey),tolerance:0,maxzoom:24,buffer:128,lineMetrics:true});}
   // Draw every river line first. Labels are intentionally kept in ONE symbol layer below,
@@ -885,6 +1324,64 @@ function addOperationalLayers(){
   });
   if(!map.getLayer('official-basin-label'))map.addLayer({id:'official-basin-label',type:'symbol',source:'official-basin-labels',minzoom:5.5,layout:{'text-field':['concat','DAS ',['get','basin_name']],'text-size':['interpolate',['linear'],['zoom'],5.5,16,9,13,12,10,15,9],'text-letter-spacing':.04,'text-allow-overlap':false,'text-ignore-placement':false},paint:{'text-color':$('basinColor')?.value||'#9b7300','text-halo-color':labelHalo,'text-halo-width':1.6,'text-opacity':['interpolate',['linear'],['zoom'],5.5,1,12,.78,15,.55]}});
 
+  // Characteristic flowpaths use locked semantics/colors so multi-DTA maps remain
+  // readable without inheriting each DTA outline color.
+  if(!map.getSource('characteristic-spatial'))map.addSource('characteristic-spatial',{type:'geojson',data:characteristicSpatialFeatureCollection(),tolerance:0,maxzoom:24});
+  if(!map.getSource('characteristic-analysis-streams'))map.addSource('characteristic-analysis-streams',{type:'geojson',data:analysisStreamsFeatureCollection(),tolerance:0,maxzoom:24,buffer:128,lineMetrics:true});
+  if(!map.getLayer('characteristic-l-line'))map.addLayer({id:'characteristic-l-line',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'L'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('characteristicLColor')?.value||DEFAULT_CHARACTERISTIC_L_COLOR,'line-width':3.2,'line-opacity':.96}});
+  // Sungai utama dirender sesudah L agar warna magenta tetap terlihat saat keduanya berimpit.
+  if(!map.getLayer('characteristic-main-channel-line'))map.addLayer({id:'characteristic-main-channel-line',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'MAIN_CHANNEL'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('characteristicMainChannelColor')?.value||DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR,'line-width':3.2,'line-opacity':.96}});
+  if(!map.getLayer('characteristic-lca-line'))map.addLayer({id:'characteristic-lca-line',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'LCA'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('characteristicLcaColor')?.value||DEFAULT_CHARACTERISTIC_LCA_COLOR,'line-width':2.8,'line-opacity':.98,'line-dasharray':[2.2,1.4]}});
+  if(!map.getLayer('characteristic-l1085-line'))map.addLayer({id:'characteristic-l1085-line',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'L10_85'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('characteristicL1085Color')?.value||DEFAULT_CHARACTERISTIC_L1085_COLOR,'line-width':2.5,'line-opacity':.98,'line-offset':3}});
+  if(!map.getLayer('characteristic-main-channel-hit'))map.addLayer({id:'characteristic-main-channel-hit',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'MAIN_CHANNEL'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001}});
+  if(!map.getLayer('characteristic-l-hit'))map.addLayer({id:'characteristic-l-hit',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'L'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001}});
+  if(!map.getLayer('characteristic-lca-hit'))map.addLayer({id:'characteristic-lca-hit',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'LCA'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001}});
+  if(!map.getLayer('characteristic-l1085-hit'))map.addLayer({id:'characteristic-l1085-hit',type:'line',source:'characteristic-spatial',filter:['==',['get','parameter'],'L10_85'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001,'line-offset':3}});
+  const characteristicLabelPaint={'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.7};
+  if(!map.getLayer('characteristic-l-label'))map.addLayer({id:'characteristic-l-label',type:'symbol',source:'characteristic-spatial',filter:['==',['get','parameter'],'L'],layout:{'symbol-placement':'line','text-field':'L','text-size':11,'text-keep-upright':true,'text-allow-overlap':false},paint:characteristicLabelPaint});
+  if(!map.getLayer('characteristic-main-channel-label'))map.addLayer({id:'characteristic-main-channel-label',type:'symbol',source:'characteristic-spatial',filter:['==',['get','parameter'],'MAIN_CHANNEL'],layout:{'symbol-placement':'line','text-field':'Sungai utama','text-size':11,'text-keep-upright':true,'text-allow-overlap':false},paint:characteristicLabelPaint});
+  if(!map.getLayer('characteristic-lca-label'))map.addLayer({id:'characteristic-lca-label',type:'symbol',source:'characteristic-spatial',filter:['==',['get','parameter'],'LCA'],layout:{'symbol-placement':'line','text-field':'Lca','text-size':11,'text-keep-upright':true,'text-allow-overlap':false},paint:characteristicLabelPaint});
+  if(!map.getLayer('characteristic-l1085-label'))map.addLayer({id:'characteristic-l1085-label',type:'symbol',source:'characteristic-spatial',filter:['==',['get','parameter'],'L10_85'],layout:{'symbol-placement':'line','text-field':'L10–85','text-size':10.5,'text-keep-upright':true,'text-allow-overlap':false,'text-offset':[0,-.7]},paint:characteristicLabelPaint});
+  if(!map.getLayer('characteristic-l1085-stations'))map.addLayer({id:'characteristic-l1085-stations',type:'circle',source:'characteristic-spatial',filter:['match',['get','parameter'],['L10','L85'],true,false],paint:{'circle-radius':4.2,'circle-color':$('characteristicL1085Color')?.value||DEFAULT_CHARACTERISTIC_L1085_COLOR,'circle-stroke-color':'#ffffff','circle-stroke-width':1.8}});
+  if(!map.getLayer('characteristic-l1085-station-labels'))map.addLayer({id:'characteristic-l1085-station-labels',type:'symbol',source:'characteristic-spatial',filter:['match',['get','parameter'],['L10','L85'],true,false],layout:{'text-field':['get','label'],'text-size':10,'text-offset':[0,-1.05],'text-anchor':'bottom','text-allow-overlap':true},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.5}});
+  // C sentroid karakteristik memakai simbol cincin/hollow warna DTA.
+  // C konstruksi Gama I memakai titik solid sehingga dua fungsi C tetap terbaca berbeda.
+  if(!map.getLayer('characteristic-centroid-point'))map.addLayer({id:'characteristic-centroid-point',type:'circle',source:'characteristic-spatial',filter:['==',['get','parameter'],'C'],paint:{'circle-radius':6,'circle-color':'#ffffff','circle-stroke-color':['get','color'],'circle-stroke-width':2.6}});
+  if(!map.getLayer('characteristic-centroid-label'))map.addLayer({id:'characteristic-centroid-label',type:'symbol',source:'characteristic-spatial',filter:['==',['get','parameter'],'C'],layout:{'text-field':'C','text-size':11.5,'text-offset':[0,-1.15],'text-anchor':'bottom','text-allow-overlap':true},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.7}});
+
+  const analysisStreamOrders=[1,2,3,4,5,6,7,8,9,10];
+  for(const order of analysisStreamOrders){
+    if(!map.getLayer(`characteristic-analysis-stream-order-${order}`))map.addLayer({id:`characteristic-analysis-stream-order-${order}`,type:'line',source:'characteristic-analysis-streams',filter:['==',['get','strahler_order'],order],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':$('characteristicStreamsColor')?.value||DEFAULT_CHARACTERISTIC_STREAM_COLOR,'line-width':['interpolate',['linear'],['zoom'],6,Math.max(1,order*0.5),12,Math.max(1.4,order*0.75),16,Math.max(1.8,order*0.95)],'line-opacity':0.94}});
+  }
+
+  // Seluruh hasil dan konstruksi geometri Gama I mengikuti warna DTA pemiliknya.
+  // Garis konstruksi memakai dash rapat agar tidak tertukar dengan WL. Titik C
+  // konstruksi dibuat hollow/ring, sedangkan sentroid karakteristik C tetap solid.
+  if(!map.getSource('hss-gama-spatial'))map.addSource('hss-gama-spatial',{type:'geojson',data:gamaSpatialFeatureCollection(),tolerance:0,maxzoom:24});
+  if(!map.getLayer('hss-gama-au-fill'))map.addLayer({id:'hss-gama-au-fill',type:'fill',source:'hss-gama-spatial',filter:['==',['get','parameter'],'AU'],paint:{'fill-color':['get','color'],'fill-opacity':.16}});
+  if(!map.getLayer('hss-gama-au-line'))map.addLayer({id:'hss-gama-au-line',type:'line',source:'hss-gama-spatial',filter:['==',['get','parameter'],'AU'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':2.1,'line-opacity':.92}});
+  if(!map.getLayer('hss-gama-wl-line'))map.addLayer({id:'hss-gama-wl-line',type:'line',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WL'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':2.4,'line-dasharray':[2,1.6]}});
+  if(!map.getLayer('hss-gama-wu-line'))map.addLayer({id:'hss-gama-wu-line',type:'line',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WU'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':2.8}});
+  if(!map.getLayer('hss-gama-wl-hit'))map.addLayer({id:'hss-gama-wl-hit',type:'line',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WL'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001}});
+  if(!map.getLayer('hss-gama-wu-hit'))map.addLayer({id:'hss-gama-wu-hit',type:'line',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WU'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#000000','line-width':18,'line-opacity':0.001}});
+  const gamaLabelPaint={'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.7};
+  if(!map.getLayer('hss-gama-au-label'))map.addLayer({id:'hss-gama-au-label',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','parameter'],'AU'],layout:{'text-field':'AU','text-size':12,'text-allow-overlap':true},paint:gamaLabelPaint});
+  if(!map.getLayer('hss-gama-wl-label'))map.addLayer({id:'hss-gama-wl-label',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WL'],layout:{'symbol-placement':'line','text-field':'WL','text-size':11,'text-keep-upright':true,'text-allow-overlap':true},paint:gamaLabelPaint});
+  if(!map.getLayer('hss-gama-wu-label'))map.addLayer({id:'hss-gama-wu-label',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','parameter'],'WU'],layout:{'symbol-placement':'line','text-field':'WU','text-size':11,'text-keep-upright':true,'text-allow-overlap':true},paint:gamaLabelPaint});
+
+  if(!map.getLayer('hss-gama-construction-axis-halo'))map.addLayer({id:'hss-gama-construction-axis-halo',type:'line',source:'hss-gama-spatial',filter:['==',['get','kind'],'reference_axis'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':0,'line-opacity':0}});
+  if(!map.getLayer('hss-gama-construction-axis'))map.addLayer({id:'hss-gama-construction-axis',type:'line',source:'hss-gama-spatial',filter:['==',['get','kind'],'reference_axis'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':2.4,'line-opacity':1,'line-dasharray':[1.05,.8]}});
+  if(!map.getLayer('hss-gama-construction-perp-halo'))map.addLayer({id:'hss-gama-construction-perp-halo',type:'line',source:'hss-gama-spatial',filter:['==',['get','kind'],'perpendicular'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':'#ffffff','line-width':3.8,'line-opacity':.94,'line-dasharray':[1.05,.8]}});
+  if(!map.getLayer('hss-gama-construction-perp'))map.addLayer({id:'hss-gama-construction-perp',type:'line',source:'hss-gama-spatial',filter:['==',['get','kind'],'perpendicular'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','color'],'line-width':1.6,'line-opacity':1,'line-dasharray':[1.05,.8]}});
+  if(!map.getLayer('hss-gama-construction-axis-label'))map.addLayer({id:'hss-gama-construction-axis-label',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','kind'],'reference_axis'],layout:{'symbol-placement':'line','text-field':['match',['get','parameter'],'X_LCA','X–C',['get','label']],'text-size':10.5,'text-keep-upright':true,'text-allow-overlap':false},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.8}});
+  if(!map.getLayer('hss-gama-construction-perp-label'))map.addLayer({id:'hss-gama-construction-perp-label',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','kind'],'perpendicular'],layout:{'symbol-placement':'line','text-field':['get','label'],'text-size':10,'text-keep-upright':true,'text-allow-overlap':false},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.8}});
+  // A/B/C konstruksi Gama I memakai titik solid warna DTA. C sentroid
+  // karakteristik memakai simbol cincin/hollow sehingga keduanya tetap berbeda.
+  if(!map.getLayer('hss-gama-construction-point'))map.addLayer({id:'hss-gama-construction-point',type:'circle',source:'hss-gama-spatial',filter:['all',['==',['get','kind'],'control_point'],['match',['get','parameter'],['A','B'],true,false]],paint:{'circle-radius':5,'circle-color':['get','color'],'circle-stroke-color':'#ffffff','circle-stroke-width':2}});
+  if(!map.getLayer('hss-gama-construction-centroid-point'))map.addLayer({id:'hss-gama-construction-centroid-point',type:'circle',source:'hss-gama-spatial',filter:['all',['==',['get','kind'],'control_point'],['==',['get','parameter'],'C']],paint:{'circle-radius':5,'circle-color':['get','color'],'circle-stroke-color':'#ffffff','circle-stroke-width':2}});
+  if(!map.getLayer('hss-gama-construction-point-label'))map.addLayer({id:'hss-gama-construction-point-label',type:'symbol',source:'hss-gama-spatial',filter:['all',['==',['get','kind'],'control_point'],['match',['get','parameter'],['A','B','C'],true,false]],layout:{'text-field':['get','label'],'text-size':11.5,'text-offset':[0,-1.15],'text-anchor':'bottom','text-allow-overlap':true},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':1.8}});
+  if(!map.getLayer('hss-gama-construction-right-angle'))map.addLayer({id:'hss-gama-construction-right-angle',type:'symbol',source:'hss-gama-spatial',filter:['==',['get','kind'],'right_angle'],layout:{'text-field':'⟂','text-size':14,'text-offset':[.9,.15],'text-anchor':'left','text-allow-overlap':true},paint:{'text-color':['get','color'],'text-halo-color':'#ffffff','text-halo-width':2}});
+
   if(!map.getSource('requested-points'))map.addSource('requested-points',{type:'geojson',data:emptyFC()});
     if(!map.getLayer('requested-points'))map.addLayer({id:'requested-points',type:'circle',source:'requested-points',paint:{'circle-radius':5.5,'circle-color':['get','color'],'circle-stroke-color':'#fff','circle-stroke-width':1.8}});
   if(!map.getLayer('requested-point-labels'))map.addLayer({id:'requested-point-labels',type:'symbol',source:'requested-points',layout:{'text-field':['get','display_name'],'text-size':12,'text-offset':[0,1.25],'text-anchor':'top','text-allow-overlap':false},paint:{'text-color':'#17233b','text-halo-color':'#fff','text-halo-width':1.4}});
@@ -905,9 +1402,11 @@ function addOperationalLayers(){
 
   renderRequestedPoints();
   renderDtaLayers();
+  refreshCharacteristicAnalysisStreamsSource();
   applyLayerState();
   updateLineWidths();
   updateRiverVisibility();
+  syncLayerSummaryEyes();
   refreshIcons();
 }
 
@@ -915,12 +1414,17 @@ function applyLayerState(){
   setLayerVisibility('esri-hillshade-layer',$('showHillshade').checked);
   setLayerVisibility('official-basins-fill',$('showBasins').checked);
   setLayerVisibility('official-basins-line',$('showBasins').checked);
-  setLayerVisibility('official-basin-label',$('showBasins').checked&&$('showBasinLabels').checked);
-  for(let i=1;i<=MAX_POINTS;i++)setLayerVisibility(`dta-O${i}-hatch`,$('showHatch').checked);
+  // Batas dan nama DAS berdiri sendiri: label tetap dapat tampil walau garis dimatikan.
+  setLayerVisibility('official-basin-label',$('showBasinLabels').checked);
+  applyPerDtaLayerVisibility();
+  applyCharacteristicColors();
+  applyCharacteristicSpatialVisibility();
+  applyGamaSpatialVisibility();
   updateRiverVisibility();
+  syncLayerSummaryEyes();
 }
 function updateRiverVisibility(){
-  const show=$('showRivers').checked,showLabels=$('showRiverLabels').checked,auto=$('autoRiverZoom').checked;
+  const show=$('showRivers')?.checked===true,showLabels=$('showRiverLabels')?.checked===true,auto=$('autoRiverZoom')?.checked!==false;
   for(const k of RIVER_KEYS){
     const enabled=document.querySelector(`.river-order-toggle[data-order="${k}"]`)?.checked!==false;
     const line=`official-river-${k}`;
@@ -928,16 +1432,28 @@ function updateRiverVisibility(){
   }
   if(map.getLayer('official-river-labels')){
     map.setLayerZoomRange('official-river-labels',auto?RIVER_ZOOM[1]:0,24);
-    setLayerVisibility('official-river-labels',show&&showLabels);
+    // Label sungai berdiri sendiri dari garis jaringan.
+    setLayerVisibility('official-river-labels',showLabels);
     updateRiverLabelFilter({force:true});
   }
+  syncLayerSummaryEyes();
 }
 function updateLineWidths(){
   const b=lineBase();$('lineWidthValue').textContent=`${b.toFixed(1)} px`;
   if(map.getLayer('official-basins-line'))map.setPaintProperty('official-basins-line','line-width',b);
   for(let i=1;i<=MAX_POINTS;i++)if(map.getLayer(`dta-O${i}-line`))map.setPaintProperty(`dta-O${i}-line`,'line-width',b);
   for(const k of RIVER_KEYS)if(map.getLayer(`official-river-${k}`))map.setPaintProperty(`official-river-${k}`,'line-width',riverWidth(k));
-  applyDtaHighlight();
+
+  // One thickness control applies consistently to all operational line groups.
+  const widths={
+    'characteristic-main-channel-line':b*1.65,'characteristic-l-line':b*1.65,'characteristic-lca-line':b*1.45,'characteristic-l1085-line':b*1.25,
+    'hss-gama-au-line':b*1.05,'hss-gama-wl-line':b*1.2,'hss-gama-wu-line':b*1.4,
+    'hss-gama-construction-axis':Math.max(.9,b*.9),
+  };
+  for(const [layer,width] of Object.entries(widths))if(map.getLayer(layer))map.setPaintProperty(layer,'line-width',width);
+  const streamWidth=['interpolate',['linear'],['get','strahler_order'],1,Math.max(.7,b*.48),3,Math.max(1,b*.8),6,Math.max(1.5,b*1.5),10,Math.max(2,b*2.1)];
+  for(let order=1;order<=10;order++)if(map.getLayer(`characteristic-analysis-stream-order-${order}`))map.setPaintProperty(`characteristic-analysis-stream-order-${order}`,'line-width',streamWidth);
+  applyDtaHighlight(true);
 }
 function updateHatchOpacity(){const v=Number($('hatchOpacity').value)/100;$('hatchOpacityValue').textContent=`${$('hatchOpacity').value}%`;for(let i=1;i<=MAX_POINTS;i++)if(map.getLayer(`dta-O${i}-hatch`))map.setPaintProperty(`dta-O${i}-hatch`,'fill-opacity',v);}
 function raiseDtaHoverBelowOutlet(id){
@@ -948,8 +1464,11 @@ function raiseDtaHoverBelowOutlet(id){
     else map.moveLayer(layer);
   }catch(_){}
 }
-function applyDtaHighlight(){
+function applyDtaHighlight(force=false){
   const selected=activePointId;const hovered=hoverEmphasisId;const hoverKind=hoverEmphasisKind;const b=lineBase();
+  const signature=`${selected||''}|${hovered||''}|${hoverKind||''}|${b.toFixed(3)}`;
+  if(!force&&signature===lastHighlightSignature)return;
+  lastHighlightSignature=signature;
   for(let i=1;i<=MAX_POINTS;i++){
     const id=`O${i}`;
     if(map.getLayer(`dta-${id}-line`)){
@@ -964,9 +1483,41 @@ function applyDtaHighlight(){
       map.setPaintProperty(`dta-${id}-hover`,'line-opacity',hoverOnDta?.95:0);
     }
   }
+
+  // Derived spatial layers get the same immediate emphasis language as a DTA
+  // polygon: the feature under the pointer becomes visibly thicker without
+  // changing the configured/base thickness of the other DTAs.  Hit corridors
+  // remain transparent; only the actual rendered feature is emphasized.
+  const spatialParameter=typeof hoverKind==='string'&&hoverKind.startsWith('spatial:')?hoverKind.slice(8):null;
+  const spatialPointId=spatialParameter?hovered:null;
+  const spatialWidths={
+    MAIN_CHANNEL:{layer:'characteristic-main-channel-line',base:b*1.65},
+    L:{layer:'characteristic-l-line',base:b*1.65},
+    LCA:{layer:'characteristic-lca-line',base:b*1.45},
+    L10_85:{layer:'characteristic-l1085-line',base:b*1.25},
+    AU:{layer:'hss-gama-au-line',base:b*1.05},
+    WL:{layer:'hss-gama-wl-line',base:b*1.2},
+    WU:{layer:'hss-gama-wu-line',base:b*1.4},
+  };
+  for(const [parameter,{layer,base}] of Object.entries(spatialWidths)){
+    if(!map.getLayer(layer))continue;
+    const on=spatialPointId&&spatialParameter===parameter;
+    const emphasized=Math.max(base*1.9,base+2.2);
+    map.setPaintProperty(layer,'line-width',on
+      ? ['case',['==',['get','point_id'],spatialPointId],emphasized,base]
+      : base);
+  }
+  if(map.getLayer('hss-gama-au-fill')){
+    const auOn=spatialPointId&&spatialParameter==='AU';
+    map.setPaintProperty('hss-gama-au-fill','fill-opacity',auOn
+      ? ['case',['==',['get','point_id'],spatialPointId],.24,.16]
+      : .16);
+  }
+
   if(map.getLayer('requested-points')){
-    map.setPaintProperty('requested-points','circle-radius',['case',['==',['get','point_id'],hovered||'__none__'],8.2,['==',['get','point_id'],selected||'__none__'],7.2,5.5]);
-    map.setPaintProperty('requested-points','circle-stroke-width',['case',['==',['get','point_id'],hovered||'__none__'],2.8,['==',['get','point_id'],selected||'__none__'],2.4,1.8]);
+    const pointHover=hoverKind==='point'?hovered:null;
+    map.setPaintProperty('requested-points','circle-radius',['case',['==',['get','point_id'],pointHover||'__none__'],8.2,['==',['get','point_id'],selected||'__none__'],7.2,5.5]);
+    map.setPaintProperty('requested-points','circle-stroke-width',['case',['==',['get','point_id'],pointHover||'__none__'],2.8,['==',['get','point_id'],selected||'__none__'],2.4,1.8]);
   }
 }
 function setActivePoint(id,{openCard=true}={}){activePointId=id||null;if(openCard&&id){const card=pointListEl.querySelector(`.point-card[data-point-id="${id}"]`);if(card){card.open=true;pointListEl.querySelectorAll('.point-card').forEach(other=>{if(other!==card)other.open=false;});}}applyDtaHighlight();schedulePersistState();}
@@ -1071,30 +1622,15 @@ function openDtaColorPicker(id,anchor){
     showAppToast('Pemilih warna belum tersedia.');
     return;
   }
-
-  const panel=$('dtaColorPickerPanel'),input=$('dtaColorNativeInput');
+  const panel=$('dtaColorPickerPanel');
   const color=normalizeHexColor(POINT_COLORS[id])||POINT_PALETTE[0];
   syncDtaColorInputs(color);
-
-  // Browser/OS positions the native picker relative to the color input.
-  // Move the transparent proxy directly onto the clicked Warna button first.
-  if(panel&&anchor){
-    const r=anchor.getBoundingClientRect();
-    const x=Math.max(4,Math.min(window.innerWidth-8,r.left+(r.width/2)));
-    const y=Math.max(4,Math.min(window.innerHeight-8,r.top+(r.height/2)));
-    panel.style.setProperty('--native-picker-left',`${Math.round(x)}px`);
-    panel.style.setProperty('--native-picker-top',`${Math.round(y)}px`);
-  }
-  panel?.classList.add('native-picker-proxy');
-
-  try{
-    if(typeof input.showPicker==='function')input.showPicker();
-    else input.click();
-  }catch(_){
-    try{input.click();}catch(__){}
-  }
-  // Proxy remains renderable until the native picker fires change.
+  panel?.classList.remove('native-picker-proxy');
+  if(anchor)positionDtaColorPicker(anchor);
+  else if(panel){panel.classList.remove('hidden');panel.style.left='12px';panel.style.top='12px';}
+  refreshIcons(panel);
 }
+
 function setDtaColor(id,color,{save=true}={}){
   const normalized=normalizeHexColor(color);if(!normalized)return;
   POINT_COLORS[id]=normalized;
@@ -1111,6 +1647,7 @@ function setDtaColor(id,color,{save=true}={}){
   const popupChip=popup?.querySelector('.existing-point-name-chip');
   if(popupChip){popupChip.style.background=normalized;popupChip.style.color=readableTextColor(normalized);}
   renderRequestedPoints();
+  if(characteristicSpatialByPoint.has(id))refreshCharacteristicSpatialSource();if(gamaSpatialByPoint.has(id))refreshGamaSpatialSource();
   if(activeDtaColorPointId===id&&!dtaColorSyncing){
     syncDtaColorInputs(normalized);
     renderDtaColorPalette(id);
@@ -1138,7 +1675,7 @@ function applyMapTheme(theme){
 function renderRequestedPoints(){
   if(!map.getSource('requested-points'))return;
   const byId=new Map((batchResult?.results||[]).map(r=>[r.point_id,r]));
-  map.getSource('requested-points').setData({type:'FeatureCollection',features:points.map(p=>{const r=byId.get(p.point_id);const lon=Number.isFinite(Number(r?.snapped_lon))?Number(r.snapped_lon):p.lon;const lat=Number.isFinite(Number(r?.snapped_lat))?Number(r.snapped_lat):p.lat;return {type:'Feature',properties:{point_id:p.point_id,color:POINT_COLORS[p.point_id],display_name:p.label?.trim()||p.point_id},geometry:{type:'Point',coordinates:[lon,lat]}};})});
+  map.getSource('requested-points').setData({type:'FeatureCollection',features:points.filter(p=>isDtaLayerVisible(p.point_id)).map(p=>{const r=byId.get(p.point_id);const lon=Number.isFinite(Number(r?.snapped_lon))?Number(r.snapped_lon):p.lon;const lat=Number.isFinite(Number(r?.snapped_lat))?Number(r.snapped_lat):p.lat;return {type:'Feature',properties:{point_id:p.point_id,color:POINT_COLORS[p.point_id],display_name:p.label?.trim()||p.point_id},geometry:{type:'Point',coordinates:[lon,lat]}};})});
   applyDtaHighlight();
 }
 function clearSnapPreview(){previewSnapState=null;map.getSource('snap-preview')?.setData(emptyFC());}
@@ -1157,10 +1694,16 @@ function renderDtaLayers(){
   clearDtaSources();
   if(!batchResult?.results){updateLabelDeclutter();return;}
   for(const r of batchResult.results){
+    if(!r.hydrologic_analysis&&restoredHydrologicAnalyses[r.point_id])r.hydrologic_analysis=restoredHydrologicAnalyses[r.point_id];
+    if(r.hydrologic_analysis?.characteristic_spatial)window.setCharacteristicSpatialForPoint?.(r.point_id,r.hydrologic_analysis.characteristic_spatial);
+    if(r.hydrologic_analysis?.analysis_streams_geojson)window.setCharacteristicAnalysisStreamsForPoint?.(r.point_id,r.hydrologic_analysis.analysis_streams_geojson);
+    else if(r.hydrologic_analysis?.characteristic_spatial)ensureCharacteristicAnalysisStreams(r.point_id).catch(()=>{});
     map.getSource(`dta-${r.point_id}`)?.setData({type:'Feature',properties:{point_id:r.point_id},geometry:r.dta_geojson});
-    map.getSource(`dta-incremental-${r.point_id}`)?.setData({type:'Feature',properties:{point_id:r.point_id},geometry:r.dta_incremental_geojson||r.dta_geojson});
   }
-  updateLabelDeclutter();applyDtaHighlight();
+  // Incremental sources are reconstructed from the currently visible subset so
+  // hiding an upstream DTA immediately hands its area to the nearest visible
+  // downstream DTA (for hatch, DTA hover/click, and AU hover ownership).
+  applyPerDtaLayerVisibility();updateLabelDeclutter();applyDtaHighlight();refreshAnalysisDownloadOption();window.restoreHssForCurrentPoints?.();
 }
 function pointInRing(point,ring){let inside=false;for(let i=0,j=ring.length-1;i<ring.length;j=i++){const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];const intersect=((yi>point[1])!==(yj>point[1]))&&(point[0]<(xj-xi)*(point[1]-yi)/(yj-yi||1e-15)+xi);if(intersect)inside=!inside;}return inside;}
 function pointInGeometry(point,g){if(!g)return false;const inPoly=poly=>{if(!poly?.length||!pointInRing(point,poly[0]))return false;for(let i=1;i<poly.length;i++)if(pointInRing(point,poly[i]))return false;return true;};if(g.type==='Polygon')return inPoly(g.coordinates);if(g.type==='MultiPolygon')return g.coordinates.some(inPoly);return false;}
@@ -1177,7 +1720,7 @@ function approximateLineMidpoint(geometry){
   return best[Math.floor(best.length/2)];
 }
 async function updateLabelDeclutter(){
-  const geoms=(batchResult?.results||[]).map(r=>r.dta_geojson).filter(Boolean);
+  const geoms=(batchResult?.results||[]).filter(r=>isDtaLayerVisible(r.point_id)).map(r=>r.dta_geojson).filter(Boolean);
   const basinSrc=map.getSource('official-basin-labels');
   if(basinSrc){
     const full=await ensureBasinLabelData();
@@ -1202,7 +1745,7 @@ function cancelDtaHoverDelay(){
 }
 function setProgressiveMoving(on){
   progressiveMoving=on;if(on)clearDtaHover();if(!map?.getStyle?.())return;
-  for(let i=1;i<=MAX_POINTS;i++){const id=`dta-O${i}-hatch`;if(map.getLayer(id))setLayerVisibility(id,on?false:Boolean($('showHatch')?.checked));}
+  for(let i=1;i<=MAX_POINTS;i++){const pointId=`O${i}`,id=`dta-${pointId}-hatch`;if(map.getLayer(id))setLayerVisibility(id,on?false:(Boolean($('showHatch')?.checked)&&isDtaLayerVisible(pointId)));}
 }
 function hoverPopupHtml(id,kind){
   const r=pointResult(id),color=POINT_COLORS[id]||POINT_PALETTE[0],name=pointName(id);
@@ -1210,8 +1753,130 @@ function hoverPopupHtml(id,kind){
   const area=r?`${formatArea(r.area_km2)} km²`:'—';
   return `<div class="dta-hover-card point-hover-card"><span class="dta-hover-chip" style="background:${color};color:${readableTextColor(color)}">${escapeHtml(name)}</span><strong>${escapeHtml(area)}</strong><span>${escapeHtml(river)} · DAS ${escapeHtml(basin)}</span></div>`;
 }
+const SPATIAL_HOVER_LAYERS=[
+  // Dedicated transparent hit corridors make narrow derived lines easy to inspect.
+  // They are queried before AU/DTA polygons so WL/WU and L/Lca/L10–85 always win.
+  'hss-gama-wl-hit','hss-gama-wu-hit',
+  'characteristic-main-channel-hit','characteristic-lca-hit','characteristic-l1085-hit','characteristic-l-hit',
+  'hss-gama-au-fill'
+];
+const SPATIAL_HOVER_PRIORITY=new Map(SPATIAL_HOVER_LAYERS.map((id,index)=>[id,index]));
+const SPATIAL_PARAMETER_LABELS={
+  MAIN_CHANNEL:'Panjang sungai utama (Lm)',L:'Lintasan aliran terpanjang (L)',LCA:'Lintasan aliran melalui sentroid (Lca)',L10_85:'Lintasan aliran 10–85 (L10–85)',
+  L10:'Titik 10% lintasan L',L85:'Titik 85% lintasan L',C:'Titik sentroid (C)',
+  AU:'Luas bagian hulu (AU)',WL:'Lebar DTA pada ¼ L (WL)',WU:'Lebar DTA pada ¾ L (WU)',
+  X:'Outlet (X)',A:'Titik A (0,25 L)',B:'Titik B (0,75 L)',XA:'Garis X–A',XB:'Garis X–B',X_LCA:'Garis X–C',
+  WL_PERP:'Konstruksi WL',WU_PERP:'Konstruksi WU',AU_DIVIDER:'Garis pembagi AU',PERP_A:'Tegak lurus di A',PERP_B:'Tegak lurus di B',PERP_AU:'Tegak lurus AU'
+};
+function geoJsonLineLengthKm(geometry){
+  if(!geometry)return null;
+  const lines=geometry.type==='LineString'?[geometry.coordinates]:(geometry.type==='MultiLineString'?geometry.coordinates:[]);
+  if(!lines.length)return null;
+  let total=0;
+  for(const line of lines){for(let i=1;i<line.length;i++){const a=line[i-1],b=line[i];total+=haversineMeters(a[0],a[1],b[0],b[1]);}}
+  return Number.isFinite(total)?total/1000:null;
+}
+function spatialHoverInfo(feature){
+  const props=feature?.properties||{},parameter=String(props.parameter||''),geometry=feature?.geometry;
+  const title=props.label||SPATIAL_PARAMETER_LABELS[parameter]||props.description||parameter||'Layer spasial';
+  let metric='';
+  if(geometry?.type==='Polygon'||geometry?.type==='MultiPolygon'){
+    const value=Number(props.value);
+    if(Number.isFinite(value))metric=`${formatDisplayNumber(value,3)} ${props.unit||'km²'}`;
+  }else if(geometry?.type==='LineString'||geometry?.type==='MultiLineString'){
+    const value=Number(props.value),unit=String(props.unit||'');
+    const lengthKm=(Number.isFinite(value)&&unit.toLowerCase()==='km')?value:geoJsonLineLengthKm(geometry);
+    if(Number.isFinite(lengthKm))metric=`${formatDisplayNumber(lengthKm,3)} km`;
+  }else if(Number.isFinite(Number(props.value))&&props.unit){
+    metric=`${formatDisplayNumber(Number(props.value),3)} ${props.unit}`;
+  }
+  const pointId=String(props.point_id||'');
+  const dta=pointId?dtaAnalysisDisplayLabel(pointId):'';
+  return {pointId,parameter,title,metric,dta,description:props.description||''};
+}
+function spatialHoverPopupHtml(feature){
+  const info=spatialHoverInfo(feature);
+  const shortLabel={MAIN_CHANNEL:'Lm',L:'L',LCA:'Lca',L10_85:'L10–85',AU:'AU',WL:'WL',WU:'WU'}[info.parameter]||info.parameter||info.title;
+  return `<div class="spatial-hover-card"><div class="spatial-hover-head"><strong>${escapeHtml(shortLabel)}</strong>${info.metric?`<span>${escapeHtml(info.metric)}</span>`:''}</div>${info.dta?`<small>${escapeHtml(info.dta)}</small>`:''}</div>`;
+}
+function updateHoverPopup({lngLat,html,spatial=false}){
+  if(!dtaHoverPopup){
+    dtaHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12,anchor:'bottom',className:'dta-hover-popup'})
+      .setLngLat(lngLat).setHTML(html).addTo(map);
+  }else{
+    try{dtaHoverPopup.setLngLat(lngLat).setHTML(html);}catch(_){}
+  }
+  const el=dtaHoverPopup?.getElement?.();
+  if(el)el.classList.toggle('spatial-layer-hover-popup',Boolean(spatial));
+}
+function showSpatialHover(feature,lngLat){
+  if(!feature||!lngLat||isMapHoverBlocked()||pointPopup||measureMode||progressiveMoving){clearDtaHover();return;}
+  cancelDtaHoverDelay();
+  const info=spatialHoverInfo(feature),kind=`spatial:${info.pointId}:${info.parameter}`;
+  if(hoverShownKind===kind&&dtaHoverPopup){try{dtaHoverPopup.setLngLat(lngLat);}catch(_){}return;}
+  updateHoverPopup({lngLat,html:spatialHoverPopupHtml(feature),spatial:true});
+  hoverPointId=info.pointId||null;hoverShownKind=kind;hoverEmphasisId=info.pointId||null;hoverEmphasisKind=`spatial:${info.parameter}`;applyDtaHighlight();
+}
+function incrementalDtaOwnerAtPoint(point,candidateIds=null){
+  const allowed=candidateIds?new Set([...candidateIds].map(String)):null;
+  const layers=[];
+  for(let i=1;i<=MAX_POINTS;i++){
+    const id=`O${i}`,layer=`dta-${id}-hit`;
+    if(allowed&&!allowed.has(id))continue;
+    if(map.getLayer(layer)&&map.getLayoutProperty(layer,'visibility')!=='none')layers.push(layer);
+  }
+  if(!layers.length)return null;
+  try{
+    const hits=map.queryRenderedFeatures(point,{layers})||[];
+    const ids=hits.map(feature=>String(feature?.properties?.point_id||'')).filter(Boolean);
+    if(!ids.length)return null;
+    if(activePointId&&ids.includes(String(activePointId)))return String(activePointId);
+    // Incremental DTA polygons tidak saling tumpang tindih. Urutan O hanya fallback
+    // numerik untuk piksel tepat di batas ketika MapLibre dapat mengembalikan >1 fitur.
+    return ids.sort((a,b)=>{
+      const na=Number((a.match(/(\d+)$/)||[])[1]||Infinity),nb=Number((b.match(/(\d+)$/)||[])[1]||Infinity);
+      return na-nb||a.localeCompare(b);
+    })[0];
+  }catch(_){return null;}
+}
+function querySpatialHoverFeature(point){
+  const layers=SPATIAL_HOVER_LAYERS.filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none');
+  if(!layers.length)return null;
+  let hits=[];
+  try{hits=map.queryRenderedFeatures([[point.x-10,point.y-10],[point.x+10,point.y+10]],{layers})||[];}catch(_){return null;}
+  hits=hits.filter(feature=>{
+    const id=feature?.properties?.point_id;
+    return !id||isDtaLayerVisible(String(id));
+  });
+
+  // AU beberapa DTA pada satu aliran dapat saling menutup. Jangan memilih AU
+  // berdasarkan urutan render (yang biasanya memenangkan hasil terbaru). Untuk
+  // setiap piksel AU, tentukan pemiliknya dari polygon DTA incremental yang sudah
+  // dipakai oleh interaksi DTA. Dengan demikian area
+  // O1 tetap mengarah ke AU O1, area incremental O2 ke AU O2, dan seterusnya.
+  const auHits=hits.filter(feature=>feature?.properties?.parameter==='AU');
+  if(auHits.length){
+    const owner=incrementalDtaOwnerAtPoint(point);
+    if(owner){
+      // AU hanya interaktif di area incremental DTA pemiliknya. Ini mencegah AU
+      // DTA hilir/lebih baru mengambil hover di atas DTA hulu yang berada di
+      // dalam polygon AU tersebut. Jika AU milik owner memang berada di piksel
+      // ini, fitur itulah yang dipakai; jika tidak, AU lain tidak ikut "bleed".
+      hits=hits.filter(feature=>feature?.properties?.parameter!=='AU'||String(feature?.properties?.point_id||'')===owner);
+    }
+  }
+
+  hits.sort((a,b)=>{
+    const pa=SPATIAL_HOVER_PRIORITY.get(a?.layer?.id)??999,pb=SPATIAL_HOVER_PRIORITY.get(b?.layer?.id)??999;
+    if(pa!==pb)return pa-pb;
+    const aa=a?.properties?.point_id===activePointId?0:1,bb=b?.properties?.point_id===activePointId?0:1;
+    return aa-bb;
+  });
+  return hits[0]||null;
+}
+
 function showDtaHover(id,lngLat,kind='dta'){
-  if(!id||!lngLat||isHeaderUiBlocked()||pointPopup||measureMode||progressiveMoving){clearDtaHover();return;}
+  if(!id||!lngLat||isMapHoverBlocked()||pointPopup||measureMode||progressiveMoving){clearDtaHover();return;}
 
   // In idle mode the DTA polygon behaves like its outlet: pointer + compact hover popup.
   // During an active add-point session the polygon becomes selectable map area, so no popup
@@ -1228,11 +1893,7 @@ function showDtaHover(id,lngLat,kind='dta'){
     return;
   }
 
-  if(dtaHoverPopup){try{dtaHoverPopup.remove();}catch(_){}}
-  dtaHoverPopup=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12,className:'dta-hover-popup'})
-    .setLngLat(lngLat)
-    .setHTML(hoverPopupHtml(id,kind))
-    .addTo(map);
+  updateHoverPopup({lngLat,html:hoverPopupHtml(id,kind),spatial:false});
 
   hoverPointId=id;
   hoverShownKind=kind;
@@ -1253,6 +1914,10 @@ function clearDtaHover(){
 function queueDtaHover(id,lngLat,kind='dta'){
   if(!id||!lngLat){clearDtaHover();return;}
   if(hoverPointId===id&&hoverShownKind===kind&&dtaHoverPopup){showDtaHover(id,lngLat,kind);return;}
+  // Keep the original R7 debounce when entering a DTA from an empty map, but
+  // switch immediately when a hover popup is already active. This removes the
+  // AU/WL/DTA/Lca transition pause without changing R7 hit-testing.
+  if(dtaHoverPopup&&hoverShownKind&&hoverShownKind!==kind){cancelDtaHoverDelay();showDtaHover(id,lngLat,kind);return;}
   if(hoverCandidateId===id&&hoverCandidateKind===kind)return;
   cancelDtaHoverDelay();
   hoverCandidateId=id;
@@ -1264,7 +1929,7 @@ function queueDtaHover(id,lngLat,kind='dta'){
     showDtaHover(cid,clng,ckind);
   },140);
 }
-function clearResults(){batchResult=null;clearDtaSources();clearSnapPreview();window.clearHssResults?.();renderPointCards();renderRelationship(null);$('downloadBtn').disabled=true;if($('hssAnalysisBtn'))$('hssAnalysisBtn').disabled=true;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=true;updateLabelDeclutter();setStatus(interactionStatusText(),'neutral');}
+function clearResults(){batchResult=null;clearDtaSources();clearSnapPreview();window.clearHssResults?.();window.clearAllCharacteristicSpatial?.();window.clearAllCharacteristicAnalysisStreams?.();renderPointCards();renderRelationship(null);$('downloadBtn').disabled=true;if($('hssAnalysisBtn'))$('hssAnalysisBtn').disabled=true;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=true;updateLabelDeclutter();setStatus(interactionStatusText(),'neutral');}
 
 async function reconcileCachedResults({guard=null}={}){
   if(!batchResult?.results?.length){if(!points.length)clearResults();return true;}
@@ -1284,7 +1949,7 @@ async function reconcileCachedResults({guard=null}={}){
   return true;
 }
 
-async function runBatchDelineation({fit=true,onlyPointId=null}={}){
+async function runBatchDelineation({fit=true,onlyPointId=null,preserveDerived=false}={}){
   if(!points.length){clearResults();return;}
   const target=onlyPointId?points.find(p=>p.point_id===onlyPointId):null;
   const requestPoints=(target?[target]:points).map(p=>({...p}));
@@ -1322,7 +1987,10 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
       batchResult=payload;renderDtaLayers();renderRequestedPoints();renderRelationship(payload.network_analysis);$('downloadBtn').disabled=false;if($('hssAnalysisBtn'))$('hssAnalysisBtn').disabled=false;if($('focusAllDtaBtn'))$('focusAllDtaBtn').disabled=false;persistState();
     }
     if(!requestIsCurrent())return null;
-    if(target)window.invalidateHssForPoint?.(target.point_id);else window.invalidateAllHss?.();
+    if(!preserveDerived){
+      if(target){window.invalidateHssForPoint?.(target.point_id);window.clearCharacteristicSpatialForPoint?.(target.point_id);window.clearCharacteristicAnalysisStreamsForPoint?.(target.point_id);}
+      else{window.invalidateAllHss?.();window.clearAllCharacteristicSpatial?.();window.clearAllCharacteristicAnalysisStreams?.();}
+    }
     setStatus(`${points.length} DTA berhasil dihitung.`,'success');clearSnapPreview();if(fit)fitToResults();
     return true;
   }catch(err){
@@ -1345,7 +2013,8 @@ async function runBatchDelineation({fit=true,onlyPointId=null}={}){
 function fitToResults(){
   if(!batchResult?.results?.length)return;const b=new maplibregl.LngLatBounds();
   const extendGeom=g=>{if(!g)return;if(g.type==='Polygon')for(const ring of g.coordinates)for(const c of ring)b.extend(c);else if(g.type==='MultiPolygon')for(const p of g.coordinates)for(const ring of p)for(const c of ring)b.extend(c);};
-  batchResult.results.forEach(r=>extendGeom(r.dta_geojson));
+  const visibleResults=batchResult.results.filter(r=>isDtaLayerVisible(r.point_id));
+  (visibleResults.length?visibleResults:batchResult.results).forEach(r=>extendGeom(r.dta_geojson));
   if(!b.isEmpty())map.fitBounds(b,{padding:{top:80,bottom:70,left:sidebarCollapsed?80:390,right:90},maxZoom:13,duration:650});
 }
 
@@ -1386,14 +2055,14 @@ function showUndoDelete(snapshot){
 }
 async function deletePointWithoutRedelineation(id){
   const index=points.findIndex(p=>p.point_id===id);if(index<0)return;
-  const point=points[index];const result=batchResult?.results?.find(r=>r.point_id===id)||null;const color=POINT_COLORS[id];const draft=pointNameDraft(id);
-  pointNameDrafts.delete(id);pointNameSaving.delete(id);window.invalidateHssForPoint?.(id);points.splice(index,1);if(batchResult?.results)batchResult.results=batchResult.results.filter(r=>r.point_id!==id);activePointId=points[Math.min(index,points.length-1)]?.point_id||null;renderRequestedPoints();renderPointCards();
+  const point=points[index];const result=batchResult?.results?.find(r=>r.point_id===id)||null;const color=POINT_COLORS[id];const draft=pointNameDraft(id);const layerHidden=hiddenDtaLayerIds.has(id);
+  hiddenDtaLayerIds.delete(id);pointNameDrafts.delete(id);pointNameSaving.delete(id);window.invalidateHssForPoint?.(id);window.clearCharacteristicSpatialForPoint?.(id);window.clearCharacteristicAnalysisStreamsForPoint?.(id);points.splice(index,1);if(batchResult?.results)batchResult.results=batchResult.results.filter(r=>r.point_id!==id);activePointId=points[Math.min(index,points.length-1)]?.point_id||null;renderRequestedPoints();renderPointCards();
   try{if(points.length&&batchResult?.results?.length)await reconcileCachedResults();else clearResults();setStatus('Titik dihapus','success');}catch(err){setStatus(err?.message||String(err),'error');}
-  persistState();showUndoDelete({point,result,color,index,draft});
+  persistState();showUndoDelete({point,result,color,index,draft,layerHidden});
 }
 async function undoDelete(){
   const snap=undoDeleteState;if(!snap)return;clearTimeout(undoDeleteTimer);$('undoToast').classList.add('hidden');undoDeleteState=null;
-  points.splice(Math.min(snap.index,points.length),0,snap.point);POINT_COLORS[snap.point.point_id]=snap.color;pointNameDrafts.set(snap.point.point_id,snap.draft??pointName(snap.point.point_id));if(snap.result){if(!batchResult)batchResult={results:[],network_analysis:null};batchResult.results.push(snap.result);}
+  points.splice(Math.min(snap.index,points.length),0,snap.point);POINT_COLORS[snap.point.point_id]=snap.color;if(snap.layerHidden)hiddenDtaLayerIds.add(snap.point.point_id);else hiddenDtaLayerIds.delete(snap.point.point_id);pointNameDrafts.set(snap.point.point_id,snap.draft??pointName(snap.point.point_id));if(snap.result){if(!batchResult)batchResult={results:[],network_analysis:null};batchResult.results.push(snap.result);}
   activePointId=snap.point.point_id;renderRequestedPoints();renderPointCards();try{if(batchResult?.results?.length)await reconcileCachedResults();else await runBatchDelineation({fit:false});setStatus('Penghapusan dibatalkan.','success');}catch(err){setStatus(err?.message||String(err),'error');}persistState();
 }
 
@@ -1478,7 +2147,7 @@ function initPointListSortable(){
   });
 }
 function renderPointCards(){
-  pointCountEl.textContent=String(points.length);updateAddPointButton();
+  pointCountEl.textContent=String(points.length);updateAddPointButton();updateAllDtaVisibilityButton();
   if(!points.length){pointListEl.innerHTML='<div class="empty-state">Belum ada hasil delineasi.</div>';window.refreshHssUiState?.();return;}
   pointListEl.innerHTML=points.map((p)=>{
     const r=pointResult(p.point_id),processing=processingPointIds.has(p.point_id);
@@ -1487,9 +2156,9 @@ function renderPointCards(){
     const warningBadge=uiState?.cls==='warning'?`<em class="result-state-badge warning">${escapeHtml(uiState.label)}</em>`:'';
     const identityMeta=processing?'<span class="result-skeleton skeleton-wide"></span>':`<strong class="point-summary-river">${escapeHtml(river)}</strong><span class="point-summary-basin">DAS ${escapeHtml(basin)}</span>${warningBadge}`;
     const areaHtml=processing?'<span class="result-skeleton skeleton-area"></span>':area;
-    const coordText=pointCoordinateText(p.point_id),draft=pointNameDraft(p.point_id),state=pointNameState(p.point_id),color=POINT_COLORS[p.point_id];
-    return `<details class="point-card" data-point-id="${p.point_id}" style="--point-color:${color}" ${activePointId===p.point_id?'open':''}>
-      <summary><span class="point-name-chip" style="background:${color};color:${readableTextColor(color)}">${escapeHtml(displayId)}</span><span class="point-summary-main">${identityMeta}</span><span class="point-summary-area">${areaHtml}</span><span class="point-chevron"><i data-lucide="chevron-down"></i></span></summary>
+    const coordText=pointCoordinateText(p.point_id),draft=pointNameDraft(p.point_id),state=pointNameState(p.point_id),color=POINT_COLORS[p.point_id],layerVisible=isDtaLayerVisible(p.point_id);
+    return `<details class="point-card${layerVisible?'':' is-layer-hidden'}" data-point-id="${p.point_id}" style="--point-color:${color}" ${activePointId===p.point_id?'open':''}>
+      <summary><span class="dta-master-visibility-toggle${layerVisible?'':' is-hidden-state'}" data-id="${p.point_id}" role="button" tabindex="0" aria-pressed="${layerVisible?'true':'false'}" aria-label="${layerVisible?'Sembunyikan seluruh layer DTA dan turunannya':'Tampilkan seluruh layer DTA dan turunannya'}" title="${layerVisible?'Sembunyikan seluruh layer DTA dan turunannya':'Tampilkan seluruh layer DTA dan turunannya'}"><i data-lucide="${layerVisible?'eye':'eye-off'}"></i></span><span class="point-name-chip" style="background:${color};color:${readableTextColor(color)}">${escapeHtml(displayId)}</span><span class="point-summary-main">${identityMeta}</span><span class="point-summary-area">${areaHtml}</span><span class="point-chevron"><i data-lucide="chevron-down"></i></span></summary>
       <div class="point-body">
         <label class="point-edit-label point-name-editor ${state==='dirty'?'is-dirty':''} ${state==='saving'?'is-saving':''}" data-id="${p.point_id}"><span class="point-edit-label-row"><span>Nama titik</span><span class="point-name-state unsaved-indicator ${state==='saved'?'hidden':''}" aria-live="polite">${state==='saving'?'Menyimpan...':'Belum disimpan'}</span></span>
           <div class="point-name-grid"><input class="rename-point ${state==='dirty'?'is-dirty':''}" data-id="${p.point_id}" data-saved-value="${escapeHtml(displayId)}" value="${escapeHtml(draft)}" maxlength="25"><button class="mini-button save-name save-icon-button" data-id="${p.point_id}" aria-label="Simpan nama titik" ${state==='dirty'?'':'disabled'}>${state==='saving'?'<i data-lucide="loader-circle" class="spin-icon"></i>':'<i data-lucide="save"></i>'}</button></div><span class="point-name-limit-warning hidden">Maksimal 25 karakter.</span>
@@ -1525,8 +2194,13 @@ function renderPointCards(){
   pointListEl.querySelectorAll('.copy-point-coordinate').forEach(b=>b.addEventListener('click',e=>copyText(e.currentTarget.dataset.coordinate||pointCoordinateText(e.currentTarget.dataset.id),e.currentTarget)));
   pointListEl.querySelectorAll('.move-point').forEach(b=>b.addEventListener('click',()=>armMovePoint(b.dataset.id)));
   pointListEl.querySelectorAll('.change-point-color').forEach(b=>b.addEventListener('click',e=>openDtaColorPicker(b.dataset.id,e.currentTarget)));
+  pointListEl.querySelectorAll('.dta-master-visibility-toggle').forEach(b=>{
+    b.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();setDtaLayerVisibility(b.dataset.id,!isDtaLayerVisible(b.dataset.id));});
+    b.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();setDtaLayerVisibility(b.dataset.id,!isDtaLayerVisible(b.dataset.id));}});
+  });
   initPointListSortable();
   applyDtaHighlight();
+  refreshAnalysisDownloadOption();
   window.refreshHssUiState?.();
 }
 function zoomToPoint(id){const r=pointResult(id);if(!r)return;const b=new maplibregl.LngLatBounds();const g=r.dta_geojson;if(g.type==='Polygon')for(const ring of g.coordinates)for(const c of ring)b.extend(c);else for(const p of g.coordinates)for(const ring of p)for(const c of ring)b.extend(c);if(!b.isEmpty())map.fitBounds(b,{padding:{top:70,bottom:60,left:sidebarCollapsed?70:380,right:70},maxZoom:14,duration:550});}
@@ -1630,6 +2304,12 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
     return;
   }
 
+  // Show the clicked candidate immediately. Validation/snapping may still need
+  // a cold backend, but the user should never wonder whether the click worked.
+  renderSnapPreview({lon,lat},null);
+  setStatus(isMove?'Memeriksa lokasi baru…':'Memeriksa lokasi titik…','busy');
+  warmBackend().catch(()=>{});
+
   let check=null;
   try{
     check=await checkLocation(lon,lat,{signal:controller.signal});
@@ -1637,6 +2317,7 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
     // Abort is expected when the user clicks another location quickly.
     if(err?.name==='AbortError'||!isCurrentRequest())return;
     pointPopupAbortController=null;
+    clearSnapPreview();
     setStatus('Lokasi belum dapat divalidasi. Coba lagi.','error');
     return;
   }
@@ -1646,9 +2327,9 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
   pointPopupAbortController=null;
   if(!isMove&&!addingPoints)return;
 
-  if(!check){setStatus('Lokasi belum dapat divalidasi. Coba lagi.','error');return;}
-  if(check?.warning?.code==='karst_detected'){if(isMove)cancelMovePoint();showKarst({...check.warning,official_basin:check.official_basin});return;}
-  if(check?.warning?.code==='outside_region'||check?.mode==='outside_region'){if(isMove)cancelMovePoint();showOutside();return;}
+  if(!check){clearSnapPreview();setStatus('Lokasi belum dapat divalidasi. Coba lagi.','error');return;}
+  if(check?.warning?.code==='karst_detected'){clearSnapPreview();if(isMove)cancelMovePoint();showKarst({...check.warning,official_basin:check.official_basin});return;}
+  if(check?.warning?.code==='outside_region'||check?.mode==='outside_region'){clearSnapPreview();if(isMove)cancelMovePoint();showOutside();return;}
 
   const basin=check?.official_basin?.name?`DAS ${check.official_basin.name}`:'Wilayah belum teridentifikasi';
   const river=riverNameForUi(check?.official_river?.name);
@@ -1736,11 +2417,11 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
       }
     }else if(pointInputMode==='multi'){
       if(points.length>=MAX_POINTS)return;
-      points.push({point_id:targetId,lon,lat,source,label});pointNameDrafts.set(targetId,label||targetId);
+      hiddenDtaLayerIds.delete(targetId);points.push({point_id:targetId,lon,lat,source,label});pointNameDrafts.set(targetId,label||targetId);
       activePointId=targetId;closePointPopup();renderRequestedPoints();renderPointCards();persistState();
       await runBatchDelineation({fit:points.length===1,onlyPointId:targetId});
     }else{
-      points=[{point_id:'O1',lon,lat,source,label}];pointNameDrafts.clear();pointNameDrafts.set('O1',label||'O1');batchResult=null;activePointId='O1';closePointPopup();renderRequestedPoints();renderPointCards();persistState();
+      hiddenDtaLayerIds.clear();points=[{point_id:'O1',lon,lat,source,label}];pointNameDrafts.clear();pointNameDrafts.set('O1',label||'O1');batchResult=null;activePointId='O1';closePointPopup();renderRequestedPoints();renderPointCards();persistState();
       await runBatchDelineation({fit:true});
     }
   };
@@ -1792,20 +2473,95 @@ function setSidebarCollapsed(on,{save=true}={}){sidebarCollapsed=on;$('sidebar')
 
 map.on('style.load',addOperationalLayers);
 map.on('load',async()=>{
-  try{info=await fetch('/api/info').then(r=>r.json());studyBounds=[[info.bounds_wgs84[0],info.bounds_wgs84[1]],[info.bounds_wgs84[2],info.bounds_wgs84[3]]];if(!restoredState.camera)map.fitBounds(studyBounds,{padding:40,maxZoom:8});}catch(_){setStatus('Data siap digunakan.','neutral');}
   setSidebarCollapsed(sidebarCollapsed,{save:false});setHeaderVisible(false);applyBasemapVisibility();renderRequestedPoints();renderPointCards();refreshIcons();
-  if(points.length)await runBatchDelineation({fit:false});
+
+  // Start warming immediately, but never block the visible map while the GIS
+  // engine is cold. /api/info follows the same lazy initialization path.
+  warmBackend().catch(()=>{});
+  try{
+    const response=await fetch('/api/info',{cache:'no-store'});
+    if(!response.ok)throw new Error('info unavailable');
+    info=await response.json();
+    studyBounds=[[info.bounds_wgs84[0],info.bounds_wgs84[1]],[info.bounds_wgs84[2],info.bounds_wgs84[3]]];
+    if(!restoredState.camera)map.fitBounds(studyBounds,{padding:40,maxZoom:8});
+  }catch(_){setStatus('Peta siap. Engine analisis sedang dipanaskan…','neutral');}
+  verifyOperationalSources();
+  setTimeout(verifyOperationalSources,1200);
+  setTimeout(verifyOperationalSources,3800);
+  setTimeout(verifyOperationalSources,9000);
+  if(points.length)await runBatchDelineation({fit:false,preserveDerived:true});
 });
+
+map.on('sourcedata',e=>{
+  if((e.sourceId==='official-basins'||e.sourceId==='official-rivers')&&e.isSourceLoaded)resetMapAssetRetry(e.sourceId);
+});
+map.on('error',e=>{
+  const sourceId=e?.sourceId||e?.source?.id||null;
+  if(sourceId==='official-basins'||sourceId==='official-rivers')retryOperationalSource(sourceId);
+});
+window.addEventListener('online',()=>{retryOperationalSource('official-basins',{force:true});retryOperationalSource('official-rivers',{force:true});warmBackend({force:true}).catch(()=>{});});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'){verifyOperationalSources();warmBackend().catch(()=>{});}
+});
+map.getCanvas().addEventListener('pointerdown',()=>{
+  if(addingPoints||movePointId)warmBackend().catch(()=>{});
+},{passive:true});
+// After a long idle period, ordinary pointer movement usually happens before the
+// next click. Use that intent signal to wake the API a little earlier without
+// delaying or blocking any map interaction.
+map.getCanvas().addEventListener('pointermove',()=>{
+  if((addingPoints||movePointId)&&Date.now()-backendLastWarmAt>=BACKEND_WARM_TTL_MS)warmBackend().catch(()=>{});
+},{passive:true});
+$('addPointSessionBtn')?.addEventListener('pointerenter',()=>{
+  if(!addingPoints&&Date.now()-backendLastWarmAt>=BACKEND_WARM_TTL_MS)warmBackend().catch(()=>{});
+},{passive:true});
+$('addPointSessionBtn')?.addEventListener('focus',()=>{
+  if(!addingPoints&&Date.now()-backendLastWarmAt>=BACKEND_WARM_TTL_MS)warmBackend().catch(()=>{});
+});
+
+map.getCanvas().addEventListener('contextmenu',event=>event.preventDefault());
+map.on('contextmenu',e=>{
+  try{e.originalEvent?.preventDefault();}catch(_){}
+  try{e.preventDefault?.();}catch(_){}
+  cancelScheduledPointPopup();
+  cancelPointPopupValidation();
+  clearDtaHover();
+  const lon=Number(e.lngLat?.lng),lat=Number(e.lngLat?.lat);
+  if(!Number.isFinite(lon)||!Number.isFinite(lat))return;
+  // Right-click mirrors the coordinate "Tampilkan Titik" action at the cursor.
+  // Outside an add-point session it is only a location preview; once Mulai Tambah
+  // is active, the same right-click becomes an outlet candidate and runs the normal
+  // validation/snapping flow. Move-outlet mode keeps its dedicated semantics.
+  if(movePointId){
+    clearLocationPreview();
+    openPointPopup(lon,lat,'map',null,{moveTargetId:movePointId});
+  }else if(addingPoints){
+    clearLocationPreview();
+    openPointPopup(lon,lat,'map');
+  }else{
+    showLocationPreview(lon,lat,'map');
+  }
+});
+
 map.on('mousemove',e=>{
   $('coordReadout').textContent=`${e.lngLat.lat.toFixed(6)}, ${e.lngLat.lng.toFixed(6)}`;
   if(measureMode&&measureCoords.length){measurePreview=[e.lngLat.lng,e.lngLat.lat];updateMeasure(measurePreview);clearDtaHover();return;}
-  if(isHeaderUiBlocked()||pointPopup||progressiveMoving){clearDtaHover();return;}
+  if(isMapHoverBlocked()||pointPopup||progressiveMoving){clearDtaHover();return;}
 
   let pointFeature=null,dtaFeature=null;
   try{pointFeature=map.queryRenderedFeatures(e.point,{layers:['requested-points']})?.[0]||null;}catch(_){}
   if(pointFeature?.properties?.point_id){
     map.getCanvas().style.cursor='pointer';
     queueDtaHover(pointFeature.properties.point_id,e.lngLat,'point');
+    return;
+  }
+
+  // Derived DTA layers get hover priority over enclosing polygons. This keeps
+  // WL/WU and L/Lca/L10–85 inspectable even when they lie over AU or the DTA.
+  const spatialFeature=querySpatialHoverFeature(e.point);
+  if(spatialFeature){
+    map.getCanvas().style.cursor='pointer';
+    showSpatialHover(spatialFeature,e.lngLat);
     return;
   }
 
@@ -1877,6 +2633,7 @@ map.on('dblclick',e=>{
   // Double-click is navigation, not a request to create multiple candidate points.
   cancelScheduledPointPopup();
   cancelPointPopupValidation();
+  clearSnapPreview();
   if(pointPopup?.getElement?.()?.classList?.contains('pending-point-popup'))closePointPopup();
   if(measureMode){e.preventDefault();setMeasureMode(false);}
 });
@@ -1886,6 +2643,7 @@ $('previewCoordinateBtn').addEventListener('click',()=>{try{const {lat,lon}=pars
 $('decimalSeparatorSelect')?.addEventListener('change',event=>{decimalSeparator=event.target.value==='.'?'.':',';persistState();renderPointCards();if(!$('hydrologicAnalysisModal').classList.contains('hidden')&&activePointId)openHydrologicAnalysis(activePointId);});
 $('coordinateInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('previewCoordinateBtn').click();}});
 $('addPointSessionBtn').addEventListener('click',()=>{
+  if(!addingPoints)warmBackend().catch(()=>{});
   if(!addingPoints&&pointInputMode==='multi'&&points.length>=MAX_POINTS)return;
   addingPoints=!addingPoints;
   if(addingPoints){if(isExistingPointPopupOpen())closePointPopup();clearDtaHover();}
@@ -1911,23 +2669,30 @@ snapRadiusEl.addEventListener('change',()=>{persistState();if(points.length)runB
 $('sidebarSearchToggle').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setSidebarCollapsed(!sidebarCollapsed);});
 $('zoomInBtn').addEventListener('click',()=>map.zoomIn());$('zoomOutBtn').addEventListener('click',()=>map.zoomOut());$('resetNorthBtn').addEventListener('click',()=>map.easeTo({bearing:0,pitch:0,duration:350}));$('fullscreenBtn').addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(_){}});document.addEventListener('fullscreenchange',()=>{$('fullscreenBtn').innerHTML=document.fullscreenElement?'<i data-lucide="minimize"></i>':'<i data-lucide="maximize"></i>';if(document.fullscreenElement)setHeaderVisible(false);updateHeaderHandleInteractivity();refreshIcons();setTimeout(()=>map.resize(),80);});
 $('homeBtn').addEventListener('click',()=>{if(studyBounds)map.fitBounds(studyBounds,{padding:45,maxZoom:8});});
+$('toggleAllDtaVisibilityBtn')?.addEventListener('click',toggleAllDtaVisibility);
 $('focusAllDtaBtn')?.addEventListener('click',fitToResults);
 $('measureBtn').addEventListener('click',()=>setMeasureMode(!measureMode));$('clearMeasureBtn').addEventListener('click',clearMeasure);$('layerBtn').addEventListener('click',()=>{layerPanel.classList.toggle('hidden');if(!layerPanel.classList.contains('hidden'))clearDtaHover();updateHeaderHandleInteractivity();});$('closeLayerPanel').addEventListener('click',()=>{layerPanel.classList.add('hidden');updateHeaderHandleInteractivity();});
 $('basemapBtn').addEventListener('click',()=>{openMapModal($('basemapModal'));updateBasemapGallery();});$('closeBasemapModal').addEventListener('click',()=>closeMapModal($('basemapModal')));document.querySelectorAll('.basemap-card').forEach(card=>card.addEventListener('click',()=>setBasemap(card.dataset.basemap)));$('noBasemapBtn').addEventListener('click',()=>setBasemap('no-basemap'));$('showHillshade').addEventListener('change',()=>{applyLayerState();persistState();});$('hillshadeOpacity').addEventListener('input',e=>{$('hillshadeOpacityValue').textContent=`${e.target.value}%`;if(map.getLayer('esri-hillshade-layer'))map.setPaintProperty('esri-hillshade-layer','raster-opacity',Number(e.target.value)/100);schedulePersistState();});
-$('showBasins').addEventListener('change',()=>{applyLayerState();persistState();});$('showBasinLabels').addEventListener('change',()=>{applyLayerState();persistState();});$('showRivers').addEventListener('change',()=>{updateRiverVisibility();persistState();});$('showRiverLabels').addEventListener('change',()=>{updateRiverVisibility();persistState();});$('autoRiverZoom').addEventListener('change',()=>{updateRiverVisibility();updateRiverDisplaySource({force:true});persistState();});document.querySelectorAll('.river-order-toggle').forEach(x=>x.addEventListener('change',()=>{updateRiverVisibility();persistState();}));
+$('showBasins')?.addEventListener('change',()=>{applyLayerState();persistState();});$('showBasinLabels')?.addEventListener('change',()=>{applyLayerState();persistState();});$('showRivers')?.addEventListener('change',()=>{updateRiverVisibility();persistState();});$('showRiverLabels')?.addEventListener('change',()=>{updateRiverVisibility();persistState();});$('autoRiverZoom')?.addEventListener('change',()=>{updateRiverVisibility();updateRiverDisplaySource({force:true});persistState();});document.querySelectorAll('.river-order-toggle').forEach(x=>x.addEventListener('change',()=>{updateRiverVisibility();persistState();}));
 map.on('zoom',()=>updateRiverLabelFilter());
-map.on('zoomend',()=>updateRiverDisplaySource());
-$('basinColor').addEventListener('input',e=>{if(map.getLayer('official-basins-line'))map.setPaintProperty('official-basins-line','line-color',e.target.value);if(map.getLayer('official-basin-label'))map.setPaintProperty('official-basin-label','text-color',e.target.value);schedulePersistState();});
-$('riverColor').addEventListener('input',e=>{for(const k of RIVER_KEYS){if(map.getLayer(`official-river-${k}`))map.setPaintProperty(`official-river-${k}`,'line-color',e.target.value);}if(map.getLayer('official-river-labels'))map.setPaintProperty('official-river-labels','text-color',e.target.value);schedulePersistState();});
+map.on('zoomend',()=>{updateRiverDisplaySource();setTimeout(verifyOperationalSources,900);});
+$('basinColor')?.addEventListener('input',e=>{if(map.getLayer('official-basins-line'))map.setPaintProperty('official-basins-line','line-color',e.target.value);if(map.getLayer('official-basin-label'))map.setPaintProperty('official-basin-label','text-color',e.target.value);schedulePersistState();});
+$('riverColor')?.addEventListener('input',e=>{for(const k of RIVER_KEYS){if(map.getLayer(`official-river-${k}`))map.setPaintProperty(`official-river-${k}`,'line-color',e.target.value);}if(map.getLayer('official-river-labels'))map.setPaintProperty('official-river-labels','text-color',e.target.value);schedulePersistState();});
+for(const id of ['characteristicMainChannelColor','characteristicLColor','characteristicLcaColor','characteristicL1085Color','characteristicStreamsColor'])$(id)?.addEventListener('input',()=>{refreshCharacteristicSpatialSource();applyCharacteristicColors();schedulePersistState();});
+for(const id of ['basinColor','riverColor','characteristicStreamsColor'])$(id)?.addEventListener('click',event=>event.stopPropagation());
+$('showCharacteristicAnalysisStreams')?.addEventListener('click',event=>event.stopPropagation());
 $('showHatch').addEventListener('change',()=>{applyLayerState();updateLabelDeclutter();persistState();});$('hatchOpacity').addEventListener('input',()=>{updateHatchOpacity();schedulePersistState();});$('lineWidth').addEventListener('input',()=>{updateLineWidths();schedulePersistState();});
+for(const id of ['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams'])$(id)?.addEventListener('change',()=>{applyCharacteristicSpatialVisibility();persistState();});
+for(const id of ['showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'])$(id)?.addEventListener('change',()=>{applyGamaSpatialVisibility();persistState();});
 
 function resetLayerStyling(){
-  $('basinColor').value=DEFAULT_BASIN_COLOR;$('riverColor').value=DEFAULT_RIVER_COLOR;
+  $('basinColor').value=DEFAULT_BASIN_COLOR;$('riverColor').value=DEFAULT_RIVER_COLOR;if($('characteristicMainChannelColor'))$('characteristicMainChannelColor').value=DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR;if($('characteristicLColor'))$('characteristicLColor').value=DEFAULT_CHARACTERISTIC_L_COLOR;if($('characteristicLcaColor'))$('characteristicLcaColor').value=DEFAULT_CHARACTERISTIC_LCA_COLOR;if($('characteristicL1085Color'))$('characteristicL1085Color').value=DEFAULT_CHARACTERISTIC_L1085_COLOR;if($('characteristicStreamsColor'))$('characteristicStreamsColor').value=DEFAULT_CHARACTERISTIC_STREAM_COLOR;
   $('hillshadeOpacity').value='100';$('hillshadeOpacityValue').textContent='100%';
   $('hatchOpacity').value='22';$('hatchOpacityValue').textContent='22%';
   $('lineWidth').value='2';$('lineWidthValue').textContent='2.0 px';
   $('showHillshade').checked=false;$('showBasins').checked=true;$('showBasinLabels').checked=true;
-  $('showRivers').checked=true;$('autoRiverZoom').checked=true;$('showRiverLabels').checked=true;$('showHatch').checked=false;
+  $('showRivers').checked=true;if($('autoRiverZoom'))$('autoRiverZoom').checked=true;$('showRiverLabels').checked=true;$('showHatch').checked=false;
+  for(const id of ['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams','showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'])if($(id))$(id).checked=false;document.querySelectorAll('.characteristic-order-toggle').forEach(input=>{input.checked=true;});
   document.querySelectorAll('.river-order-toggle').forEach(x=>x.checked=true);
   if(map.getLayer('official-basins-line'))map.setPaintProperty('official-basins-line','line-color',DEFAULT_BASIN_COLOR);
   if(map.getLayer('official-basin-label'))map.setPaintProperty('official-basin-label','text-color',DEFAULT_BASIN_COLOR);
@@ -1935,7 +2700,7 @@ function resetLayerStyling(){
   if(map.getLayer('official-river-labels'))map.setPaintProperty('official-river-labels','text-color',DEFAULT_RIVER_COLOR);
   for(let i=1;i<=MAX_POINTS;i++)setDtaColor(`O${i}`,POINT_PALETTE[i-1],{save:false});
   if(map.getLayer('esri-hillshade-layer'))map.setPaintProperty('esri-hillshade-layer','raster-opacity',1);
-  updateHatchOpacity();updateLineWidths();applyLayerState();updateRiverVisibility();renderPointCards();persistState();setStatus('Tampilan layer dikembalikan ke bawaan.','success');
+  updateHatchOpacity();updateLineWidths();applyCharacteristicColors();applyLayerState();updateRiverVisibility();renderPointCards();persistState();setStatus('Tampilan layer dikembalikan ke bawaan.','success');
 }
 $('resetColorsBtn').addEventListener('click',resetLayerStyling);
 
@@ -1943,10 +2708,13 @@ function updateDownloadSummary(){
   const summary=$('downloadSummary');if(!summary)return;
   const formats=[...document.querySelectorAll('.download-format:checked')].map(x=>({gpkg:'GeoPackage',shp:'Shapefile',geojson:'GeoJSON',kml:'KML'}[x.value]||x.value));
   const modes=[...document.querySelectorAll('.geometry-mode:checked')].map(x=>x.value==='smoothed'?'Diperhalus':'Asli');
+  const characteristicCount=characteristicAnalyzedPointIds().length;
   const hssCount=window.getHssAnalyzedCount?.()||0;
-  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div><div><b>Karakteristik DTA</b><span>${$('downloadAnalysisReport')?.checked?'PDF + XLSX per DTA':'Tidak disertakan'}</span></div><div><b>Analisis HSS</b><span>${$('downloadHss')?.checked?`PDF + XLSX untuk ${hssCount} DTA yang telah dianalisis`:'Tidak disertakan'}</span></div>`;
+  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div><div><b>Karakteristik DTA</b><span>${$('downloadAnalysisReport')?.checked?`Disertakan untuk ${characteristicCount} DTA`:'Tidak disertakan'}</span></div><div><b>Analisis HSS</b><span>${$('downloadHss')?.checked?`Disertakan untuk ${hssCount} DTA`:'Tidak disertakan'}</span></div>`;
 }
 
+document.querySelectorAll('.layer-eye-toggle').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const group=button.dataset.layerGroup;if(group==='basins'){const turnOn=!($('showBasins')?.checked||$('showBasinLabels')?.checked);if($('showBasins'))$('showBasins').checked=turnOn;if($('showBasinLabels'))$('showBasinLabels').checked=turnOn;applyLayerState();persistState();return;}if(group==='rivers'){const turnOn=!($('showRivers')?.checked||$('showRiverLabels')?.checked);if($('showRivers'))$('showRivers').checked=turnOn;if($('showRiverLabels'))$('showRiverLabels').checked=turnOn;updateRiverVisibility();persistState();return;}if(group==='dta'){const anyVisible=points.some(point=>isDtaLayerVisible(point.point_id));if(anyVisible)points.forEach(point=>hiddenDtaLayerIds.add(point.point_id));else points.forEach(point=>hiddenDtaLayerIds.delete(point.point_id));clearDtaHover();applyPerDtaLayerVisibility();renderRequestedPoints();refreshCharacteristicSpatialSource();refreshGamaSpatialSource();updateLabelDeclutter();renderPointCards();syncLayerSummaryEyes();schedulePersistState();return;}if(group==='characteristic'){const ids=['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams'];const turnOn=!characteristicAnyVisible();ids.forEach(id=>{if($(id))$(id).checked=turnOn;});applyCharacteristicSpatialVisibility();persistState();return;}if(group==='gama'){const ids=['showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'];const turnOn=!gamaAnyVisible();ids.forEach(id=>{if($(id))$(id).checked=turnOn;});applyGamaSpatialVisibility();persistState();return;}}));
+syncLayerSummaryEyes();
 $('downloadBtn').addEventListener('click',()=>{$('downloadStatus').textContent='';updateDownloadSummary();openMapModal($('downloadModal'));});
 for(const id of ['closeDownloadModal','cancelDownloadBtn'])$(id).addEventListener('click',()=>closeMapModal($('downloadModal')));
 document.querySelectorAll('.download-format,.geometry-mode').forEach(x=>x.addEventListener('change',updateDownloadSummary));
@@ -1960,7 +2728,7 @@ $('confirmDownloadBtn').addEventListener('click',async()=>{
 
 for(const id of ['definitionHeaderBtn','definitionSidebarBtn'])$(id).addEventListener('click',()=>openMapModal($('definitionModal')));
 for(const id of ['methodologyHeaderBtn','methodologySidebarBtn'])$(id).addEventListener('click',()=>openMapModal($('methodologyModal')));
-$('basinSourceBtn').addEventListener('click',()=>openMapModal($('basinSourceModal')));
+$('basinSourceBtn')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openMapModal($('basinSourceModal'));});
 $('closeDefinitionModal').addEventListener('click',()=>closeMapModal($('definitionModal')));$('closeMethodologyModal').addEventListener('click',()=>closeMapModal($('methodologyModal')));$('closeBasinSourceModal').addEventListener('click',()=>closeMapModal($('basinSourceModal')));$('closeKarstModal').addEventListener('click',()=>closeMapModal($('karstModal')));$('closeOutsideModal').addEventListener('click',()=>closeMapModal($('outsideModal')));
 $('closeHydrologicAnalysisModal').addEventListener('click',()=>closeMapModal($('hydrologicAnalysisModal')));
 for(const id of ['karstModal','outsideModal','confirmClearModal','downloadModal','hydrologicAnalysisModal','hssAnalysisModal','definitionModal','methodologyModal','basinSourceModal','basemapModal','usageNoticeModal'])$(id).addEventListener('click',e=>{if(e.target.id===id)closeMapModal(e.currentTarget);});

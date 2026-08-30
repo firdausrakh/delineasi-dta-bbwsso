@@ -21,6 +21,6 @@ if not exist .venv (
   call .venv\Scripts\activate.bat
 )
 
-echo [3/3] Menjalankan Delineasi DTA BBWS Serayu Opak v1.0.0.0...
+echo [3/3] Menjalankan Delineasi DTA BBWS Serayu Opak v1.3.0...
 echo Buka http://127.0.0.1:8000
-python api\app.py
+python -m api.app

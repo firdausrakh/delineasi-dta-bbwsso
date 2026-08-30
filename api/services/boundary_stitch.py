@@ -351,6 +351,267 @@ def process_fabdem_polygon(
     return make_valid(result) if not result.is_valid else result
 
 
+
+
+def _sampled_arc_distance_score(arc: LineString, target: LineString) -> tuple[float, float, float]:
+    """Score a closed-ring arc against the RAW shared edge.
+
+    The topology repair only needs to identify which of the two possible ring arcs is
+    the shared one.  Sampling by curvilinear distance avoids a bias toward dense RAW
+    raster vertices and keeps this cheap for long catchment boundaries.
+    """
+    if arc is None or arc.is_empty or target is None or target.is_empty:
+        return (float("inf"), float("inf"), float("inf"))
+    count = max(3, min(128, int(np.ceil(float(arc.length) / 30.0)) + 1))
+    distances = [arc.interpolate(float(d)).distance(target) for d in np.linspace(0.0, float(arc.length), count)]
+    max_dist = float(max(distances, default=float("inf")))
+    mean_dist = float(np.mean(distances)) if distances else float("inf")
+    ratio = float(arc.length) / max(float(target.length), 1.0)
+    length_penalty = abs(float(np.log(max(ratio, 1e-9))))
+    return (mean_dist + max_dist * 0.25 + length_penalty * 8.0, max_dist, mean_dist)
+
+
+def _ring_arc_pair(ring: LineString, raw_line: LineString):
+    """Return (shared_arc start->end, complementary_arc end->start, score meta)."""
+    if ring is None or ring.is_empty or raw_line is None or raw_line.is_empty:
+        return None
+    raw_coords = list(raw_line.coords)
+    if len(raw_coords) < 2:
+        return None
+    start_pt = Point(raw_coords[0]); end_pt = Point(raw_coords[-1])
+    da = float(ring.project(start_pt)); db = float(ring.project(end_pt))
+
+    forward = _forward_arc(ring, da, db)
+    backward_forward = _forward_arc(ring, db, da)
+    reverse_route = _reverse(backward_forward)  # start -> end
+
+    score_forward = _sampled_arc_distance_score(forward, raw_line)
+    score_reverse = _sampled_arc_distance_score(reverse_route, raw_line)
+    if score_forward[0] <= score_reverse[0]:
+        return forward, backward_forward, {
+            "score": score_forward[0], "max_distance_m": score_forward[1], "mean_distance_m": score_forward[2],
+        }
+    return reverse_route, _reverse(forward), {
+        "score": score_reverse[0], "max_distance_m": score_reverse[1], "mean_distance_m": score_reverse[2],
+    }
+
+
+def _blend_complement_to_reference(
+    complement: LineString,
+    target_start: tuple[float, float],
+    target_end: tuple[float, float],
+    transition_m: float,
+) -> LineString:
+    """Move only the two ends of the non-shared arc toward the canonical junctions.
+
+    Old boolean buffer/growth reconciliation left short perpendicular connectors at
+    the ends of a shared edge (the visible 'hook' / staircase artifacts).  A smooth
+    endpoint blend removes those connectors while keeping the rest of the already
+    smoothed PAEK/VW boundary untouched.
+    """
+    if complement is None or complement.is_empty or complement.length <= 1e-6:
+        return complement
+    total = float(complement.length)
+    transition = min(max(10.0, float(transition_m)), total * 0.24)
+    if transition <= 1e-6:
+        return complement
+
+    original_start = complement.interpolate(0.0)
+    original_end = complement.interpolate(total)
+    ds = np.array([float(target_start[0]) - original_start.x, float(target_start[1]) - original_start.y])
+    de = np.array([float(target_end[0]) - original_end.x, float(target_end[1]) - original_end.y])
+
+    sample_count = max(5, min(18, int(np.ceil(transition / 12.0)) + 2))
+    start_distances = np.linspace(0.0, transition, sample_count)
+    end_distances = np.linspace(total - transition, total, sample_count)
+
+    def smooth_weight(u: float) -> float:
+        # 1 -> 0 with zero derivative at both ends (reverse smoothstep).
+        u = max(0.0, min(1.0, float(u)))
+        return 1.0 - (3.0 * u * u - 2.0 * u * u * u)
+
+    start_coords: list[tuple[float, float]] = []
+    for d in start_distances:
+        p = complement.interpolate(float(d)); w = smooth_weight(float(d) / transition)
+        start_coords.append((float(p.x + ds[0] * w), float(p.y + ds[1] * w)))
+    start_coords[0] = (float(target_start[0]), float(target_start[1]))
+
+    middle = substring(complement, transition, total - transition) if total > transition * 2.0 else None
+    middle_coords = list(middle.coords) if middle is not None and not middle.is_empty else []
+
+    end_coords: list[tuple[float, float]] = []
+    for d in end_distances:
+        p = complement.interpolate(float(d)); remaining = (total - float(d)) / transition
+        w = smooth_weight(remaining)
+        end_coords.append((float(p.x + de[0] * w), float(p.y + de[1] * w)))
+    end_coords[-1] = (float(target_end[0]), float(target_end[1]))
+
+    coords = _coords_join([
+        LineString(start_coords),
+        LineString(middle_coords) if len(middle_coords) >= 2 else LineString(),
+        LineString(end_coords),
+    ])
+    if len(coords) < 2:
+        return complement
+    return LineString(coords)
+
+
+def _replace_shared_exterior_arc(moving, reference, raw_line: LineString, tolerance_m: float):
+    """Replace only the proven RAW-shared exterior arc with the reference smooth arc."""
+    if not isinstance(moving, Polygon) or not isinstance(reference, Polygon):
+        return moving, {"replaced": False, "reason": "non_polygon"}
+    moving_ring = LineString(moving.exterior.coords)
+    reference_ring = LineString(reference.exterior.coords)
+    moving_pair = _ring_arc_pair(moving_ring, raw_line)
+    reference_pair = _ring_arc_pair(reference_ring, raw_line)
+    if moving_pair is None or reference_pair is None:
+        return moving, {"replaced": False, "reason": "arc_not_found"}
+
+    _, moving_complement, moving_meta = moving_pair
+    reference_shared, _, reference_meta = reference_pair
+    # PAEK=150 m can legitimately move an edge farther than the final topological
+    # snap tolerance.  Still reject obviously unrelated arcs before surgery.
+    max_arc_distance = max(float(tolerance_m) * 3.0, 120.0)
+    if moving_meta["max_distance_m"] > max_arc_distance or reference_meta["max_distance_m"] > max_arc_distance:
+        return moving, {
+            "replaced": False, "reason": "arc_too_far",
+            "moving_max_distance_m": moving_meta["max_distance_m"],
+            "reference_max_distance_m": reference_meta["max_distance_m"],
+        }
+
+    ref_coords = list(reference_shared.coords)
+    if len(ref_coords) < 2:
+        return moving, {"replaced": False, "reason": "empty_reference_arc"}
+    transition_m = max(float(tolerance_m) * 2.5, 60.0)
+    blended = _blend_complement_to_reference(
+        moving_complement,
+        (float(ref_coords[-1][0]), float(ref_coords[-1][1])),
+        (float(ref_coords[0][0]), float(ref_coords[0][1])),
+        transition_m,
+    )
+    if blended is None or blended.is_empty:
+        return moving, {"replaced": False, "reason": "blend_failed"}
+
+    ring_coords = _coords_join([reference_shared, blended])
+    if len(ring_coords) < 4:
+        return moving, {"replaced": False, "reason": "short_ring"}
+    if ring_coords[0] != ring_coords[-1]:
+        ring_coords.append(ring_coords[0])
+    holes = [list(ring.coords) for ring in moving.interiors]
+    candidate = Polygon(ring_coords, holes)
+    if not candidate.is_valid:
+        candidate = make_valid(candidate)
+    parts = _polygon_parts(candidate)
+    if not parts:
+        return moving, {"replaced": False, "reason": "invalid_candidate"}
+    candidate = max(parts, key=lambda g: g.area)
+    if candidate.is_empty:
+        return moving, {"replaced": False, "reason": "empty_candidate"}
+    return candidate, {
+        "replaced": True,
+        "shared_reference_length_m": float(reference_shared.length),
+        "transition_m": transition_m,
+        "moving_max_distance_m": moving_meta["max_distance_m"],
+        "reference_max_distance_m": reference_meta["max_distance_m"],
+    }
+
+
+def align_expected_shared_boundary(
+    moving,
+    reference,
+    raw_moving,
+    raw_reference,
+    *,
+    snap_tolerance_m: float,
+    raw_contact_tolerance_m: float = 1.5,
+    relationship: str = "adjacent",
+):
+    """Make a proven RAW-shared edge use one canonical *smoothed* boundary.
+
+    This deliberately avoids the former ``buffer -> union -> clip`` repair.  That
+    boolean growth method could leave one-cell hooks/notches at shared-edge endpoints
+    when many DTA were reconciled.  We now replace the corresponding exterior arc
+    itself, smoothly blend the two junctions, and only then enforce exact containment
+    or adjacency with a final overlay.
+
+    RAW D8 geometry remains topology authority only; staircase coordinates are never
+    copied into the visible result.
+    """
+    if any(g is None or g.is_empty for g in (moving, reference, raw_moving, raw_reference)):
+        return moving, {"aligned": False, "reason": "missing_geometry"}
+
+    tol = max(0.0, float(snap_tolerance_m))
+    if tol <= 0:
+        return moving, {"aligned": False, "reason": "zero_tolerance"}
+    if relationship not in {"inside", "adjacent"}:
+        return moving, {"aligned": False, "reason": "invalid_relationship"}
+
+    raw_tol = max(0.05, float(raw_contact_tolerance_m))
+    try:
+        shared_raw = raw_moving.boundary.intersection(raw_reference.boundary)
+        shared_lines = _line_parts(shared_raw)
+        shared_length = float(sum(line.length for line in shared_lines))
+        if shared_length <= max(2.0, raw_tol * 2.0):
+            # CRS round-trips can separate an otherwise identical RAW edge by a tiny
+            # sub-cell amount.  Recover the moving-side line, but still never use it
+            # as display geometry.
+            shared_raw = raw_moving.boundary.intersection(raw_reference.boundary.buffer(raw_tol))
+            shared_lines = _line_parts(shared_raw)
+            shared_length = float(sum(line.length for line in shared_lines))
+        if shared_length <= max(2.0, raw_tol * 2.0):
+            return moving, {"aligned": False, "reason": "no_shared_raw_edge", "shared_raw_length_m": shared_length}
+
+        # Merge touching RAW segments into meaningful shared runs.  Separate runs are
+        # processed independently so a distant shared official-boundary arc is never
+        # bridged through unrelated geometry.
+        try:
+            from shapely.ops import linemerge
+            merged = linemerge(union_all(shared_lines))
+            runs = _line_parts(merged)
+        except Exception:
+            runs = shared_lines
+        runs = [line for line in runs if line.length > max(2.0, raw_tol * 2.0)]
+        runs.sort(key=lambda line: float(line.length), reverse=True)
+
+        aligned = moving
+        replacements: list[dict] = []
+        for raw_line in runs:
+            updated, meta = _replace_shared_exterior_arc(aligned, reference, raw_line, tol)
+            if meta.get("replaced"):
+                aligned = updated
+                replacements.append(meta)
+
+        if not replacements:
+            return moving, {
+                "aligned": False, "reason": "shared_arc_not_replaced",
+                "shared_raw_length_m": shared_length,
+            }
+
+        # Arc replacement should already coincide. Overlay is now only the exact
+        # topology guarantee, not the mechanism used to construct the shared edge.
+        if relationship == "inside":
+            aligned = aligned.intersection(reference)
+        else:
+            aligned = aligned.difference(reference)
+        if not aligned.is_valid:
+            aligned = make_valid(aligned)
+        parts = _polygon_parts(aligned)
+        if parts:
+            aligned = max(parts, key=lambda g: g.area)
+        if aligned is None or aligned.is_empty:
+            return moving, {"aligned": False, "reason": "overlay_empty", "shared_raw_length_m": shared_length}
+
+        return aligned, {
+            "aligned": True,
+            "method": "shared_arc_replacement",
+            "shared_raw_length_m": shared_length,
+            "shared_run_count": len(replacements),
+            "snap_tolerance_m": tol,
+            "relationship": relationship,
+        }
+    except Exception as exc:
+        return moving, {"aligned": False, "reason": f"align_failed:{type(exc).__name__}"}
+
 def _coords_join(lines: Iterable[LineString]) -> list[tuple[float, float]]:
     coords: list[tuple[float, float]] = []
     for line in lines:

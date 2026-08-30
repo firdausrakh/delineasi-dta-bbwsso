@@ -3,7 +3,8 @@
 {% block body_class %}spatial-page{% endblock %}
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.7.2-readability" />
+{% if map_assets_public_base %}<link rel="preconnect" href="{{ map_assets_public_base }}" crossorigin>{% endif %}
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.3.0-ui-spatial-r9-location-crisp" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -19,7 +20,7 @@
           <button id="methodologySidebarBtn" class="definition-link" type="button"><i data-lucide="book-open-text"></i>Metodologi & Sumber Data</button>
         </div>
 
-        <section class="panel-section">
+        <section class="panel-section point-selection-section">
           <div class="section-heading"><h2>Pilih Titik</h2></div>
           <label>Koordinat <span class="muted-inline">(Lintang, Bujur)</span>
             <input id="coordinateInput" type="text" spellcheck="false" inputmode="text" placeholder="DD atau DMS" autocomplete="off" aria-describedby="coordinateHint" />
@@ -53,7 +54,7 @@
         <div id="status" class="status neutral hidden" aria-live="polite"></div>
 
         <section class="panel-section outlet-section">
-          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA<br>per pemrosesan</div></div><div class="result-heading-actions"><button id="focusAllDtaBtn" class="text-button focus-all-button result-stack-button" type="button" aria-label="Fokus semua DTA" disabled><i data-lucide="scan-search"></i><span>Fokus<br>Semua</span></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
+          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA<br>per pemrosesan</div></div><div class="result-heading-actions"><button id="toggleAllDtaVisibilityBtn" class="text-button result-icon-button" type="button" aria-label="Sembunyikan semua DTA" title="Sembunyikan semua DTA" disabled><i data-lucide="eye"></i></button><button id="focusAllDtaBtn" class="text-button focus-all-button result-icon-button" type="button" aria-label="Fokus semua DTA" title="Fokus semua DTA" disabled><i data-lucide="scan-search"></i></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
           <div id="pointList" class="point-list"><div class="empty-state">Belum ada hasil delineasi.</div></div>
           <div class="point-input-control-row spaced-add-point" role="group" aria-label="Kontrol penambahan titik">
             <button id="addPointSessionBtn" class="btn btn-neutral add-point-session" type="button" aria-pressed="false"><i data-lucide="crosshair"></i>Mulai Tambah</button>
@@ -111,26 +112,65 @@
           <label class="check-row"><input id="showHillshade" type="checkbox" /> Esri Hillshade</label>
           <label class="range-row">Opasitas <input id="hillshadeOpacity" type="range" min="0" max="100" value="100" /><span id="hillshadeOpacityValue">100%</span></label>
         </div>
-        <div class="layer-group">
-          <div class="layer-row"><label class="check-row"><input id="showBasins" type="checkbox" checked /> Batas DAS <button id="basinSourceBtn" class="inline-info" type="button" title="Sumber Batas DAS"><i data-lucide="info"></i></button></label><input id="basinColor" class="color-input" type="color" value="#9b7300" /></div>
-          <label class="check-row child-row"><input id="showBasinLabels" type="checkbox" checked /> Nama DAS</label>
-        </div>
-        <div class="layer-group">
-          <div class="layer-row"><label class="check-row"><input id="showRivers" type="checkbox" checked /> Jaringan Sungai</label><input id="riverColor" class="color-input" type="color" value="#0083d7" /></div>
-          <label class="check-row child-row"><input id="autoRiverZoom" type="checkbox" checked /> Otomatis sesuai zoom</label>
-          <div class="river-orders">
-            <label class="check-row"><input class="river-order-toggle" data-order="1" type="checkbox" checked /> Orde 1</label>
-            <label class="check-row"><input class="river-order-toggle" data-order="2" type="checkbox" checked /> Orde 2</label>
-            <label class="check-row"><input class="river-order-toggle" data-order="3" type="checkbox" checked /> Orde 3</label>
-            <label class="check-row"><input class="river-order-toggle" data-order="other" type="checkbox" checked /> Orde &gt; 3</label>
+        <details class="layer-group layer-collapsible">
+          <summary class="layer-collapse-summary">
+            <span class="layer-summary-leading"><button class="layer-eye-toggle" data-layer-group="basins" type="button" aria-label="Tampilkan atau sembunyikan Batas DAS" title="Tampilkan atau sembunyikan Batas DAS"><i data-lucide="eye"></i></button><span>Batas DAS</span></span>
+            <span class="layer-summary-actions"><button id="basinSourceBtn" class="inline-info layer-summary-info" type="button" title="Sumber Batas DAS" aria-label="Sumber Batas DAS"><i data-lucide="info"></i></button><input id="basinColor" class="color-input layer-summary-color" type="color" value="#9b7300" aria-label="Warna Batas DAS" /><i data-lucide="chevron-down"></i></span>
+          </summary>
+          <div class="layer-collapsible-body">
+            <label class="check-row"><input id="showBasins" type="checkbox" checked /> Tampilkan batas</label>
+            <label class="check-row"><input id="showBasinLabels" type="checkbox" checked /> Nama DAS</label>
           </div>
-          <label class="check-row child-row"><input id="showRiverLabels" type="checkbox" checked /> Label sungai</label>
-        </div>
-        <div class="layer-group">
-          <div class="small-title">DTA hasil delineasi</div>
-          <label class="check-row"><input id="showHatch" type="checkbox" /> Arsiran</label>
-          <label class="range-row">Opasitas <input id="hatchOpacity" type="range" min="5" max="70" value="22" /><span id="hatchOpacityValue">22%</span></label>
-        </div>
+        </details>
+        <details class="layer-group layer-collapsible">
+          <summary class="layer-collapse-summary">
+            <span class="layer-summary-leading"><button class="layer-eye-toggle" data-layer-group="rivers" type="button" aria-label="Tampilkan atau sembunyikan Jaringan Sungai" title="Tampilkan atau sembunyikan Jaringan Sungai"><i data-lucide="eye"></i></button><span>Jaringan Sungai</span></span>
+            <span class="layer-summary-actions"><input id="riverColor" class="color-input layer-summary-color" type="color" value="#0083d7" aria-label="Warna Jaringan Sungai" /><i data-lucide="chevron-down"></i></span>
+          </summary>
+          <div class="layer-collapsible-body">
+            <label class="check-row"><input id="showRivers" type="checkbox" checked /> Tampilkan jaringan</label>
+            <div class="official-river-options">
+              <label class="check-row"><input id="autoRiverZoom" type="checkbox" checked /> Otomatis sesuai zoom</label>
+              <div class="river-orders official-river-orders">
+                <label class="check-row"><input class="river-order-toggle" data-order="1" type="checkbox" checked /> Orde 1</label>
+                <label class="check-row"><input class="river-order-toggle" data-order="2" type="checkbox" checked /> Orde 2</label>
+                <label class="check-row"><input class="river-order-toggle" data-order="3" type="checkbox" checked /> Orde 3</label>
+                <label class="check-row"><input class="river-order-toggle" data-order="other" type="checkbox" checked /> Orde &gt; 3</label>
+              </div>
+            </div>
+            <label class="check-row"><input id="showRiverLabels" type="checkbox" checked /> Label sungai</label>
+          </div>
+        </details>
+        <details class="layer-group layer-collapsible">
+          <summary class="layer-collapse-summary"><span class="layer-summary-leading"><button class="layer-eye-toggle" data-layer-group="dta" type="button" aria-label="Tampilkan atau sembunyikan Hasil DTA" title="Tampilkan atau sembunyikan Hasil DTA"><i data-lucide="eye"></i></button><span>Hasil DTA</span></span><span class="layer-summary-actions"><i data-lucide="chevron-down"></i></span></summary>
+          <div class="layer-collapsible-body">
+            <label class="check-row"><input id="showHatch" type="checkbox" /> Arsiran</label>
+            <label class="range-row">Opasitas <input id="hatchOpacity" type="range" min="5" max="70" value="22" /><span id="hatchOpacityValue">22%</span></label>
+          </div>
+        </details>
+        <details id="characteristicLayerGroup" class="layer-group layer-collapsible hidden">
+          <summary class="layer-collapse-summary"><span class="layer-summary-leading"><button class="layer-eye-toggle" data-layer-group="characteristic" type="button" aria-label="Tampilkan atau sembunyikan layer Karakteristik" title="Tampilkan atau sembunyikan layer Karakteristik"><i data-lucide="eye"></i></button><span>Karakteristik</span></span><span class="layer-summary-actions"><i data-lucide="chevron-down"></i></span></summary>
+          <div class="layer-collapsible-body">
+            <div class="layer-row derived-color-row"><label class="check-row child-row"><input id="showCharacteristicMainChannel" type="checkbox" /> Panjang sungai utama (Lm)</label><input id="characteristicMainChannelColor" class="color-input" type="color" value="#D946A8" aria-label="Warna panjang sungai utama (Lm)" /></div>
+            <div class="layer-row derived-color-row"><label class="check-row child-row"><input id="showCharacteristicL" type="checkbox" /> Lintasan aliran terpanjang (L)</label><input id="characteristicLColor" class="color-input" type="color" value="#173B6C" aria-label="Warna lintasan aliran terpanjang" /></div>
+            <div class="layer-row derived-color-row"><label class="check-row child-row"><input id="showCharacteristicLca" type="checkbox" /> Lintasan aliran melalui sentroid (Lca)</label><input id="characteristicLcaColor" class="color-input" type="color" value="#D94841" aria-label="Warna lintasan melalui sentroid" /></div>
+            <div class="layer-row derived-color-row"><label class="check-row child-row"><input id="showCharacteristicL1085" type="checkbox" /> Lintasan aliran 10–85 (L10–85)</label><input id="characteristicL1085Color" class="color-input" type="color" value="#16836B" aria-label="Warna lintasan 10–85" /></div>
+            <label class="check-row child-row"><input id="showCharacteristicCentroid" type="checkbox" /> Titik sentroid (C)</label>
+            <details class="layer-subcollapsible characteristic-stream-tree">
+              <summary class="layer-subcollapse-summary"><label class="check-row child-row"><input id="showCharacteristicAnalysisStreams" type="checkbox" /> Total jaringan sungai</label><span class="layer-summary-actions"><input id="characteristicStreamsColor" class="color-input" type="color" value="#0000FF" aria-label="Warna total jaringan sungai" /><i data-lucide="chevron-down"></i></span></summary>
+              <div id="characteristicStreamOrders" class="river-orders characteristic-river-orders layer-subcollapsible-body"></div>
+            </details>
+          </div>
+        </details>
+        <details id="hssGamaLayerGroup" class="layer-group layer-collapsible hidden">
+          <summary class="layer-collapse-summary"><span class="layer-summary-leading"><button class="layer-eye-toggle" data-layer-group="gama" type="button" aria-label="Tampilkan atau sembunyikan HSS Gama I" title="Tampilkan atau sembunyikan HSS Gama I"><i data-lucide="eye"></i></button><span>HSS Gama I</span></span><span class="layer-summary-actions"><i data-lucide="chevron-down"></i></span></summary>
+          <div class="layer-collapsible-body">
+            <label class="check-row child-row"><input id="showGamaAu" type="checkbox" /> Luas bagian hulu (AU)</label>
+            <label class="check-row child-row"><input id="showGamaWl" type="checkbox" /> Lebar DTA pada ¼ L (WL)</label>
+            <label class="check-row child-row"><input id="showGamaWu" type="checkbox" /> Lebar DTA pada ¾ L (WU)</label>
+            <label class="check-row child-row"><input id="showGamaConstruction" type="checkbox" /> Konstruksi geometri</label>
+          </div>
+        </details>
         <div class="layer-group">
           <label class="range-row strong-range">Ketebalan garis <input id="lineWidth" type="range" min="0.8" max="5" step="0.2" value="2" /><span id="lineWidthValue">2.0 px</span></label>
         </div>
@@ -189,8 +229,8 @@
             <label class="check-card"><input class="download-format" type="checkbox" value="kml" /> KML</label>
           </div></div>
           <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
-          <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" /> Sertakan analisis karakteristik DTA (PDF dan Excel)</label></div>
-          <div class="download-section"><label class="check-row"><input id="downloadHss" type="checkbox" disabled /> Sertakan analisis HSS (PDF dan Excel per DTA yang telah dianalisis)</label><small id="downloadHssHint" class="download-option-hint">Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
+          <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" disabled /> Sertakan analisis karakteristik DTA (.pdf, .xlsx, dan spasial)</label><small id="downloadAnalysisHint" class="download-option-hint">Jalankan Analisis Karakteristik terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
+          <div class="download-section"><label class="check-row"><input id="downloadHss" type="checkbox" disabled /> Sertakan analisis HSS (.pdf, .xlsx, dan spasial khusus Gama I)</label><small id="downloadHssHint" class="download-option-hint">Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
           <div id="downloadSummary" class="download-summary" aria-live="polite"></div>
           <div id="downloadStatus" class="download-status"></div>
           <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh</button></div>
@@ -311,11 +351,11 @@ window.DTA_CONFIG = {
   mapAssetsVersion: {{ map_assets_version|tojson }}
 };
 </script>
-<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" fetchpriority="high"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
-<script src="/static/js/spatial.js?v=1.7.2-ui-readability"></script>
+<script src="/static/js/spatial.js?v=1.3.0-ui-spatial-r7-smooth2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
-<script src="/static/js/hss.js?v=1.2.0-compact"></script>
+<script src="/static/js/hss.js?v=1.3.0-ui-spatial-r9"></script>
 {% endblock %}

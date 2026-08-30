@@ -12,9 +12,9 @@
   const METHOD_COLORS = ['#223468','#D97706','#16836B','#7C4D9A','#B64E58','#2678B2','#697B2B'];
   const MORPH_FIELDS = [
     ['A','Luas DTA (A)','km²',0.000001,1000000,0.01],
-    ['L','Panjang alur utama (L)','km',0.000001,10000,0.01],
-    ['Lc','Panjang ke sentroid (Lc)','km',0.000001,10000,0.01],
-    ['S_pct','Kemiringan alur utama (S)','%',0.000001,1000,0.001],
+    ['L','Panjang sungai utama (L)','km',0.000001,10000,0.01],
+    ['Lc','Panjang sungai utama menuju sentroid (Lc)','km',0.000001,10000,0.01],
+    ['S_pct','Kemiringan sungai utama (S)','%',0.000001,1000,0.001],
     ['Lt','Panjang total sungai (Lt)','km',0.000001,100000,0.01],
     ['L1','Panjang sungai orde 1 (L1)','km',0,100000,0.01],
     ['N','Jumlah segmen sungai (N)','segmen',1,1000000,1],
@@ -25,13 +25,16 @@
     ['AU','Luas bagian hulu (AU)','km²',0.000001,1000000,0.01],
   ];
 
-  const hssResults = new Map();
-  const hssParameters = new Map();
-  const hssMorphometry = new Map();
-  const hssMorphometryDefaults = new Map();
-  const hssTr = new Map();
-  const hssMethodSelections = new Map();
-  const hssDirty = new Set();
+  const HSS_STATE_KEY = 'delineasiDtaHssStateV1';
+  function readHssState(){try{return JSON.parse(sessionStorage.getItem(HSS_STATE_KEY)||'{}')||{};}catch(_){return {};}}
+  const restoredHssState=readHssState();
+  const hssResults = new Map(Object.entries(restoredHssState.results||{}));
+  const hssParameters = new Map(Object.entries(restoredHssState.parameters||{}));
+  const hssMorphometry = new Map(Object.entries(restoredHssState.morphometry||{}));
+  const hssMorphometryDefaults = new Map(Object.entries(restoredHssState.morphometryDefaults||{}));
+  const hssTr = new Map(Object.entries(restoredHssState.tr||{}).map(([id,value])=>[id,Number(value)]));
+  const hssMethodSelections = new Map(Object.entries(restoredHssState.methodSelections||{}).map(([id,value])=>[id,new Set(Array.isArray(value)?value:[])]));
+  const hssDirty = new Set(Array.isArray(restoredHssState.dirty)?restoredHssState.dirty:[]);
   let currentPointId = null;
   let currentChartMethod = 'comparison';
   let chartInstance = null;
@@ -40,6 +43,18 @@
     method.id,
     Object.fromEntries(method.params.map(([key,,value]) => [key,value]))
   ]));
+
+  function persistHssState(){
+    try{
+      const valid=new Set(points.map(point=>point.point_id));
+      const objectFromMap=(map,transform=value=>value)=>Object.fromEntries([...map.entries()].filter(([id])=>valid.has(id)).map(([id,value])=>[id,transform(value)]));
+      sessionStorage.setItem(HSS_STATE_KEY,JSON.stringify({
+        results:objectFromMap(hssResults),parameters:objectFromMap(hssParameters),morphometry:objectFromMap(hssMorphometry),
+        morphometryDefaults:objectFromMap(hssMorphometryDefaults),tr:objectFromMap(hssTr),
+        methodSelections:objectFromMap(hssMethodSelections,value=>[...value]),dirty:[...hssDirty].filter(id=>valid.has(id)),
+      }));
+    }catch(_){/* Session persistence is best-effort; live HSS state remains authoritative. */}
+  }
 
   function currentPointIds(){return points.filter(p=>pointResult(p.point_id)).map(p=>p.point_id);}
   function parameterState(pointId){if(!hssParameters.has(pointId))hssParameters.set(pointId,cloneDefaults());return hssParameters.get(pointId);}
@@ -56,17 +71,19 @@
 
   function markDirty(pointId,message='Parameter berubah. Hitung ulang HSS agar hasil, PDF, dan Excel diperbarui.'){
     if(hssResults.has(pointId))hssDirty.add(pointId);
-    refreshDownloadOption();renderHssDirtyState(pointId,message);
+    persistHssState();refreshDownloadOption();renderHssDirtyState(pointId,message);
   }
 
   function extractedMorphometry(pointId){
     const analysis=pointResult(pointId)?.hydrologic_analysis||{};
     const morph=analysis.morphometry||{},terrain=analysis.terrain||{},drain=analysis.drainage||{},gama=drain.gama1||{},flowSlope=terrain.flowpath_slope||{};
-    const A=Number(morph.area_km2),Lc=Number(terrain.centroidal_flowpath_km),longest=Number(terrain.longest_flow_path_km),networkL=Number(drain.main_channel_length_km);
-    const useFlowpath=Number.isFinite(longest)&&longest>0&&(!Number.isFinite(networkL)||networkL<=0||(Number.isFinite(Lc)&&Lc>0&&networkL<Lc));
-    const L=useFlowpath?longest:networkL;
+    const A=Number(morph.area_km2),networkL=Number(drain.main_channel_length_km),networkLc=Number(drain.main_channel_centroidal_length_km);
+    const longest=Number(terrain.longest_flow_path_km),terrainLc=Number(terrain.centroidal_flowpath_km);
+    const mainValid=Number.isFinite(networkL)&&networkL>0&&((Number.isFinite(networkLc)&&networkLc>0&&networkLc<=networkL*1.001)||(!Number.isFinite(networkLc)&&( !Number.isFinite(terrainLc)||terrainLc<=networkL*1.001)));
+    const L=mainValid?networkL:longest;
+    const Lc=mainValid&&Number.isFinite(networkLc)&&networkLc>0?networkLc:terrainLc;
     const networkSlope=Number(drain.main_channel_slope_pct),flowpathSlope=Number(flowSlope.longest_flowpath_pct);
-    const S_pct=useFlowpath&&Number.isFinite(flowpathSlope)?flowpathSlope:(Number.isFinite(networkSlope)?networkSlope:flowpathSlope);
+    const S_pct=mainValid&&Number.isFinite(networkSlope)&&networkSlope>0?networkSlope:flowpathSlope;
     const Lt=Number(drain.total_stream_length_km),SF=Number(gama.source_factor),SN=Number(gama.source_frequency),N=Number(drain.stream_count),RUA=Number(gama.relative_upstream_area);
     const sourceLength=Number(gama.source_stream_length_km),sourceCount=Number(gama.source_stream_count),upstreamArea=Number(gama.upstream_area_km2);
     return {
@@ -100,18 +117,54 @@
   function refreshDownloadOption(){
     const count=window.getHssAnalyzedCount();const checkbox=$('downloadHss'),hint=$('downloadHssHint');
     if(checkbox){checkbox.disabled=count===0;if(count===0)checkbox.checked=false;}
-    if(hint)hint.textContent=count?`${count} DTA memiliki hasil HSS dan siap disertakan sebagai PDF + Excel.`:'Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.';
+    if(hint)hint.textContent=count?`${count} DTA memiliki hasil HSS yang siap diunduh.`:'Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.';
     try{updateDownloadSummary();}catch(_){}
   }
   window.getHssAnalyzedCount=()=>currentPointIds().filter(id=>!hssDirty.has(id)&&hssResults.get(id)?.available_method_count>0).length;
   window.getHssDownloadPayload=()=>{
     const payload={};for(const id of currentPointIds()){const value=hssResults.get(id);if(!hssDirty.has(id)&&value?.available_method_count>0)payload[id]={...value,label:dtaDisplayLabel(id)};}return payload;
   };
-  window.invalidateHssForPoint=pointId=>{hssResults.delete(pointId);hssParameters.delete(pointId);hssMorphometry.delete(pointId);hssMorphometryDefaults.delete(pointId);hssTr.delete(pointId);hssMethodSelections.delete(pointId);hssDirty.delete(pointId);refreshDownloadOption();if(currentPointId===pointId&&!$('hssAnalysisModal')?.classList.contains('hidden'))renderHssResults(pointId);};
-  window.invalidateAllHss=()=>{hssResults.clear();hssDirty.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();refreshDownloadOption();};
-  window.clearHssResults=()=>{hssResults.clear();hssParameters.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();hssTr.clear();hssMethodSelections.clear();hssDirty.clear();refreshDownloadOption();};
-  window.refreshHssUiState=()=>{const button=$('hssAnalysisBtn');if(button)button.disabled=currentPointIds().length===0;refreshDownloadOption();};
+  window.invalidateHssForPoint=pointId=>{hssResults.delete(pointId);hssParameters.delete(pointId);hssMorphometry.delete(pointId);hssMorphometryDefaults.delete(pointId);hssTr.delete(pointId);hssMethodSelections.delete(pointId);hssDirty.delete(pointId);window.clearGamaSpatialForPoint?.(pointId);persistHssState();refreshDownloadOption();if(currentPointId===pointId&&!$('hssAnalysisModal')?.classList.contains('hidden'))renderHssResults(pointId);};
+  window.invalidateAllHss=()=>{hssResults.clear();hssDirty.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();window.clearAllGamaSpatial?.();persistHssState();refreshDownloadOption();};
+  window.clearHssResults=()=>{hssResults.clear();hssParameters.clear();hssMorphometry.clear();hssMorphometryDefaults.clear();hssTr.clear();hssMethodSelections.clear();hssDirty.clear();window.clearAllGamaSpatial?.();persistHssState();refreshDownloadOption();};
+  window.restoreHssForCurrentPoints=()=>{
+    for(const id of currentPointIds()){
+      const payload=hssResults.get(id);
+      const gamaReady=!hssDirty.has(id)&&(payload?.methods||[]).some(method=>method.method==='gama1'&&method.available);
+      if(gamaReady&&payload?.gama1_spatial)window.setGamaSpatialForPoint?.(id,payload.gama1_spatial);
+      else window.clearGamaSpatialForPoint?.(id);
+    }
+    persistHssState();refreshDownloadOption();
+  };
+  window.refreshHssUiState=()=>{const button=$('hssAnalysisBtn');if(button)button.disabled=currentPointIds().length===0;window.restoreHssForCurrentPoints?.();refreshDownloadOption();};
 
+  function hssPointAreaKm2(pointId){
+    const result=pointResult(pointId),analysis=result?.hydrologic_analysis||{};
+    const direct=Number(result?.area_km2),morph=Number(analysis?.morphometry?.area_km2);
+    if(Number.isFinite(direct)&&direct>=0)return direct;
+    if(Number.isFinite(morph)&&morph>=0)return morph;
+    return Number.POSITIVE_INFINITY;
+  }
+  function hssPointSequence(pointId){
+    const match=String(pointId||'').match(/(\d+)$/);return match?Number(match[1]):Number.POSITIVE_INFINITY;
+  }
+  function hasCurrentHssResult(pointId){return !hssDirty.has(pointId)&&Number(hssResults.get(pointId)?.available_method_count)>0;}
+  function hssPendingIds(){
+    return currentPointIds().filter(id=>!hasCurrentHssResult(id)).sort((a,b)=>{
+      const areaDelta=hssPointAreaKm2(a)-hssPointAreaKm2(b);
+      if(Number.isFinite(areaDelta)&&Math.abs(areaDelta)>1e-9)return areaDelta;
+      const seqDelta=hssPointSequence(a)-hssPointSequence(b);
+      if(Number.isFinite(seqDelta)&&seqDelta!==0)return seqDelta;
+      return String(a).localeCompare(String(b));
+    });
+  }
+  function preferredHssPointOnOpen(){
+    const pending=hssPendingIds();
+    if(pending.length)return pending[0];
+    const ids=currentPointIds();
+    if(activePointId&&ids.includes(activePointId))return activePointId;
+    return ids.slice().sort((a,b)=>hssPointAreaKm2(a)-hssPointAreaKm2(b)||hssPointSequence(a)-hssPointSequence(b))[0]||null;
+  }
   function renderDtaSelector(preferredId=null){
     const ids=currentPointIds(),select=$('hssDtaSelect');if(!select)return null;if(!ids.length){select.innerHTML='';currentPointId=null;renderDtaSummary(null);return null;}
     const chosen=(preferredId&&ids.includes(preferredId))?preferredId:(activePointId&&ids.includes(activePointId)?activePointId:ids[0]);currentPointId=chosen;
@@ -167,20 +220,34 @@
     root.innerHTML=`<div class="hss-method-heading"><div><strong>Metode & koefisien kalibrasi</strong><small>Pilih metode yang dihitung. Buka kartu metode untuk melihat atau mengubah parameternya.</small></div><button id="hssSelectAll" class="text-button" type="button"></button></div><div class="hss-method-grid">${METHOD_DEFS.map((method,index)=>{
       const paramInputs=method.params.length?`<div class="hss-param-grid">${method.params.map(([key,label,defaultValue,min,max,step])=>`<label><span>${escapeHtml(label)}</span><input class="hss-param-input" data-method="${method.id}" data-key="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${state[method.id]?.[key]??defaultValue}"></label>`).join('')}</div>`:(method.id==='gama1'?gamaDerivedMarkup(pointId):`<p class="hss-auto-parameter">${escapeHtml(methodGamaHint())}</p>`);
       const reset=method.params.length?`<button class="hss-reset-method" data-method="${method.id}" type="button"><i data-lucide="rotate-ccw"></i>Reset</button>`:'';
-      return `<details class="hss-method-card" data-method="${method.id}" style="--hss-color:${METHOD_COLORS[index]}" ${openMethods.has(method.id)?'open':''}><summary class="hss-method-card-head"><span class="hss-method-toggle"><input class="hss-method-check" type="checkbox" value="${method.id}" ${selected.has(method.id)?'checked':''} aria-label="Pilih ${escapeHtml(method.label)}"><b>${escapeHtml(method.label)}</b></span><i class="hss-details-chevron" data-lucide="chevron-down"></i></summary><div class="hss-method-card-body"><div class="hss-method-meta"><small>${escapeHtml(method.subtitle)}</small>${reset}</div>${paramInputs}</div></details>`;
+      return `<details class="hss-method-card" data-method="${method.id}" style="--hss-color:${METHOD_COLORS[index]}" ${openMethods.has(method.id)?'open':''}><summary class="hss-method-card-head"><span class="hss-method-select-zone"><span class="hss-method-toggle"><input class="hss-method-check" type="checkbox" value="${method.id}" ${selected.has(method.id)?'checked':''} aria-label="Pilih ${escapeHtml(method.label)}"><b>${escapeHtml(method.label)}</b></span></span><span class="hss-method-collapse-zone" title="Buka parameter ${escapeHtml(method.label)}" aria-label="Buka parameter ${escapeHtml(method.label)}"><i class="hss-details-chevron" data-lucide="chevron-down"></i></span></summary><div class="hss-method-card-body"><div class="hss-method-meta"><small>${escapeHtml(method.subtitle)}</small>${reset}</div>${paramInputs}</div></details>`;
     }).join('')}</div>`;
     const toggleButton=$('hssSelectAll');
     const updateToggle=()=>{const checks=[...root.querySelectorAll('.hss-method-check')],all=checks.length>0&&checks.every(input=>input.checked);if(toggleButton)toggleButton.textContent=all?'Hapus semua':'Pilih semua';};
-    root.querySelectorAll('.hss-method-check').forEach(input=>{input.addEventListener('click',event=>event.stopPropagation());input.addEventListener('change',()=>{if(input.checked)selected.add(input.value);else selected.delete(input.value);updateToggle();});});
-    root.querySelectorAll('.hss-method-toggle b').forEach(label=>label.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const input=label.closest('.hss-method-toggle')?.querySelector('.hss-method-check');if(!input)return;input.checked=!input.checked;input.dispatchEvent(new Event('change',{bubbles:true}));}));
+    root.querySelectorAll('.hss-method-check').forEach(input=>{input.addEventListener('click',event=>event.stopPropagation());input.addEventListener('change',()=>{if(input.checked)selected.add(input.value);else selected.delete(input.value);updateToggle();markDirty(pointId,'Pilihan metode berubah. Hitung ulang HSS untuk memperbarui hasil.');});});
+    root.querySelectorAll('.hss-method-select-zone').forEach(zone=>zone.addEventListener('click',event=>{if(event.target.closest('input'))return;event.preventDefault();event.stopPropagation();const input=zone.querySelector('.hss-method-check');if(!input)return;input.checked=!input.checked;input.dispatchEvent(new Event('change',{bubbles:true}));}));
     root.querySelectorAll('.hss-param-input').forEach(input=>input.addEventListener('input',()=>{const method=input.dataset.method,key=input.dataset.key,value=Number(input.value);if(Number.isFinite(value)){parameterState(pointId)[method][key]=value;markDirty(pointId,'Koefisien kalibrasi berubah. Hitung ulang HSS agar hasil, PDF, dan Excel diperbarui.');}}));
     root.querySelectorAll('.hss-reset-method').forEach(button=>button.addEventListener('click',()=>{const method=methodById(button.dataset.method);if(!method)return;const target=parameterState(pointId)[method.id];method.params.forEach(([key,,value])=>target[key]=value);renderMethodControls(pointId);markDirty(pointId,'Koefisien dikembalikan ke nilai awal. Hitung ulang HSS untuk memperbarui hasil.');refreshIcons(root);}));
-    toggleButton?.addEventListener('click',()=>{const checks=[...root.querySelectorAll('.hss-method-check')],all=checks.length>0&&checks.every(input=>input.checked);checks.forEach(input=>{input.checked=!all;if(input.checked)selected.add(input.value);else selected.delete(input.value);});updateToggle();});
+    toggleButton?.addEventListener('click',()=>{const checks=[...root.querySelectorAll('.hss-method-check')],all=checks.length>0&&checks.every(input=>input.checked);checks.forEach(input=>{input.checked=!all;if(input.checked)selected.add(input.value);else selected.delete(input.value);});updateToggle();markDirty(pointId,'Pilihan metode berubah. Hitung ulang HSS untuk memperbarui hasil.');});
     updateToggle();refreshIcons(root);
   }
 
   async function loadPointForHss(pointId){
     const status=$('hssStatus'),needsAnalysis=!pointResult(pointId)?.hydrologic_analysis;let progress=null;
+    // Switch the result panel immediately to the newly selected DTA. Never leave
+    // a previous DTA's HSS chart/table visible while its replacement is still
+    // calculating Characteristic data. This is especially important when the
+    // backend is cold and the wait can last several seconds.
+    currentChartMethod='comparison';
+    renderDtaSummary(pointId);
+    renderHssResults(pointId);
+    const runButton=$('runHssBtn');
+    if(needsAnalysis){
+      if(runButton)runButton.disabled=true;
+      const morphRoot=$('hssMorphometryControls'),methodRoot=$('hssMethodControls');
+      if(morphRoot)morphRoot.innerHTML='<div class="hss-loading-placeholder">Menunggu hasil karakteristik DTA…</div>';
+      if(methodRoot)methodRoot.innerHTML='';
+    }
     if(needsAnalysis&&status&&typeof window.startAnalysisProgress==='function')progress=window.startAnalysisProgress(status,'Menghitung karakteristik DTA…');
     else if(status)status.textContent='';
     try{
@@ -188,11 +255,16 @@
       progress?.complete?.();
       morphometryState(pointId);renderDtaSummary(pointId);renderMorphometryControls(pointId);renderMethodControls(pointId);renderHssResults(pointId);
       if($('hssGlobalTr'))$('hssGlobalTr').value=String(trState(pointId));if(status&&!needsAnalysis)status.textContent=hssDirty.has(pointId)?'Parameter berubah. Hitung ulang HSS untuk memperbarui hasil.':'';
+      if(runButton)runButton.disabled=false;
       if(status&&needsAnalysis)setTimeout(()=>{if(status&&!hssDirty.has(pointId))status.textContent='';},220);
-    }catch(error){progress?.fail?.();if(status)status.textContent=error?.message||String(error);}
+    }catch(error){progress?.fail?.();if(runButton)runButton.disabled=false;if(status)status.textContent=error?.message||String(error);}
   }
   async function openHssAnalysis(){
-    const pointId=renderDtaSelector(activePointId);if(!pointId){showAppToast('Belum ada DTA yang dapat dianalisis.');return;}
+    // Saat modal dibuka, dahulukan DTA yang belum memiliki hasil HSS terbaru.
+    // Jika lebih dari satu, pilih luas DTA terkecil agar urutan kerja stabil dari
+    // sub-DTA kecil ke DTA yang lebih besar. DTA aktif baru dipakai bila semuanya
+    // sudah selesai dihitung.
+    const pointId=renderDtaSelector(preferredHssPointOnOpen());if(!pointId){showAppToast('Belum ada DTA yang dapat dianalisis.');return;}
     openMapModal($('hssAnalysisModal'));refreshIcons($('hssAnalysisModal'));await loadPointForHss(pointId);
   }
 
@@ -205,7 +277,10 @@
       const tr=Number($('hssGlobalTr')?.value);hssTr.set(pointId,Number.isFinite(tr)?tr:1);
       const response=await fetch('/api/hss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({point_id:pointId,label:dtaDisplayLabel(pointId),hydrologic_analysis:result.hydrologic_analysis,methods,parameters:parameterState(pointId),input_overrides:morphometryState(pointId),global_tr_hours:trState(pointId)})});
       const payload=await response.json();if(!response.ok)throw new Error(payload?.detail||'Analisis HSS gagal.');
-      hssResults.set(pointId,payload);hssDirty.delete(pointId);currentChartMethod='comparison';renderDtaSelector(pointId);renderHssResults(pointId);refreshDownloadOption();status.textContent=`${payload.available_method_count} dari ${payload.requested_method_count} metode berhasil dihitung.`;showAppToast(`HSS ${dtaDisplayLabel(pointId)} selesai dihitung.`);
+      hssResults.set(pointId,payload);hssDirty.delete(pointId);persistHssState();
+      const gamaReady=(payload.methods||[]).some(method=>method.method==='gama1'&&method.available);
+      if(gamaReady&&payload.gama1_spatial)window.setGamaSpatialForPoint?.(pointId,payload.gama1_spatial);else window.clearGamaSpatialForPoint?.(pointId);
+      currentChartMethod='comparison';renderDtaSelector(pointId);renderHssResults(pointId);refreshDownloadOption();status.textContent=`${payload.available_method_count} dari ${payload.requested_method_count} metode berhasil dihitung.`;showAppToast(`HSS ${dtaDisplayLabel(pointId)} selesai dihitung.`);
     }catch(error){status.textContent=error?.message||String(error);}finally{button.disabled=false;button.classList.remove('is-busy');refreshIcons($('hssAnalysisModal'));}
   }
 
@@ -246,4 +321,5 @@
   $('runHssBtn')?.addEventListener('click',calculateCurrentHss);
   $('hssAnalysisModal')?.addEventListener('click',event=>{if(event.target.id==='hssAnalysisModal'){if(chartInstance){chartInstance.destroy();chartInstance=null;}closeMapModal(event.currentTarget);}});
   window.refreshHssUiState();
+  window.restoreHssForCurrentPoints?.();
 })();

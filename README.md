@@ -1,6 +1,6 @@
 # Delineasi DTA BBWS Serayu Opak
 
-**Version:** `1.3.3`
+**Version:** `1.3.0`
 **Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
@@ -33,7 +33,7 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 - Detail teknis topografi, morfometri, jaringan drainase, integral hipsometrik, distribusi kelas lereng, sistem lahan, penggunaan lahan, Curve Number, dan waktu konsentrasi.
 - Perbandingan 12 metode waktu konsentrasi dengan status kesesuaian dan rekomendasi berbasis median robust metode yang sesuai domain, bukan rata-rata seluruh metode.
 - Laporan PDF dan workbook XLSX satu-sheet dibuat terpisah untuk setiap DTA dan mengambil nilai dari hasil analisis yang sama dengan web.
-- Atribut analisis utama ikut disertakan pada layer DTA diperhalus hasil ekspor.
+- Atribut layer DTA hasil ekspor dibuat ringkas: `ID`, `NAMA`, `LUAS_KM2`, `DAS`, `SUNGAI`, dan `SUMBER`; parameter Karakteristik/HSS diekspor pada layer spasial turunannya.
 - Nilai berbasis raster aktif otomatis saat `dem.tif` dan `plen.tif` tersedia di `data/shared/`; nilai yang belum memiliki sumber data ditandai belum tersedia.
 
 ### Hidrograf Satuan Sintetis (HSS)
@@ -44,8 +44,11 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 - Hasil menampilkan `Tp`, `Qp`, `Tb`, limpasan ekuivalen, error konservasi volume, grafik perbandingan, dan grafik masing-masing metode.
 - Grafik dapat ditampilkan sebagai hasil asli metode atau kurva yang dinormalisasi menjadi volume limpasan 1 mm.
 - Perubahan koefisien setelah perhitungan menandai hasil sebagai **perlu dihitung ulang** dan mencegah ekspor hasil lama.
-- **Gama I** menurunkan `SF`, `SN`, `WF`, `RUA`, dan `SIM` dari jaringan sungai analisis serta geometri DTA bila data tersedia.
-- Pada menu **Unduh Hasil**, HSS merupakan pilihan opsional. Satu workbook `.xlsx` dibuat per DTA yang sudah dianalisis, berisi sheet `Ringkasan` dan satu sheet untuk setiap metode yang berhasil dihitung.
+- **Gama I** menurunkan `SF`, `SN`, `WF`, `RUA`, dan `SIM` dari jaringan sungai analisis serta geometri DTA bila data tersedia. Geometri **Luas bagian hulu (AU)**, **Lebar DTA pada ¼ L (WL)**, dan **Lebar DTA pada ¾ L (WU)** tersedia di **Layer & Tampilan** setelah perhitungan, tetapi tetap **nonaktif secara default** sampai pengguna menampilkannya. Konstruksi geometrik pada peta disederhanakan menjadi sumbu audit **X–A, X–B, dan X–C**, dengan **C = ujung paling hulu Lca** untuk konstruksi AU; label sumbu tetap ditampilkan untuk pemeriksaan.
+- Pada menu **Unduh Hasil**, HSS merupakan pilihan opsional. Satu workbook `.xlsx` dan PDF dibuat per DTA yang sudah dianalisis; bila Gama I tersedia, data spasialnya dikelompokkan berdasarkan geometri menjadi **AREA** (AU), **GARIS** (WL, WU, X–A, X–B, X–C), dan **TITIK** (A, B, C) pada format yang dicentang.
+- Layer **Karakteristik** menampilkan **Lintasan aliran terpanjang (L)**, **lintasan aliran melalui sentroid (Lca)**, **lintasan aliran 10–85 (L10–85)**, **titik sentroid (C)**, serta **Total jaringan sungai** hasil analisis dengan orde Strahler dan ketebalan menurut orde. Gama I memakai geometri longitudinal L/Lca yang sama, sedangkan C tetap merupakan sentroid DTA khusus layer Karakteristik.
+- Setiap kartu DTA memiliki satu tombol **Sembunyikan/Tampilkan Layer** sebagai master visibility per DTA. Tombol ini mengendalikan polygon DTA, outlet, layer Karakteristik, serta hasil dan konstruksi Gama I milik DTA tersebut tanpa memengaruhi DTA lain.
+- Saat berpindah ke DTA lain pada Analisis HSS, hasil HSS DTA sebelumnya langsung dibersihkan dari panel selama karakteristik DTA baru masih dihitung sehingga tidak ada tabel/grafik sisa yang menyesatkan.
 - Pemeriksaan volume menggunakan hujan efektif satuan `1 mm`; HSS asli tidak dinormalisasi secara tersembunyi.
 
 ### Interaksi titik outlet
@@ -427,7 +430,7 @@ Respons harus memuat antara lain:
 
 ```json
 {
-  "app_version": "1.3.3",
+  "app_version": "1.3.0",
   "data_backend": "local",
   "active_dataset": "1km2"
 }
@@ -701,7 +704,7 @@ Tidak perlu commit data ke GitHub dan biasanya tidak perlu redeploy Vercel.
 Setelah URL production tersedia, cek minimal:
 
 - halaman utama dapat dimuat;
-- `/api/info` mengembalikan `app_version: 1.3.3`;
+- `/api/info` mengembalikan `app_version: 1.3.0`;
 - `data_backend` adalah `r2`;
 - `active_dataset` adalah `1km2`;
 - Batas DAS tampil;
@@ -746,6 +749,9 @@ Sistem menolak stitching yang menghasilkan perubahan bentuk/luas yang tidak aman
 
 - Pada satu aliran, DTA hulu harus berada di dalam DTA hilir.
 - Pada cabang berbeda, DTA tidak boleh overlap secara material sebelum pertemuan aliran.
+- Shared edge yang terbukti sama dari topologi RAW menggunakan **satu arc batas diperhalus yang kanonik**. Arc pasangan diganti langsung dan junction dibaurkan secara lokal; rekonsiliasi tidak lagi memakai pertumbuhan `buffer -> union/difference` yang dapat membentuk hook/stair-step kecil.
+- Setelah rekonsiliasi utama, backend menjalankan **auto-repair topologi final**: containment hulu-hilir diselesaikan dengan intersection dan overlap antar-cabang dipartisi secara deterministik tanpa fallback ke batas RAW bergerigi.
+- QA hanya memberi status gagal bila residual masih melebihi toleransi skala raster setelah auto-repair. Sliver numerik sub-sel tidak lagi memunculkan status "Periksa batas".
 - Setelah perubahan outlet, topology direkonsiliasi kembali sebelum hasil final ditampilkan/diunduh.
 - Interaksi polygon pada frontend menggunakan **incremental area** agar setiap DTA tetap dapat dipilih tanpa tertutup seluruh polygon DTA lain.
 
@@ -831,7 +837,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.3`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.0`.
 
 ---
 
@@ -839,49 +845,37 @@ Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi 
 
 Riwayat versi diurutkan dari rilis terbaru hingga rilis web pertama.
 
-### 1.3.3 — Penyederhanaan kontrol HSS & peningkatan keterbacaan — 29 August 2026
-
-- ukuran font tabel karakteristik, narasi wilayah, kartu DTA, tombol aksi, dan kontrol HSS diperbesar agar elemen utama berada pada hierarki sekitar 11–13 px;
-- **Parameter morfometri** HSS diubah menjadi panel buka/tutup dan secara default tampil ringkas;
-- setiap kartu metode HSS dapat dibuka/tutup secara individual, sehingga tampilan awal hanya menonjolkan nama metode dan pilihan metode;
-- zoom dan pan grafik HSS dibatasi ke **sumbu horizontal (waktu)**, sedangkan sumbu-Y debit tetap terkunci;
-- drag-box/drag-zoom pada grafik HSS dinonaktifkan;
-- metode waktu konsentrasi tanpa nilai tidak ditampilkan pada tabel hasil;
-- label tipe sistem lahan **Badan Air** dinormalisasi menjadi **badan air**;
-- riwayat versi README dirapikan dari versi terbaru ke `1.0.0.0`;
-- `APP_VERSION` dinaikkan menjadi `1.3.3`.
-
-### 1.3.2 — Penyempurnaan UI HSS dan Gama I — 29 August 2026
-
-- kartu DTA pada modal HSS diringkas sehingga badge status sejajar langsung dengan dropdown DTA dan Tr tetap kompak;
-- parameter turunan Gama I (`D`, `SF`, `SN`, `WF`, `RUA`, `SIM`) ditampilkan sebagai nilai otomatis read-only di kartu Gama I;
-- tombol **Analisis HSS** menggunakan latar biru PU dengan ikon dan teks putih;
-- indikator loading karakteristik memakai progress bar bertahap dan indikator proses, termasuk ketika analisis karakteristik dipicu pertama kali dari HSS;
-- koreksi Gama I dipertahankan: eksponen `S^-0,0986` pada `TB` serta segmen resesi linear `TB-1 → TB` hingga `Q(TB)=0`;
-- parameter morfometri sumber HSS dapat diubah khusus untuk skenario HSS dan di-reset ke hasil karakteristik DTA;
-- label tombol tambah titik disederhanakan menjadi **Mulai Tambah** dan **Selesai**;
-- dokumentasi dan `APP_VERSION` diselaraskan menjadi `1.3.2`.
-
-### 1.3.1 — HSS interaktif dan analisis lazy — 29 August 2026
-
-- perhitungan karakteristik DTA dipindahkan dari proses delineasi ke analisis lazy saat pengguna membuka Karakteristik atau Analisis HSS;
-- memperbaiki pemilihan alur utama pada outlet paling hilir agar fragmen sungai pendek tidak menghasilkan L < Lca atau kemiringan 0%;
-- tombol Hitung HSS menggunakan aksen biru dengan ikon/teks putih dan grafik HSS memakai Chart.js dengan hover, pan, zoom, serta reset zoom;
-- nama analisis per DTA memakai kombinasi nama sungai dan nama titik;
-- Tr menjadi input global tunggal, sedangkan TR Gama I tetap merupakan waktu naik hasil perhitungan dan diperlakukan sebagai Tp;
-- parameter morfometri sumber HSS dapat disesuaikan dan di-reset, sedangkan parameter turunan dihitung otomatis;
-- menambahkan ekspor HSS PDF dan mempertahankan persamaan Excel sebagai formula yang dapat diaudit;
-- default Unduh Hasil diubah ke Shapefile tanpa laporan karakteristik/jaringan sungai terpotong;
-- tabel dan PDF karakteristik diselaraskan dengan tampilan web, rasio percabangan dijabarkan per orde, dan metode Tc tanpa nilai disembunyikan.
-
-### 1.3.0 — Analisis Hidrograf Satuan Sintetis — 29 August 2026
+### 1.3.0 — Analisis Hidrograf Satuan Sintetis — 29–30 August 2026
 
 - menambahkan HSS NRCS/SCS, Nakayasu, Snyder–Alexeyev, Gama I, Limantara, ITB-1b, dan ITB-2b;
 - analisis, parameter kalibrasi, grafik, dan state disimpan per DTA selama sesi;
+- perhitungan karakteristik DTA dijalankan secara lazy ketika Karakteristik atau Analisis HSS dibuka, sehingga delineasi utama tetap ringan;
+- memperbaiki pemilihan alur utama pada outlet paling hilir agar fragmen sungai pendek tidak menghasilkan L < Lca atau kemiringan 0%;
 - menambahkan pemeriksaan konservasi volume serta tampilan kurva asli/ternormalisasi 1 mm;
-- menambahkan ekstraksi parameter Gama I dari jaringan sungai analisis dan bentuk DTA;
-- menambahkan ekspor HSS opsional sebagai workbook XLSX per DTA, dengan satu sheet per metode;
-- menambahkan regression test terhadap contoh Katulampa SNI 2415:2026 untuk SCS, Snyder–Alexeyev, dan parameter inti Gama I.
+- grafik HSS menggunakan Chart.js dengan tooltip, pan dan zoom horizontal, serta reset zoom;
+- Tr menjadi input global tunggal, sedangkan TR Gama I merupakan waktu naik hasil perhitungan dan diperlakukan sebagai Tp;
+- parameter morfometri sumber HSS dapat disesuaikan dan di-reset, sedangkan parameter turunan (`D`, `SF`, `SN`, `WF`, `RUA`, `SIM`) dihitung otomatis;
+- setiap kartu metode HSS dan panel parameter morfometri dapat dibuka/tutup untuk mempertahankan tampilan ringkas;
+- menambahkan ekstraksi dan visualisasi spasial Gama I: **AU**, **WL**, dan **WU** tersedia sebagai kontrol pada **Layer & Tampilan** setelah Gama I berhasil dihitung dan tetap nonaktif secara default sampai dipilih pengguna;
+- menyederhanakan konstruksi geometrik Gama I pada peta menjadi **X–A, X–B, dan X–C** (C = ujung paling hulu Lca); hasil ekspor tetap menyimpan titik kontrol A/B/C dan mengelompokkan data berdasarkan tipe geometri;
+- menambahkan layer **Karakteristik** untuk **L, Lca, L10–85, C**, serta **Total jaringan sungai** analisis berorde Strahler; Gama I menggunakan geometri L/Lca yang sama, sedangkan C pada Karakteristik tetap merupakan sentroid DTA;
+- menambahkan master **show/hide layer per DTA** pada kartu hasil untuk menyembunyikan/menampilkan DTA, outlet, Karakteristik, serta seluruh hasil/konstruksi Gama I milik DTA tersebut;
+- memperbaiki state Analisis HSS agar tabel/grafik DTA lama tidak tetap tampil saat karakteristik DTA baru masih dihitung;
+- orientasi Gama I mengikuti : **X adalah outlet DTA**; titik **A = 1/4 L** dan **B = 3/4 L** ditentukan sepanjang lintasan aliran terpanjang **L** dari X, kemudian **WL** dan **WU** ditarik melalui A/B tegak lurus terhadap garis lurus **X–A** dan **X–B**; arah digitasi garis sungai tidak boleh membalik WF/RUA/SIM;
+- AU/RUA dipilih sebagai bagian DTA di sisi **hulu** garis yang melalui **ujung paling hulu Lca** dan tegak lurus terhadap garis lurus dari outlet **X** ke ujung Lca tersebut; sentroid **C** tetap digunakan sebagai acuan Karakteristik dan tidak dipakai sebagai titik pembagi AU;
+- ketika opsi HSS dicentang pada **Unduh Hasil**, data spasial Gama I dikelompokkan menjadi **AREA**, **GARIS**, dan **TITIK**; GeoPackage menyimpan kelompok tersebut sebagai layer, sedangkan Shapefile/GeoJSON/KML dibuat sebagai file terpisah per kelompok;
+- menambahkan ekspor HSS PDF dan workbook XLSX per DTA dengan persamaan Excel yang tetap dapat diaudit;
+- metode waktu konsentrasi tanpa nilai tidak ditampilkan pada tabel hasil;
+- ukuran font tabel karakteristik, narasi wilayah, kartu DTA, tombol aksi, dan kontrol HSS diseragamkan agar elemen utama lebih terbaca;
+- layer **Batas DAS**, **Jaringan Sungai**, **Hasil DTA**, **Karakteristik**, dan **HSS Gama I** dibuat collapsible; satu tombol visibilitas global dan satu tombol mata per kartu DTA membantu mengelola tampilan multi-DTA;
+- ketebalan garis global diterapkan konsisten pada Batas DAS, Jaringan Sungai, Hasil DTA, Karakteristik, dan Gama I; label mempertahankan halo putih pada mode terang maupun gelap;
+- hasil Karakteristik dan HSS dipertahankan selama refresh dalam sesi yang sama, sementara layer turunannya tetap tidak langsung ditampilkan;
+- ekspor Karakteristik menyertakan **Total jaringan sungai** yang dipotong batas DTA, **GARIS** (L, Lca, L10–85), dan **TITIK** (C, titik 10%, titik 85%); seluruh layer membawa atribut `SUMBER` yang sama dengan data spasial DTA;
+- hover spasial diprioritaskan untuk hasil/turunan DTA (WL/WU, lintasan Karakteristik, AU, lalu DTA) agar objek garis tidak tertutup poligon; jaringan sungai referensi dan Batas DAS tidak diberi hover;
+- antarmuka dark mode diseragamkan untuk tombol HSS, label peta, tooltip, serta kartu **Respons Hidrologi** agar kontras tetap jelas;
+- startup WebGIS dipisahkan dari inisialisasi engine GIS berat, layer operasional memiliki retry otomatis, dan kandidat titik memberi respons visual segera sambil tetap menunggu validasi `location-check`;
+- menambahkan regression test terhadap contoh Katulampa SNI 2415:2026 untuk SCS, Snyder–Alexeyev, dan parameter inti Gama I;
+- seluruh penyempurnaan lanjutan HSS dilebur ke versi **1.3.0** agar riwayat rilis tetap satu versi terpadu.
 
 ### 1.2.0 — Karakteristik DTA terpadu — 29 August 2026
 

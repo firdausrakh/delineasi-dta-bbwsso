@@ -139,19 +139,21 @@ class HydrologicAnalysisTests(unittest.TestCase):
         self.assertNotIn("Rasio percabangan orde 12", labels)
         self.assertNotIn("Rasio percabangan orde 23", labels)
 
-    def test_downstream_outlet_main_channel_guard_uses_full_flowpath_when_l_is_shorter_than_lca(self):
-        drainage = {"main_channel_length_km": 0.81, "main_channel_slope_pct": 0.0}
+    def test_main_channel_guard_preserves_network_semantics_and_exposes_flowpath_fallback(self):
+        drainage = {"main_channel_length_km": 0.81, "main_channel_centroidal_length_km": 84.09, "main_channel_slope_pct": 0.0}
         terrain = {
             "longest_flow_path_km": 132.5,
             "centroidal_flowpath_km": 84.09,
             "flowpath_slope": {"longest_flowpath_pct": 0.745},
         }
-        corrected = _reconcile_main_channel_with_flowpath(drainage, terrain)
-        self.assertEqual(corrected["main_channel_network_length_km"], 0.81)
-        self.assertEqual(corrected["main_channel_length_km"], 132.5)
-        self.assertEqual(corrected["main_channel_slope_pct"], 0.745)
-        self.assertTrue(corrected["main_channel_corrected"])
-        self.assertGreaterEqual(corrected["main_channel_length_km"], terrain["centroidal_flowpath_km"])
+        checked = _reconcile_main_channel_with_flowpath(drainage, terrain)
+        self.assertEqual(checked["main_channel_length_km"], 0.81)
+        self.assertEqual(checked["main_channel_centroidal_length_km"], 84.09)
+        self.assertEqual(checked["main_channel_slope_pct"], 0.0)
+        self.assertFalse(checked["main_channel_corrected"])
+        self.assertEqual(checked["main_channel_flowpath_fallback_length_km"], 132.5)
+        self.assertEqual(checked["main_channel_flowpath_fallback_slope_pct"], 0.745)
+        self.assertIn("Lc sungai utama", checked["main_channel_quality_warning"])
 
     def test_main_channel_guard_preserves_valid_network_path(self):
         drainage = {"main_channel_length_km": 95.0, "main_channel_slope_pct": 0.52}

@@ -165,9 +165,9 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
     b.add("Parameter", "Nilai", "Satuan", "Keterangan")
     source_rows = [
         ("A", "Luas DTA (A)", "km²", "Luas DTA yang digunakan pada HSS"),
-        ("L", "Panjang alur utama (L)", "km", "Panjang alur utama untuk perhitungan HSS"),
-        ("Lc", "Panjang alur menuju sentroid (Lc)", "km", "Panjang alur dari outlet menuju proyeksi sentroid"),
-        ("S_pct", "Kemiringan alur utama (%)", "%", "Kemiringan dalam persen; S desimal dihitung otomatis"),
+        ("L", "Panjang sungai utama (L)", "km", "Panjang sungai utama untuk perhitungan HSS"),
+        ("Lc", "Panjang sungai utama menuju sentroid (Lc)", "km", "Jarak sepanjang sungai utama dari outlet ke titik terdekat sentroid"),
+        ("S_pct", "Kemiringan sungai utama (%)", "%", "Kemiringan sungai utama dalam persen; S desimal dihitung otomatis"),
         ("Lt", "Panjang total sungai (Lt)", "km", "Nilai sumber kerapatan drainase dan faktor sumber"),
         ("L1", "Panjang sungai orde 1 (L1)", "km", "Nilai sumber faktor sumber Gama I"),
         ("N", "Jumlah segmen sungai (N)", "segmen", "Nilai sumber frekuensi sumber Gama I"),
@@ -183,7 +183,7 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
     b.blank()
     b.add("Parameter Turunan Otomatis")
     b.add("Parameter", "Nilai", "Satuan", "Rumus")
-    b.add("Kemiringan alur utama (S)", inputs.get("S"), "-", "S(%) / 100", ref="S")
+    b.add("Kemiringan sungai utama (S)", inputs.get("S"), "-", "S(%) / 100", ref="S")
     b.add("Kerapatan drainase (D)", inputs.get("D"), "km/km²", "Lt / A", ref="D")
     b.add("Faktor sumber (SF)", inputs.get("SF"), "-", "L1 / Lt", ref="SF")
     b.add("Frekuensi sumber (SN)", inputs.get("SN"), "-", "N1 / N", ref="SN")

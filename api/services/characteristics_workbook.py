@@ -85,11 +85,12 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
     values = [
         ("Luas DTA (A)", morph.get("area_km2"), "km²", "Luas wilayah tangkapan pada batas DTA"),
         ("Keliling (P)", morph.get("perimeter_km"), "km", "Keliling batas DTA yang telah diperhalus"),
-        ("Panjang lintasan aliran (L)", terrain.get("longest_flow_path_km") or morph.get("basin_length_km"), "km", "Lintasan aliran terpanjang dari outlet ke hulu"),
-        ("Panjang lintasan aliran melalui sentroid (Lca)", terrain.get("centroidal_flowpath_km"), "km", "Lintasan outlet melalui titik terdekat sentroid"),
-        ("Panjang lintasan aliran 10-85 (L10-85)", terrain.get("flowpath_10_85_km"), "km", "Bagian lintasan antara posisi 10% dan 85%"),
+        ("Lintasan aliran terpanjang (L)", terrain.get("longest_flow_path_km") or morph.get("basin_length_km"), "km", "Lintasan aliran terpanjang dari outlet ke hulu"),
+        ("Lintasan aliran melalui sentroid (Lca)", terrain.get("centroidal_flowpath_km"), "km", "Lintasan outlet melalui titik terdekat sentroid"),
+        ("Lintasan aliran 10-85 (L10-85)", terrain.get("flowpath_10_85_km"), "km", "Panjang geometri lintasan antara posisi 10% dan 85%"),
         ("Elevasi minimum", elevation.get("min_m"), "mdpl", "Titik ketinggian terendah dalam DTA"),
         ("Elevasi rata-rata", elevation.get("mean_m"), "mdpl", "Rata-rata ketinggian seluruh wilayah DTA"),
+        ("Elevasi median", elevation.get("median_m") if elevation.get("median_m") is not None else ((hi.get("elevation_percentiles_m") or {}).get("50")), "mdpl", "Nilai tengah distribusi ketinggian wilayah DTA"),
         ("Elevasi maksimum", elevation.get("max_m"), "mdpl", "Titik ketinggian tertinggi dalam DTA"),
         ("Elevasi batas tertinggi", elevation.get("divide_max_m"), "mdpl", "Titik tertinggi sepanjang batas DTA"),
         ("Elevasi outlet", elevation.get("outlet_m"), "mdpl", "Ketinggian pada titik outlet DTA"),
@@ -101,13 +102,13 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
         ("Faktor bentuk (Ff)", morph.get("form_factor"), "-", "Luas dibandingkan kuadrat panjang DTA"),
         ("Rasio elongasi (Re)", morph.get("elongation_ratio"), "-", "Diameter setara dibandingkan panjang DTA"),
         ("Rasio kebulatan (Rc)", morph.get("circularity_ratio"), "-", "Luas dibandingkan kuadrat keliling DTA"),
-        ("Rasio relief (Rh)", morph.get("relief_ratio"), "-", "Relief dibagi panjang DTA"),
+        ("Rasio relief (RR)", morph.get("relief_ratio"), "-", "Relief dibagi lintasan aliran terpanjang"),
         ("Integral hipsometrik (HI)", hi.get("integral"), "-", f"Tahap perkembangan: {hi.get('stage') or 'belum tersedia'}"),
         ("Panjang total sungai (Lt)", drainage.get("total_stream_length_km"), "km", "Jumlah panjang seluruh sungai dalam DTA"),
         ("Panjang sungai utama", drainage.get("main_channel_length_km"), "km", "Panjang jaringan sungai utama dari outlet menuju hulu"),
-        ("Kemiringan alur utama (Sc)", drainage.get("main_channel_slope_pct"), "%", "Beda elevasi dibagi panjang alur utama"),
+        ("Kemiringan sungai utama (Sc)", drainage.get("main_channel_slope_pct"), "%", "Beda elevasi dibagi panjang sungai utama"),
         ("Kemiringan rata-rata jaringan", drainage.get("network_mean_slope_pct"), "%", "Rata-rata kemiringan ruas berbobot panjang"),
-        ("Sinuositas alur utama", drainage.get("channel_sinuosity"), "-", "Panjang alur dibagi jarak lurus ujungnya"),
+        ("Sinuositas sungai utama", drainage.get("channel_sinuosity"), "-", "Panjang sungai utama dibagi jarak lurus ujungnya"),
         ("Kemiringan lintasan aliran terpanjang (SL)", flow_slope.get("longest_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan terpanjang"),
         ("Kemiringan lintasan melalui sentroid (Sca)", flow_slope.get("centroidal_flowpath_pct"), "%", "Beda elevasi dibagi panjang lintasan melalui sentroid"),
         ("Kemiringan lintasan 10-85 (S10-85)", flow_slope.get("flowpath_10_85_pct"), "%", "Beda elevasi dibagi panjang lintasan 10-85"),
@@ -115,10 +116,6 @@ def _parameter_rows(result: dict[str, Any]) -> list[list[Any]]:
         ("Frekuensi sungai (Fs)", drainage.get("stream_frequency_per_km2"), "sungai/km²", "Jumlah sungai Strahler per luas DTA"),
         ("Rasio percabangan (Rb)", drainage.get("bifurcation_ratio"), "-", "Rata-rata rasio jumlah sungai antar orde berurutan"),
         ("Tekstur drainase (Dt)", drainage.get("drainage_texture_per_km"), "sungai/km", "Jumlah sungai per keliling DTA"),
-        ("Intensitas drainase (Id)", drainage.get("drainage_intensity"), "-", "Frekuensi sungai dibagi kerapatan drainase"),
-        ("Panjang aliran permukaan (Lo)", drainage.get("overland_flow_length_km"), "km", "Jarak rata-rata menuju saluran terdekat"),
-        ("Konstanta pemeliharaan saluran (C)", drainage.get("channel_maintenance_constant_km2_per_km"), "km²/km", "Luas yang dilayani setiap kilometer saluran"),
-        ("Nomor infiltrasi (If)", drainage.get("infiltration_number"), "-", "Kerapatan drainase dikali frekuensi sungai"),
         ("Jumlah percabangan", drainage.get("junction_count"), "percabangan", "Titik pertemuan sedikitnya dua ruas sungai"),
         ("Kerapatan percabangan", drainage.get("junction_density_per_km2"), "percabangan/km²", "Jumlah percabangan per luas DTA"),
         ("Orde sungai maksimum (Strahler)", drainage.get("stream_order_max"), "-", "Orde Strahler tertinggi dalam DTA"),
@@ -198,7 +195,7 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
         cached = float(current) if isinstance(current, (int, float)) and math.isfinite(float(current)) else None
         rows[row_no - 1][1] = ExcelFormula(expression, cached)
 
-    A, P, L = ref("Luas DTA (A)"), ref("Keliling (P)"), ref("Panjang lintasan aliran (L)")
+    A, P, L = ref("Luas DTA (A)"), ref("Keliling (P)"), ref("Lintasan aliran terpanjang (L)")
     R = ref("Relief DTA (R)")
     Lt, Nu, JN = ref("Panjang total sungai (Lt)"), ref("Jumlah sungai (Nu)"), ref("Jumlah percabangan")
     if A and L:
@@ -207,20 +204,13 @@ def create_characteristics_workbook(results: list[dict[str, Any]], output_path: 
     if A and P:
         formula("Rasio kebulatan (Rc)", f"4*PI()*{A}/({P}^2)")
     if R and L:
-        formula("Rasio relief (Rh)", f"{R}/({L}*1000)")
+        formula("Rasio relief (RR)", f"{R}/({L}*1000)")
     if Lt and A:
         formula("Kerapatan drainase (Dd)", f"{Lt}/{A}")
     if Nu and A:
         formula("Frekuensi sungai (Fs)", f"{Nu}/{A}")
     if Nu and P:
         formula("Tekstur drainase (Dt)", f"{Nu}/{P}")
-    dd, fs = ref("Kerapatan drainase (Dd)"), ref("Frekuensi sungai (Fs)")
-    if dd and fs:
-        formula("Intensitas drainase (Id)", f"{fs}/{dd}")
-        formula("Nomor infiltrasi (If)", f"{dd}*{fs}")
-    if dd:
-        formula("Panjang aliran permukaan (Lo)", f"1/(2*{dd})")
-        formula("Konstanta pemeliharaan saluran (C)", f"1/{dd}")
     if JN and A:
         formula("Kerapatan percabangan", f"{JN}/{A}")
     if Lt and Nu:

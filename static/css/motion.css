@@ -194,13 +194,20 @@ body.spatial-page .map-search-results{transform-origin:top center}
   }
 }
 
-/* MapLibre popup positioning uses its parent transform; animate content only. */
+/* MapLibre already positions the popup wrapper with transforms.  Never animate
+   the content itself with translate/scale: on fractional screen coordinates that
+   promotes the text to a composited bitmap and makes small Jakarta Sans text look
+   visibly soft.  Opacity-only keeps the micro-interaction without raster blur. */
 body.spatial-page .maplibregl-popup-content{
   animation:motion-popover-in var(--motion-hover) var(--motion-ease-out) both;
+  transform:none!important;
+  will-change:auto!important;
+  filter:none!important;
+  backface-visibility:visible!important;
 }
 @keyframes motion-popover-in{
-  from{opacity:0;transform:translateY(3px) scale(.99)}
-  to{opacity:1;transform:translateY(0) scale(1)}
+  from{opacity:0}
+  to{opacity:1}
 }
 
 /* ---------- Tooltips ---------- */

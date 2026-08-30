@@ -58,16 +58,14 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
     pdfmetrics.registerFont(TTFont("DTARegular", str(font_dir / "Vera.ttf")))
     pdfmetrics.registerFont(TTFont("DTABold", str(font_dir / "VeraBd.ttf")))
     # Keep the report visual language aligned with the web cards/tables: navy primary,
-    # orange priority accent, light neutral surfaces, and white A4 paper.
+    # light neutral surfaces, and white A4 paper.
     primary = colors.HexColor("#223468")
-    accent = colors.HexColor("#D97706")
-    accent_soft = colors.HexColor("#FFF7ED")
     border = colors.HexColor("#D8DEE8")
     soft = colors.HexColor("#F7F9FC")
     muted = colors.HexColor("#667085")
     is_en = False
     labels = {
-        "title": "Laporan Karakteristik Daerah Tangkapan Air",
+        "title": "Karakteristik Daerah Tangkapan Air",
         "summary": "Executive Summary" if is_en else "Ringkasan Eksekutif",
         "indicators": "Indikator Kunci",
         "technical": "Karakteristik Detail",
@@ -105,9 +103,9 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
         story.extend([Paragraph(_safe_text(labels["title"]), title), Paragraph(_safe_text(name), ParagraphStyle("name", parent=styles["Heading1"], fontName="DTABold", alignment=TA_CENTER, fontSize=12, textColor=colors.HexColor("#3e506f"))), Spacer(1, 8)])
         story.append(Paragraph(labels["summary"], h2))
         response = summary.get("response_class") or ("Not available" if is_en else "Belum tersedia")
-        response_label = "Hydrologic response" if is_en else "Respons hidrologi"
+        response_label = "Hydrologic response<br/>interpretation" if is_en else "Interpretasi<br/>respons hidrologi"
         story.append(Paragraph(
-            f"<b>{_safe_text(response_label)}: {_safe_text(response)}</b><br/>{_safe_text(summary.get('narrative'))}",
+            f"<b>{response_label}: {_safe_text(response)}</b><br/>{_safe_text(summary.get('narrative'))}",
             body,
         ))
         data = [[labels["parameter"], labels["value"]]]
@@ -120,14 +118,6 @@ def create_characteristics_report(results: list[dict[str, Any]], output_path: Pa
                            ("FONTSIZE", (0, 0), (-1, -1), 8), ("GRID", (0, 0), (-1, -1), .35, border),
                            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, soft]), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                            ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
-        priority_labels = {"Kemiringan rata-rata (S)", "Kerapatan drainase (Dd)", "Curve Number (CN)", "Waktu konsentrasi (Tc)"}
-        for row_index, item in enumerate(analysis.get("key_indicator_items") or [], 1):
-            if item.get("label") in priority_labels:
-                indicator_style.extend([
-                    ("BACKGROUND", (0, row_index), (-1, row_index), accent_soft),
-                    ("TEXTCOLOR", (0, row_index), (-1, row_index), accent),
-                    ("FONTNAME", (0, row_index), (-1, row_index), "DTABold"),
-                ])
         table.setStyle(TableStyle(indicator_style))
         story.append(KeepTogether([Paragraph(labels["indicators"], h2), table]))
         story.append(Paragraph("Karakteristik Wilayah", h2))

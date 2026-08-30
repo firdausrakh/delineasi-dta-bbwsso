@@ -38,7 +38,7 @@ from shapely import make_valid, union_all
 from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, mapping, shape
 from shapely.ops import nearest_points, transform
 
-from api.services.boundary_stitch import process_fabdem_polygon, stitch_watershed_boundary
+from api.services.boundary_stitch import align_expected_shared_boundary, stitch_watershed_boundary
 from shapely.strtree import STRtree
 
 try:
@@ -62,12 +62,19 @@ from api.services.runtime_backend import (
     get_r2_runtime_metrics,
     load_runtime_bundle,
 )
-from api.services.hydrologic_analysis import build_hydrologic_analysis, optional_spatial_path, refresh_characteristic_narratives
+from api.services.hydrologic_analysis import (
+    analysis_streams_geojson_for_dta,
+    build_hydrologic_analysis,
+    optional_spatial_path,
+    refresh_characteristic_narratives,
+)
 from api.services.characteristics_report import create_characteristics_report
 from api.services.characteristics_workbook import create_characteristics_workbook
 from api.services.hss_analysis import calculate_hss
 from api.services.hss_workbook import create_hss_workbook
 from api.services.hss_report import create_hss_report
+from api.services.hss_spatial import gama1_grouped_frames
+from api.services.characteristics_spatial import characteristic_grouped_frames, clipped_analysis_streams
 from api.services.river_display import RIVER_DISPLAY_TIER_BY_FILENAME, build_river_display_gdf
 from api.services.performance import (
     HEAVY_JOBS,
@@ -102,7 +109,7 @@ LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsy
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.3.3"
+APP_VERSION = "1.3.0"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 
@@ -1141,19 +1148,6 @@ def _refresh_reconciled_hydrologic_analysis(result: dict[str, Any], upstream_ids
     result["hydrologic_analysis"] = _compute_hydrologic_analysis_for_result(result)
 
 
-def _safe_smoothed_raw(result: dict[str, Any]):
-    raw = _result_native_geometry(result, "dta_raw_geojson")
-    if raw is None or raw.is_empty:
-        return _result_native_geometry(result, "dta_geojson")
-    candidate = process_fabdem_polygon(
-        clean_dta_polygon(raw),
-        paek_tolerance_m=DEFAULT_PAEK_TOLERANCE_M,
-        vw_tolerance_m=DEFAULT_VW_TOLERANCE_M,
-    )
-    return clean_dta_polygon(candidate)
-
-
-
 def _geometry_outside_area(inner, outer, *, epsilon_m: float = 0.25) -> float:
     """Area of *inner* genuinely outside *outer* after a tiny numeric buffer."""
     if inner is None or outer is None or inner.is_empty or outer.is_empty:
@@ -1164,87 +1158,240 @@ def _geometry_outside_area(inner, outer, *, epsilon_m: float = 0.25) -> float:
         return float(inner.difference(outer).area)
 
 
-def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: list[set[int]]) -> list[dict[str, Any]]:
-    """Reconcile independently smoothed DTA into deterministic hydrologic topology.
+def _topology_edge_snap_tolerance_m() -> float:
+    """Display-topology snap tolerance derived from the working elevation grid.
 
-    Toponym naming rules:
-    - Different tributary branches are reconciled first. If smoothing creates overlap,
-      both branches fall back to DEM-derived geometry; raw D8 is the final fail-safe.
-    - Same-flow DTA are then enforced as strictly nested with a tiny numeric epsilon.
-      Small crossing strips are not ignored merely because their area is below a few cells.
-    - Nesting is processed upstream -> downstream and repeated so 3+ point chains are
-      independent of click order.
-    - No line/polygon is fabricated here: reconciliation only uses polygon union/fallback.
+    This is intentionally much smaller than PAEK smoothing.  It is used only on
+    boundary arcs proven by the RAW D8 topology to have been the same edge.
+    """
+    if HYBRID_RASTER_TRANSFORM is not None:
+        cell = max(abs(float(HYBRID_RASTER_TRANSFORM.a)), abs(float(HYBRID_RASTER_TRANSFORM.e)))
+        return min(60.0, max(12.0, cell * 1.5))
+    return 45.0
+
+
+def _topology_raw_contact_tolerance_m() -> float:
+    """Tiny corridor for recovering RAW shared edges after CRS round-trips."""
+    if HYBRID_RASTER_TRANSFORM is not None:
+        cell = max(abs(float(HYBRID_RASTER_TRANSFORM.a)), abs(float(HYBRID_RASTER_TRANSFORM.e)))
+        return min(2.0, max(0.5, cell * 0.05))
+    return 1.5
+
+
+def _branch_partition_candidate(keeper, cutter):
+    """Keep one smoothed DTA intact and cut overlap from the other."""
+    try:
+        cut = clean_dta_polygon(cutter.difference(keeper))
+    except Exception:
+        return None
+    if cut is None or cut.is_empty:
+        return None
+    return cut
+
+
+def _branch_partition_score(a, b, raw_a, raw_b, base_a, base_b) -> float:
+    """Prefer the topology repair that changes areas least, especially vs RAW hydrology."""
+    if any(g is None or g.is_empty for g in (a, b)):
+        return float("inf")
+    raw_a_area = max(float(raw_a.area), 1.0) if raw_a is not None and not raw_a.is_empty else max(float(base_a.area), 1.0)
+    raw_b_area = max(float(raw_b.area), 1.0) if raw_b is not None and not raw_b.is_empty else max(float(base_b.area), 1.0)
+    base_a_area = max(float(base_a.area), 1.0)
+    base_b_area = max(float(base_b.area), 1.0)
+    raw_cost = abs(float(a.area) - raw_a_area) / raw_a_area + abs(float(b.area) - raw_b_area) / raw_b_area
+    display_cost = abs(float(a.area) - float(base_a.area)) / base_a_area + abs(float(b.area) - float(base_b.area)) / base_b_area
+    return raw_cost * 2.0 + display_cost
+
+
+def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: list[set[int]]) -> list[dict[str, Any]]:
+    """Reconcile independently smoothed DTA while preserving smooth display geometry.
+
+    RAW D8 polygons remain the topology authority, but are never substituted into the
+    visible smoothed result.  This avoids the old regression where resolving a
+    multi-point overlap could suddenly restore the staircase/grid boundary.
+
+    Rules:
+    - RAW shared edges only *locate* arcs that should coincide. One already-smoothed
+      edge is used as the canonical reference, so coincident lines render as one line.
+    - Same-flow DTA are made nested by clipping the upstream display polygon to the
+      downstream polygon.  The downstream outer boundary is never expanded with a
+      union of another independently smoothed polygon.
+    - Different tributary branches stay disjoint by removing smoothing overlap from
+      the lower-cost side; no RAW polygon fallback is allowed.
     """
     if len(results) < 2:
         return results
 
     finals = [clean_dta_polygon(_result_native_geometry(r)) for r in results]
+    raws = [clean_dta_polygon(_result_native_geometry(r, "dta_raw_geojson")) for r in results]
     id_to_idx = {r["point_id"]: i for i, r in enumerate(results)}
     net = analyze_point_network(results, upstream_sets)
     notes = {r["point_id"]: [] for r in results}
-    branch_tol = max(1.0, _topology_tolerance_m2() * 0.25)
+    snap_tol = _topology_edge_snap_tolerance_m()
+    raw_contact_tol = _topology_raw_contact_tolerance_m()
+    area_eps = 4.0
 
     branch_pairs: list[tuple[int, int]] = []
-    for rel in net.get("pair_relations", []):
-        if rel.get("relation") != "same_basin_different_branch":
-            continue
-        ai = id_to_idx.get(rel.get("point_a"))
-        bi = id_to_idx.get(rel.get("point_b"))
-        if ai is not None and bi is not None:
-            branch_pairs.append((ai, bi))
-
-    for ai, bi in branch_pairs:
-        overlap = float(finals[ai].intersection(finals[bi]).area)
-        if overlap <= branch_tol:
-            continue
-        safe_a, safe_b = _safe_smoothed_raw(results[ai]), _safe_smoothed_raw(results[bi])
-        if safe_a is not None and safe_b is not None:
-            safe_overlap = float(safe_a.intersection(safe_b).area)
-            if safe_overlap < overlap:
-                finals[ai], finals[bi] = safe_a, safe_b
-                notes[results[ai]["point_id"]].append("branch_dem_fallback")
-                notes[results[bi]["point_id"]].append("branch_dem_fallback")
-                overlap = safe_overlap
-        if overlap > branch_tol:
-            raw_a = clean_dta_polygon(_result_native_geometry(results[ai], "dta_raw_geojson"))
-            raw_b = clean_dta_polygon(_result_native_geometry(results[bi], "dta_raw_geojson"))
-            if raw_a is not None and raw_b is not None:
-                finals[ai], finals[bi] = raw_a, raw_b
-                notes[results[ai]["point_id"]].append("branch_raw_topology_fallback")
-                notes[results[bi]["point_id"]].append("branch_raw_topology_fallback")
-
     same_flow_pairs: list[tuple[int, int]] = []
     for rel in net.get("pair_relations", []):
-        if rel.get("relation") != "same_flow_path":
-            continue
-        ui = id_to_idx.get(rel.get("upstream_point"))
-        di = id_to_idx.get(rel.get("downstream_point"))
-        if ui is not None and di is not None:
-            same_flow_pairs.append((ui, di))
+        relation = rel.get("relation")
+        if relation == "same_basin_different_branch":
+            ai = id_to_idx.get(rel.get("point_a")); bi = id_to_idx.get(rel.get("point_b"))
+            if ai is not None and bi is not None:
+                branch_pairs.append((ai, bi))
+        elif relation == "same_flow_path":
+            ui = id_to_idx.get(rel.get("upstream_point")); di = id_to_idx.get(rel.get("downstream_point"))
+            if ui is not None and di is not None:
+                same_flow_pairs.append((ui, di))
 
     def raw_area(idx: int) -> float:
         return float(results[idx].get("raw_fabdem_area_km2") or results[idx].get("area_km2") or 0.0)
 
-    same_flow_pairs.sort(
-        key=lambda pair: (raw_area(pair[1]), raw_area(pair[0]), results[pair[1]]["point_id"])
-    )
+    # Largest cumulative DTA first establishes the canonical outer edge.  Then each
+    # upstream polygon can snap/clip to an already stable downstream boundary.
+    same_flow_pairs.sort(key=lambda pair: (-raw_area(pair[1]), -raw_area(pair[0]), results[pair[1]]["point_id"]))
 
+    for ui, di in same_flow_pairs:
+        aligned, meta = align_expected_shared_boundary(
+            finals[ui], finals[di], raws[ui], raws[di],
+            snap_tolerance_m=snap_tol, raw_contact_tolerance_m=raw_contact_tol, relationship="inside",
+        )
+        aligned = clean_dta_polygon(aligned)
+        if aligned is not None and not aligned.is_empty:
+            finals[ui] = aligned
+            if meta.get("aligned"):
+                notes[results[ui]["point_id"]].append("shared_edge_snapped_to_downstream")
+
+    # Enforce strict nesting by reducing only the upstream polygon.  Expanding the
+    # downstream polygon with union(upstream) was the source of saw-tooth fragments.
     for _ in range(max(1, len(results))):
         changed = False
         for ui, di in same_flow_pairs:
             outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.25)
             if outside <= 1.0:
                 continue
-            candidate = clean_dta_polygon(finals[di].union(finals[ui]))
+            try:
+                candidate = clean_dta_polygon(finals[ui].intersection(finals[di]))
+            except Exception:
+                candidate = None
             if candidate is None or candidate.is_empty:
                 continue
-            finals[di] = candidate
-            if "strict_nested_union" not in notes[results[di]["point_id"]]:
-                notes[results[di]["point_id"]].append("strict_nested_union")
+            finals[ui] = candidate
+            if "strict_nested_clip" not in notes[results[ui]["point_id"]]:
+                notes[results[ui]["point_id"]].append("strict_nested_clip")
             changed = True
         if not changed:
             break
+
+    # For separate tributary branches, use the larger DTA as the shared-edge reference
+    # (more stable context for PAEK), then remove any residual smoothing overlap using
+    # whichever one-sided cut best preserves both RAW and smoothed areas.
+    for ai, bi in branch_pairs:
+        if raw_area(ai) >= raw_area(bi):
+            ref_i, move_i = ai, bi
+        else:
+            ref_i, move_i = bi, ai
+        aligned, meta = align_expected_shared_boundary(
+            finals[move_i], finals[ref_i], raws[move_i], raws[ref_i],
+            snap_tolerance_m=snap_tol, raw_contact_tolerance_m=raw_contact_tol, relationship="adjacent",
+        )
+        aligned = clean_dta_polygon(aligned)
+        if aligned is not None and not aligned.is_empty:
+            finals[move_i] = aligned
+            if meta.get("aligned"):
+                notes[results[move_i]["point_id"]].append("shared_edge_snapped_to_branch")
+
+        overlap = float(finals[ai].intersection(finals[bi]).area)
+        if overlap <= area_eps:
+            continue
+        base_a, base_b = finals[ai], finals[bi]
+        b_cut = _branch_partition_candidate(base_a, base_b)
+        a_cut = _branch_partition_candidate(base_b, base_a)
+        option_keep_a = (base_a, b_cut) if b_cut is not None else None
+        option_keep_b = (a_cut, base_b) if a_cut is not None else None
+        score_a = _branch_partition_score(*option_keep_a, raws[ai], raws[bi], base_a, base_b) if option_keep_a else float("inf")
+        score_b = _branch_partition_score(*option_keep_b, raws[ai], raws[bi], base_a, base_b) if option_keep_b else float("inf")
+        chosen = option_keep_a if score_a <= score_b else option_keep_b
+        if chosen is not None and all(g is not None and not g.is_empty for g in chosen):
+            finals[ai], finals[bi] = chosen
+            notes[results[ai]["point_id"]].append("branch_smoothed_partition")
+            notes[results[bi]["point_id"]].append("branch_smoothed_partition")
+
+    # Branch cuts only reduce polygons, but repeat same-flow containment once so a
+    # chain remains exact even when one member also participated in another QA pair.
+    for ui, di in same_flow_pairs:
+        outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.25)
+        if outside > 1.0:
+            try:
+                candidate = clean_dta_polygon(finals[ui].intersection(finals[di]))
+            except Exception:
+                candidate = None
+            if candidate is not None and not candidate.is_empty:
+                finals[ui] = candidate
+                if "final_nested_clip" not in notes[results[ui]["point_id"]]:
+                    notes[results[ui]["point_id"]].append("final_nested_clip")
+
+    # Final deterministic auto-repair.  Earlier passes construct the preferred smooth
+    # shared edge; this pass only removes any residual overlay sliver introduced when a
+    # polygon participates in several pair relationships.  Repairs are monotonic
+    # (intersection/difference only), so they cannot recreate the old RAW staircase.
+    numeric_eps_m2 = 0.05
+    for _ in range(max(2, len(results) * 2)):
+        changed = False
+
+        # Same-flow cumulative DTA must be strictly nested.
+        for ui, di in same_flow_pairs:
+            outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.05)
+            if outside <= numeric_eps_m2:
+                continue
+            before = float(finals[ui].area)
+            try:
+                candidate = clean_dta_polygon(finals[ui].intersection(finals[di]))
+            except Exception:
+                candidate = None
+            if candidate is None or candidate.is_empty:
+                continue
+            finals[ui] = candidate
+            if abs(before - float(candidate.area)) > numeric_eps_m2:
+                changed = True
+            if "auto_repair_nested" not in notes[results[ui]["point_id"]]:
+                notes[results[ui]["point_id"]].append("auto_repair_nested")
+
+        # Different branches may touch but must never overlap.  Keep the larger RAW
+        # catchment as canonical and cut only the other polygon, which preserves one
+        # exact shared smooth edge instead of creating two independently repaired lines.
+        for ai, bi in branch_pairs:
+            try:
+                overlap = float(finals[ai].intersection(finals[bi]).area)
+            except Exception:
+                overlap = 0.0
+            if overlap <= numeric_eps_m2:
+                continue
+            if raw_area(ai) >= raw_area(bi):
+                keep_i, cut_i = ai, bi
+            else:
+                keep_i, cut_i = bi, ai
+            before = float(finals[cut_i].area)
+            try:
+                candidate = clean_dta_polygon(finals[cut_i].difference(finals[keep_i]))
+            except Exception:
+                candidate = None
+            if candidate is None or candidate.is_empty:
+                continue
+            finals[cut_i] = candidate
+            if abs(before - float(candidate.area)) > numeric_eps_m2:
+                changed = True
+            for idx in (keep_i, cut_i):
+                if "auto_repair_branch_partition" not in notes[results[idx]["point_id"]]:
+                    notes[results[idx]["point_id"]].append("auto_repair_branch_partition")
+
+        if not changed:
+            break
+
+    # A QA warning is now reserved for a residual larger than the working-raster
+    # topology tolerance *after* automatic repair.  The former 1--4 m² thresholds
+    # were far below one ~30 m cell and produced noisy "Periksa batas" badges for
+    # harmless floating-point slivers.
+    qa_area_tolerance_m2 = _topology_tolerance_m2()
 
     pair_qa: list[dict[str, Any]] = []
     for rel in net.get("pair_relations", []):
@@ -1256,30 +1403,26 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
             "status": "pass",
         }
         if relation == "same_flow_path":
-            ui = id_to_idx.get(rel.get("upstream_point"))
-            di = id_to_idx.get(rel.get("downstream_point"))
+            ui = id_to_idx.get(rel.get("upstream_point")); di = id_to_idx.get(rel.get("downstream_point"))
             if ui is not None and di is not None:
                 outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.25)
                 qa["outside_m2"] = round(outside, 3)
-                if outside > 1.0:
-                    finals[di] = clean_dta_polygon(finals[di].union(finals[ui]))
-                    outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.25)
-                    qa["outside_m2_after"] = round(outside, 3)
-                    qa["status"] = "reconciled" if outside <= 1.0 else "warning"
-                    notes[results[di]["point_id"]].append("final_nested_union")
+                if outside > qa_area_tolerance_m2:
+                    qa["status"] = "warning"
+                    qa["auto_repair_failed"] = True
         elif relation == "same_basin_different_branch":
-            ai = id_to_idx.get(rel.get("point_a"))
-            bi = id_to_idx.get(rel.get("point_b"))
+            ai = id_to_idx.get(rel.get("point_a")); bi = id_to_idx.get(rel.get("point_b"))
             if ai is not None and bi is not None:
                 overlap = float(finals[ai].intersection(finals[bi]).area)
                 qa["overlap_m2"] = round(overlap, 3)
-                if overlap > branch_tol:
+                if overlap > qa_area_tolerance_m2:
                     qa["status"] = "warning"
+                    qa["auto_repair_failed"] = True
         pair_qa.append(qa)
 
     for i, result in enumerate(results):
         geom = clean_dta_polygon(finals[i])
-        raw = clean_dta_polygon(_result_native_geometry(result, "dta_raw_geojson"))
+        raw = raws[i]
         result["dta_geojson"] = mapping(transform(to_web.transform, geom))
         result["watershed_geojson"] = result["dta_geojson"]
         result["area_km2"] = area_km2_equal(geom)
@@ -1287,12 +1430,13 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
             result["raw_fabdem_area_km2"] = area_km2_equal(raw)
             result["boundary_adjustment_km2"] = result["area_km2"] - result["raw_fabdem_area_km2"]
         if notes[result["point_id"]]:
-            # Any previously cached characteristic/HSS source analysis belongs to the old
-            # geometry. Keep delineation light and force a fresh lazy analysis on next open.
             result.pop("hydrologic_analysis", None)
         result["topology_qa"] = {
             "status": "reconciled" if notes[result["point_id"]] else "pass",
             "actions": notes[result["point_id"]],
+            "edge_snap_tolerance_m": snap_tol,
+            "auto_repair": True,
+            "qa_area_tolerance_m2": qa_area_tolerance_m2,
             "hole_filter_ha": HOLE_AREA_THRESHOLD_M2 / 10_000.0,
             "pairs": [
                 q for q in pair_qa
@@ -2097,17 +2241,8 @@ def _result_frames_for_point(
     river_name = (result.get("official_river") or {}).get("name")
     basin_name = (result.get("official_basin") or result.get("requested_official_basin") or {}).get("name")
     label = point.label or point.point_id
-    # Characterization describes the final/smoothed DTA. Do not attach those values to a
-    # separately exported raw boundary because that would imply false geometric agreement.
-    analysis = (result.get("hydrologic_analysis") or {}) if geometry_mode == "smoothed" else {}
-    morphometry = analysis.get("morphometry") or {}
-    terrain = analysis.get("terrain") or {}
-    drainage = analysis.get("drainage") or {}
-    landcover = analysis.get("landcover") or {}
-    curve_number = analysis.get("curve_number") or {}
-    concentration = analysis.get("time_of_concentration") or {}
-    elevation = terrain.get("elevation") or {}
-    slope = terrain.get("slope") or {}
+    # Keep the primary DTA spatial schema intentionally compact. Detailed physical
+    # parameters belong to the Characteristic PDF/XLSX/spatial layers, not the DTA polygon.
     dta = gpd.GeoDataFrame(
         [{
             "ID": point.point_id,
@@ -2115,20 +2250,6 @@ def _result_frames_for_point(
             "LUAS_KM2": area_km2_equal(geom_native),
             "DAS": basin_name,
             "SUNGAI": river_name,
-            "RESPON": (analysis.get("executive_summary") or {}).get("response_class"),
-            "KELILING_KM": morphometry.get("perimeter_km"),
-            "FORM_FACTOR": morphometry.get("form_factor"),
-            "ELONG_RATIO": morphometry.get("elongation_ratio"),
-            "CIRC_RATIO": morphometry.get("circularity_ratio"),
-            "RELIEF_M": elevation.get("relief_m"),
-            "SLOPE_MEAN": slope.get("mean_pct"),
-            "DRAIN_DENS": drainage.get("drainage_density_km_per_km2"),
-            "CN2": curve_number.get("weighted_cn_ii"),
-            "RETEN_MM": curve_number.get("potential_retention_mm"),
-            "TC_JAM": concentration.get("representative_hours") or concentration.get("recommended_hours"),
-            "PL_HUTAN": (landcover.get("summary") or {}).get("forest_pct"),
-            "PL_TANI": (landcover.get("summary") or {}).get("agriculture_pct"),
-            "FLOWPATH_KM": terrain.get("longest_flow_path_km") or drainage.get("main_channel_length_km"),
             "SUMBER": dta_source,
             "geometry": geom,
         }],
@@ -2221,13 +2342,16 @@ def _kml_for_gdf(gdf: gpd.GeoDataFrame, name: str) -> str:
             if gg.is_empty:
                 continue
             parts.append(f'<Placemark><name>{label}</name>')
-            source_value = row.get("SUMBER")
-            if source_value is not None and str(source_value).strip():
-                parts.append(
-                    '<ExtendedData><Data name="SUMBER"><value>'
-                    + escape(str(source_value))
-                    + '</value></Data></ExtendedData>'
+            extended_items = []
+            for field in ("PARAM", "KETERANGAN", "NILAI", "SATUAN", "SUMBER"):
+                value = row.get(field)
+                if value is None or (isinstance(value, float) and math.isnan(value)) or not str(value).strip():
+                    continue
+                extended_items.append(
+                    f'<Data name="{escape(field)}"><value>{escape(str(value))}</value></Data>'
                 )
+            if extended_items:
+                parts.append('<ExtendedData>' + ''.join(extended_items) + '</ExtendedData>')
             if gg.geom_type == 'Point':
                 parts.append(f'<Point><coordinates>{gg.x:.8f},{gg.y:.8f},0</coordinates></Point>')
             elif gg.geom_type == 'LineString':
@@ -2262,6 +2386,19 @@ def characteristics_analysis(req: CharacteristicAnalysisRequest):
     try:
         return _compute_hydrologic_analysis_for_result(dict(req.point_result), decimal_separator=req.decimal_separator)
     except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/characteristic-streams")
+def characteristic_streams(req: CharacteristicAnalysisRequest):
+    """Restore only the detailed Strahler network without recomputing all characteristics."""
+    try:
+        result = dict(req.point_result)
+        geom = _result_native_geometry(result)
+        if geom is None or geom.is_empty:
+            raise ValueError("Geometri DTA tidak tersedia untuk jaringan karakteristik.")
+        return analysis_streams_geojson_for_dta(geom, streams.crs, ANALYSIS_STREAM_PATH)
+    except (ValueError, TypeError, KeyError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -2354,6 +2491,38 @@ def _download_impl(req: DownloadRequest):
             rivers = _clip_original_rivers(frames[clip_mode][2]) if req.include_rivers else None
             outlet = frames[clip_mode][1]
 
+            # Characteristic spatial exports are available only after the user has
+            # chosen to include Characteristic analysis.  Recompute from the final
+            # reconciled DTA geometry so PDF/XLSX and spatial layers are guaranteed
+            # to describe the same basin used in this download.
+            analysis_payload = result.get("hydrologic_analysis")
+            if req.include_analysis_report and not analysis_payload:
+                analysis_payload = _compute_hydrologic_analysis_for_result(result, decimal_separator=req.decimal_separator)
+                result["hydrologic_analysis"] = analysis_payload
+            characteristic_frames = characteristic_grouped_frames(
+                analysis_payload,
+                point_id=point.point_id,
+                label=point_name,
+                source=dta_source,
+                target_crs=CRS_EXPORT,
+            ) if req.include_analysis_report else {}
+            analysis_rivers = clipped_analysis_streams(
+                ANALYSIS_STREAM_PATH, frames[clip_mode][2], CRS_EXPORT, target_crs=CRS_EXPORT, source=dta_source,
+            ) if req.include_analysis_report else None
+
+            hss_payload = req.hss_results.get(point.point_id) if req.include_hss else None
+            gama_method_available = bool(hss_payload and any(
+                method.get("method") == "gama1" and method.get("available")
+                for method in (hss_payload.get("methods") or [])
+            ))
+            gama_frames = gama1_grouped_frames(
+                hss_payload,
+                point_id=point.point_id,
+                label=point_name,
+                source=dta_source,
+                target_crs=CRS_EXPORT,
+            ) if gama_method_available else {}
+
             if "gpkg" in formats:
                 gpkg_path = point_dir / f"DTA_{base_name}.gpkg"
                 first = True
@@ -2364,27 +2533,50 @@ def _download_impl(req: DownloadRequest):
                 outlet.to_file(gpkg_path, layer="Outlet", driver="GPKG", mode="a")
                 if req.include_rivers and rivers is not None and len(rivers):
                     rivers.to_file(gpkg_path, layer="Sungai", driver="GPKG", mode="a")
+                if req.include_analysis_report and analysis_rivers is not None and len(analysis_rivers):
+                    analysis_rivers.to_file(gpkg_path, layer="Karakteristik_Total_Jaringan_Sungai", driver="GPKG", mode="a")
+                for group_name, frame in characteristic_frames.items():
+                    if frame is not None and len(frame):
+                        frame.to_file(gpkg_path, layer=f"Karakteristik_{group_name}", driver="GPKG", mode="a")
+                for group_name, frame in gama_frames.items():
+                    if frame is not None and len(frame):
+                        frame.to_file(gpkg_path, layer=f"HSS_GamaI_{group_name}", driver="GPKG", mode="a")
 
             for fmt in [f for f in formats if f != "gpkg"]:
                 ext = {"geojson": ".geojson", "shp": ".shp", "kml": ".kml"}[fmt]
                 for mode in modes:
                     suffix = "" if mode == "smoothed" else "_asli"
-                    dta_path = point_dir / f"DTA_{base_name}{suffix}{ext}"
+                    dta_path = point_dir / f"DTA_{base_name}{suffix}_AR{ext}"
                     _write_vector_by_format(frames[mode][0], dta_path, fmt, f"DTA {base_name}{suffix}")
-                outlet_path = point_dir / f"Outlet_{base_name}{ext}"
+                outlet_path = point_dir / f"Outlet_{base_name}_PT{ext}"
                 _write_vector_by_format(outlet, outlet_path, fmt, f"Outlet {base_name}")
                 if req.include_rivers and rivers is not None and len(rivers):
-                    river_path = point_dir / f"Sungai_{base_name}{ext}"
+                    river_path = point_dir / f"Sungai_{base_name}_LN{ext}"
                     _write_vector_by_format(rivers, river_path, fmt, f"Sungai {base_name}")
+                if req.include_analysis_report and analysis_rivers is not None and len(analysis_rivers):
+                    analysis_river_path = point_dir / f"Karakteristik_Total_Jaringan_Sungai_{base_name}_LN{ext}"
+                    _write_vector_by_format(analysis_rivers, analysis_river_path, fmt, f"Total Jaringan Sungai Karakteristik {base_name}")
+                characteristic_suffix = {"GARIS": "LN", "TITIK": "PT"}
+                for group_name, frame in characteristic_frames.items():
+                    if frame is None or not len(frame):
+                        continue
+                    geom_suffix = characteristic_suffix.get(group_name, group_name)
+                    characteristic_path = point_dir / f"Karakteristik_{base_name}_{geom_suffix}{ext}"
+                    _write_vector_by_format(frame, characteristic_path, fmt, f"Karakteristik {group_name} {base_name}")
+                gama_suffix = {"AREA": "AR", "GARIS": "LN", "TITIK": "PT"}
+                for group_name, frame in gama_frames.items():
+                    if frame is None or not len(frame):
+                        continue
+                    geom_suffix = gama_suffix.get(group_name, group_name)
+                    spatial_path = point_dir / f"HSS_Gama_I_{base_name}_{geom_suffix}{ext}"
+                    _write_vector_by_format(frame, spatial_path, fmt, f"HSS Gama I {group_name} {base_name}")
 
             if req.include_analysis_report:
-                if not result.get("hydrologic_analysis"):
-                    result["hydrologic_analysis"] = _compute_hydrologic_analysis_for_result(result, decimal_separator=req.decimal_separator)
                 report_result = dict(result)
                 report_result["label"] = f"{river_name} – {point_name}"
                 create_characteristics_report(
                     [report_result],
-                    point_dir / f"Laporan_Karakteristik_{base_name}.pdf",
+                    point_dir / f"Karakteristik_{base_name}.pdf",
                     language="id",
                     decimal_separator=req.decimal_separator,
                 )
@@ -2394,7 +2586,6 @@ def _download_impl(req: DownloadRequest):
                 )
 
             if req.include_hss:
-                hss_payload = req.hss_results.get(point.point_id)
                 if hss_payload and any(method.get("available") for method in (hss_payload.get("methods") or [])):
                     create_hss_workbook(
                         hss_payload,

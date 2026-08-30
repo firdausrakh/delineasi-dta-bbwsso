@@ -3554,12 +3554,6 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 .analysis-executive p{font-size:.68rem;line-height:1.62}
 .analysis-section-title{margin-bottom:7px;align-items:center}
 .analysis-section-title>span{font-size:.73rem}
-.analysis-priority-legend{
-  display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;
-  min-width:0;color:var(--text-muted);font-size:.52rem;line-height:1.25;font-weight:600;
-}
-.analysis-priority-legend>i{width:7px;height:7px;flex:0 0 7px;border-radius:50%;background:#D97706}
-.analysis-priority-legend .info-tooltip{width:13px;height:13px;flex-basis:13px;font-size:.46rem;color:color-mix(in srgb,var(--text-muted) 78%,var(--text-main))}
 .analysis-indicator-grid{gap:7px}
 .analysis-metric{
   min-height:64px;
@@ -3571,12 +3565,6 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease,background-color .14s ease;
 }
 .analysis-metric:hover{transform:translateY(-1px);border-color:color-mix(in srgb,var(--primary) 18%,var(--border-color));box-shadow:0 5px 14px color-mix(in srgb,var(--text-main) 5%,transparent)}
-.analysis-metric--priority{
-  border-color:color-mix(in srgb,#D97706 38%,var(--border-color));
-  box-shadow:inset 3px 0 0 #D97706,0 1px 0 color-mix(in srgb,var(--text-main) 2.5%,transparent);
-  background:color-mix(in srgb,#D97706 3.5%,var(--card-bg));
-}
-.analysis-metric--priority:hover{border-color:color-mix(in srgb,#D97706 55%,var(--border-color));box-shadow:inset 3px 0 0 #D97706,0 5px 14px color-mix(in srgb,var(--text-main) 5%,transparent)}
 .analysis-metric-label{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;min-width:0}
 .analysis-metric-label>span{min-width:0;color:var(--text-muted);font-size:.55rem;line-height:1.25;font-weight:650}
 .analysis-metric-info{width:13px!important;height:13px!important;flex:0 0 13px!important;font-size:.46rem!important;color:color-mix(in srgb,var(--text-muted) 72%,var(--text-main))!important;opacity:.72;transition:opacity .14s ease,background-color .14s ease,color .14s ease!important}
@@ -3596,21 +3584,15 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 .technical-group{padding-top:14px}
 .technical-table-wrap{border-color:color-mix(in srgb,var(--border-color) 90%,var(--text-muted));border-radius:8px}
 
-[data-theme="dark"] .analysis-metric--priority{
-  background:color-mix(in srgb,#D97706 7%,var(--card-bg));
-  border-color:color-mix(in srgb,#D97706 46%,var(--border-color));
-}
 
 @media(max-width:780px){
   .hydrologic-analysis-modal{padding:14px!important}
   .analysis-executive{grid-template-columns:1fr;gap:9px;padding:13px}
   .analysis-executive>div:first-child{padding:9px 10px}
   .analysis-section-title{align-items:flex-start}
-  .analysis-priority-legend{justify-content:flex-start;max-width:100%}
   .analysis-metric{min-height:62px;padding:8px 9px}
 }
 @media(max-width:430px){
-  .analysis-priority-legend>span{max-width:235px}
 }
 
 /* ============================================================
@@ -3750,7 +3732,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 [data-theme="dark"] .hss-dta-status-badge.warn{color:#f0b35d}
 @keyframes analysis-spin{to{transform:rotate(360deg)}}
 
-/* v1.3.2 patch — align DTA/status/Tr row and keep analysis spinner visibly rotating */
+/* v1.3.0 refinement — align DTA/status/Tr row and keep analysis spinner visibly rotating */
 .hss-compact-toolbar{align-items:stretch}
 .hss-dta-select,.hss-tr-compact{grid-template-rows:auto 35px;align-content:end}
 .hss-dta-select>span,.hss-tr-compact>span{display:flex;align-items:flex-end;min-height:14px;line-height:1.15}
@@ -3771,7 +3753,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 
 
 /* ============================================================
-   v1.3.2 readability + map-panel placement patch
+   v1.3.0 readability + map-panel placement patch
    - description/help text uses a readable 12–13 px baseline
    - loading spinner is a CSS ring with a visible rotating gap
    - Layer & Tampilan is anchored in the lower-right on desktop
@@ -3886,7 +3868,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   }
 }
 
-/* v1.3.2 final readability/alignment/spinner patch */
+/* v1.3.0 final readability/alignment/spinner refinement */
 :root{
   --ui-min-meta:11px;
   --ui-subtext:12px;
@@ -4081,7 +4063,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 
 
 /* ============================================================
-   v1.3.3 — readability + compact collapsible HSS controls
+   v1.3.0 — readability + compact collapsible HSS controls
    ============================================================ */
 
 /* Readability: no critical analysis/card copy below the 11–13 px hierarchy. */
@@ -4303,7 +4285,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   .spatial-page .hss-method-grid{grid-template-columns:1fr!important}
 }
 
-/* v1.3.3 table hierarchy correction: parameter/method and value must dominate explanatory copy. */
+/* v1.3.0 table hierarchy correction: parameter/method and value must dominate explanatory copy. */
 .spatial-page .technical-table-wrap tbody th{
   font-size:13px!important;
   line-height:1.4!important;
@@ -4328,3 +4310,834 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
   user-select:none;
 }
 
+/* ============================================================
+   v1.7.4 responsiveness + readability
+   - no visual startup shell: render the actual WebGIS immediately
+   - larger result-name / bulk-action / outlet-hover typography
+   - BBWS line follows the ministry line size on desktop
+   ============================================================ */
+
+/* Result card identity: make the selected point name as readable as the
+   surrounding result metadata without enlarging secondary descriptions. */
+.spatial-page .point-name-chip,
+.spatial-page .existing-point-name-chip{
+  font-size:12px!important;
+  line-height:1.15!important;
+}
+
+/* Bulk actions were still visually smaller than the rest of the sidebar. */
+.spatial-page .result-heading-actions .result-stack-button{
+  width:64px!important;
+  min-width:64px!important;
+  height:42px!important;
+  min-height:42px!important;
+  padding:4px 7px!important;
+  gap:4px!important;
+}
+.spatial-page .result-heading-actions .result-stack-button span{
+  font-size:11px!important;
+  line-height:1.05!important;
+  font-weight:800!important;
+}
+.spatial-page .result-heading-actions .result-stack-button svg{
+  width:14px!important;
+  height:14px!important;
+}
+
+/* Outlet hover popup: keep it compact, but no longer use sub-9px copy. */
+.spatial-page .dta-hover-chip{
+  max-width:150px!important;
+  font-size:11px!important;
+  line-height:1.15!important;
+  padding:4px 7px!important;
+}
+.spatial-page .dta-hover-card>strong,
+.spatial-page .point-hover-card>strong{
+  font-size:11px!important;
+  line-height:1.2!important;
+}
+.spatial-page .dta-hover-card>span:last-child{
+  font-size:10px!important;
+  line-height:1.25!important;
+}
+
+/* Desktop header only: "BALAI BESAR ..." uses the same type size as
+   "KEMENTERIAN PEKERJAAN UMUM". Directorate and all other header styling stay. */
+@media(min-width:781px){
+  .spatial-page .spatial-header .agency-copy strong{
+    font-size:11px!important;
+  }
+}
+
+/* ============================================================
+   1.3.0 consolidated refinement — Gama-I spatial + sidebar polish
+   ============================================================ */
+
+/* Only one divider between methodology links and point selection. */
+.spatial-page .sidebar-info-links + .point-selection-section{
+  border-top:0!important;
+  margin-top:0!important;
+  padding-top:12px!important;
+}
+
+/* Keep the divider below "Tampilkan Titik" visible and centered between groups. */
+.spatial-page .point-selection-section{
+  margin-bottom:0!important;
+  padding-bottom:0!important;
+}
+.spatial-page .analysis-preferences.settings-group-divider{
+  margin-top:12px!important;
+  padding-top:12px!important;
+  padding-bottom:12px!important;
+  border-top:1px solid var(--border-color)!important;
+}
+
+/* Advanced settings: shorter, square, flat header with the existing subtle blue tint. */
+.spatial-page .advanced > summary{
+  min-height:34px!important;
+  height:34px!important;
+  padding:4px 8px!important;
+  border:0!important;
+  border-radius:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+  background:var(--pu-blue-soft)!important;
+}
+[data-theme="dark"] .spatial-page .advanced > summary{
+  border:0!important;
+  border-radius:0!important;
+  outline:0!important;
+  box-shadow:none!important;
+  background:color-mix(in srgb,var(--primary) 12%,var(--card-bg))!important;
+}
+
+/* Result-card and popup actions: final override after older compact rules. */
+.spatial-page .point-name-chip,
+.spatial-page .existing-point-name-chip{
+  font-size:12px!important;
+  line-height:1.15!important;
+}
+.spatial-page .point-edit-label,
+.spatial-page .point-edit-label-row{
+  font-size:12px!important;
+  line-height:1.25!important;
+}
+.spatial-page .point-name-grid input,
+.spatial-page .popup-point-name-editor input{
+  font-size:13px!important;
+  line-height:1.25!important;
+}
+.spatial-page .point-action-row .dta-action-button,
+.spatial-page .existing-point-menu-grid button,
+.spatial-page .point-actions-popup button{
+  font-size:12px!important;
+  line-height:1.1!important;
+  font-weight:700!important;
+}
+
+/* AU/WL/WU controls only appear after a Gama-I result exists. */
+.spatial-page #hssGamaLayerGroup .small-title{
+  font-size:12px!important;
+  font-weight:800!important;
+  color:var(--text-strong)!important;
+  margin-bottom:7px!important;
+}
+.spatial-page #hssGamaLayerGroup .check-row{
+  margin:6px 0!important;
+}
+/* Override the older direct-child compact rule for the sidebar result chip. */
+.spatial-page .point-card > summary > .point-name-chip{
+  font-size:12px!important;
+  line-height:1.15!important;
+}
+
+/* Gama-I audit controls: keep numeric results separate from geometric QC construction. */
+.spatial-page #hssGamaLayerGroup .gama-master-row{
+  font-weight:800!important;
+  color:var(--text-strong)!important;
+  margin-top:8px!important;
+}
+.spatial-page #hssGamaLayerGroup .gama-layer-children .child-row{
+  padding-left:22px!important;
+}
+.spatial-page #hssGamaLayerGroup .gama-construction-note{
+  padding-left:22px;
+  margin:2px 0 5px;
+  font-size:10px;
+  line-height:1.35;
+  color:var(--muted);
+}
+
+/* ============================================================
+   Per-DTA master layer visibility
+   One eye switch in each card header controls the DTA, outlet, Characteristic
+   geometry and Gama-I result/construction geometry for that DTA.
+   ============================================================ */
+.point-card > summary{
+  grid-template-columns:minmax(0,1fr) auto 25px auto!important;
+  grid-template-areas:
+    "point area visibility chevron"
+    "meta meta meta chevron"!important;
+}
+.point-card > summary > .dta-master-visibility-toggle{
+  grid-area:visibility!important;
+  width:25px;
+  height:25px;
+  align-self:center;
+  display:grid;
+  place-items:center;
+  border:0;
+  border-radius:6px;
+  color:var(--text-muted);
+  cursor:pointer;
+  transition:background-color .15s ease,color .15s ease,opacity .15s ease;
+}
+.point-card > summary > .dta-master-visibility-toggle svg{width:15px;height:15px;stroke-width:2}
+.point-card > summary > .dta-master-visibility-toggle:hover,
+.point-card > summary > .dta-master-visibility-toggle:focus-visible{
+  background:var(--surface-soft);
+  color:var(--text-strong);
+  outline:none;
+}
+.point-card > summary > .dta-master-visibility-toggle.is-hidden-state{color:var(--text-muted);opacity:.72}
+.point-card.is-layer-hidden>summary .point-name-chip,
+.point-card.is-layer-hidden>summary .point-summary-main,
+.point-card.is-layer-hidden>summary .point-summary-area{opacity:.58}
+[data-theme="dark"] .point-card > summary > .dta-master-visibility-toggle:hover,
+[data-theme="dark"] .point-card > summary > .dta-master-visibility-toggle:focus-visible{background:rgba(255,255,255,.06)}
+.hss-loading-placeholder{
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px dashed var(--border-color);
+  border-radius:8px;
+  color:var(--text-muted);
+  font-size:.58rem;
+  font-weight:650;
+  background:var(--surface-soft);
+}
+
+/* ============================================================
+   v1.3.0 final UI + spatial audit refinement
+   ============================================================ */
+
+/* Bulk result actions: master visibility + focus are icon-only neutral actions. */
+.spatial-page .result-heading-actions .result-icon-button{
+  width:38px!important;
+  min-width:38px!important;
+  height:42px!important;
+  min-height:42px!important;
+  display:grid!important;
+  place-items:center!important;
+  padding:0!important;
+  border:1px solid var(--border-color)!important;
+  border-radius:7px!important;
+  background:var(--card-bg)!important;
+  color:#223468!important;
+  box-shadow:none!important;
+}
+.spatial-page .result-heading-actions .result-icon-button svg{
+  width:16px!important;height:16px!important;color:currentColor!important;stroke:currentColor!important;
+}
+.spatial-page .result-heading-actions .result-icon-button:hover:not(:disabled),
+.spatial-page .result-heading-actions .result-icon-button:focus-visible:not(:disabled){
+  background:var(--surface-soft)!important;
+  border-color:color-mix(in srgb,#223468 38%,var(--border-color))!important;
+  color:#223468!important;
+  outline:none!important;
+}
+.spatial-page .result-heading-actions .result-icon-button:disabled{opacity:.38!important;cursor:not-allowed!important}
+[data-theme="dark"] .spatial-page .result-heading-actions .result-icon-button{
+  background:var(--card-bg)!important;
+  color:var(--primary)!important;
+  border-color:var(--border-color)!important;
+}
+[data-theme="dark"] .spatial-page .result-heading-actions .result-icon-button:hover:not(:disabled),
+[data-theme="dark"] .spatial-page .result-heading-actions .result-icon-button:focus-visible:not(:disabled){
+  background:var(--surface-soft)!important;
+  border-color:color-mix(in srgb,var(--primary) 42%,var(--border-color))!important;
+  color:var(--primary-hover)!important;
+}
+/* Kill legacy yellow focus styling. */
+.spatial-page .focus-all-button,
+.spatial-page .focus-all-button:hover:not(:disabled),
+.spatial-page .focus-all-button:focus-visible:not(:disabled){
+  background:var(--card-bg)!important;
+  color:#223468!important;
+}
+[data-theme="dark"] .spatial-page .focus-all-button,
+[data-theme="dark"] .spatial-page .focus-all-button:hover:not(:disabled),
+[data-theme="dark"] .spatial-page .focus-all-button:focus-visible:not(:disabled){
+  background:var(--card-bg)!important;
+  color:var(--primary)!important;
+}
+
+/* Eye is the left-most master switch in every DTA card header. */
+.spatial-page .point-card > summary{
+  grid-template-columns:25px minmax(0,1fr) auto auto!important;
+  grid-template-areas:
+    "visibility point area chevron"
+    "visibility meta meta chevron"!important;
+  column-gap:7px!important;
+}
+.spatial-page .point-card > summary > .dta-master-visibility-toggle{
+  grid-area:visibility!important;
+  align-self:center!important;
+  justify-self:start!important;
+  margin:0!important;
+}
+
+/* Compact collapsible Layer & Tampilan groups. */
+.spatial-page .layer-collapsible{
+  padding-top:0!important;
+  overflow:visible;
+}
+.spatial-page .layer-collapsible > .layer-collapse-summary{
+  min-height:31px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:0;
+  padding:7px 0;
+  list-style:none;
+  cursor:pointer;
+  color:var(--text-strong);
+  font-size:var(--ui-control-text-size,13px)!important;
+  font-weight:700!important;
+  user-select:none;
+}
+.spatial-page .layer-collapsible > .layer-collapse-summary::-webkit-details-marker{display:none}
+.spatial-page .layer-collapsible > .layer-collapse-summary svg{
+  width:14px;height:14px;flex:0 0 auto;color:var(--text-muted);transition:transform .16s ease;
+}
+.spatial-page .layer-summary-actions{display:inline-flex;align-items:center;gap:8px;flex:0 0 auto;}
+.spatial-page .layer-eye-toggle{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid var(--border-color);border-radius:999px;background:color-mix(in srgb,var(--card-bg) 92%,var(--primary) 8%);color:var(--text-muted);cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease;}
+.spatial-page .layer-eye-toggle:hover,.spatial-page .layer-eye-toggle:focus-visible{background:color-mix(in srgb,var(--primary) 7%,var(--card-bg));border-color:color-mix(in srgb,var(--primary) 30%,var(--border-color));color:var(--primary);transform:translateY(-1px);}
+.spatial-page .layer-eye-toggle[data-visible='true']{color:var(--primary);border-color:color-mix(in srgb,var(--primary) 34%,var(--border-color));background:color-mix(in srgb,var(--primary) 8%,var(--card-bg));}
+.spatial-page .layer-collapsible[open] > .layer-collapse-summary > .layer-summary-actions > svg:last-child{transform:rotate(180deg)}
+.spatial-page .layer-collapsible > .layer-collapsible-body{
+  padding:1px 0 3px;
+}
+.spatial-page .layer-collapsible:not([open]) > .layer-collapsible-body{display:none!important}
+
+/* Gama-I layer controls use the exact same typography as the other layer rows. */
+.spatial-page #hssGamaLayerGroup .check-row,
+.spatial-page #hssGamaLayerGroup .child-row{
+  font-size:var(--ui-control-text-size,13px)!important;
+  font-weight:600!important;
+  color:var(--text-main)!important;
+  letter-spacing:0!important;
+}
+.spatial-page #hssGamaLayerGroup .child-row{color:var(--text-muted)!important}
+.spatial-page .characteristic-river-orders{margin-top:2px;padding-left:22px;}
+
+/* HSS method card has two interaction halves: left = selection, right = disclosure. */
+.spatial-page .hss-method-card-head{
+  padding:0!important;
+  gap:0!important;
+  align-items:stretch!important;
+}
+.spatial-page .hss-method-select-zone,
+.spatial-page .hss-method-collapse-zone{
+  min-width:0;
+  min-height:46px;
+  display:flex;
+  align-items:center;
+}
+.spatial-page .hss-method-select-zone{
+  flex:0 0 33.3333%;
+  padding:10px 11px;
+  cursor:pointer;
+}
+.spatial-page .hss-method-collapse-zone{
+  flex:0 0 66.6667%;
+  justify-content:flex-end;
+  padding:10px 11px;
+  cursor:pointer;
+}
+.spatial-page .hss-method-select-zone:hover,
+.spatial-page .hss-method-collapse-zone:hover{
+  background:color-mix(in srgb,var(--primary) 5%,var(--card-bg));
+}
+.spatial-page .hss-method-collapse-zone .hss-details-chevron{pointer-events:none}
+
+/* Analisis HSS / Hitung HSS follows the same primary action palette as Mulai Tambah in both themes. */
+.spatial-page .hss-main-button,
+.spatial-page .hss-calc-button{
+  background:var(--primary-action-bg)!important;
+  border-color:var(--primary-action-bg)!important;
+  color:var(--primary-action-text)!important;
+}
+.spatial-page .hss-main-button svg,
+.spatial-page .hss-calc-button svg{color:var(--primary-action-text)!important;stroke:var(--primary-action-text)!important}
+.spatial-page .hss-main-button:hover:not(:disabled),
+.spatial-page .hss-calc-button:hover:not(:disabled){
+  background:var(--primary-action-hover)!important;
+  border-color:var(--primary-action-hover)!important;
+  color:var(--primary-action-text)!important;
+}
+
+/* Hydrologic-response executive card: keep semantic tint but restore dark-mode contrast. */
+[data-theme="dark"] .spatial-page .analysis-executive{
+  background:var(--card-bg)!important;
+  border-color:color-mix(in srgb,var(--primary) 28%,var(--border-color))!important;
+}
+[data-theme="dark"] .spatial-page .analysis-executive > div:first-child{
+  background:color-mix(in srgb,var(--analysis-status-primary,var(--primary)) 18%,var(--card-bg))!important;
+  box-shadow:inset 4px 0 0 var(--analysis-status-primary,var(--primary))!important;
+}
+[data-theme="dark"] .spatial-page .analysis-executive .analysis-kicker{
+  color:#dbe3f2!important;
+}
+[data-theme="dark"] .spatial-page .analysis-executive > div > strong{
+  color:color-mix(in srgb,var(--analysis-status-primary,var(--primary)) 55%,#ffffff)!important;
+  text-shadow:0 1px 0 rgba(0,0,0,.22);
+}
+[data-theme="dark"] .spatial-page .analysis-executive p{color:var(--text-main)!important}
+
+/* Generic derived-layer hover card. */
+.spatial-page .spatial-hover-card{
+  min-width:150px;
+  display:grid;
+  gap:3px;
+  font-family:"Plus Jakarta Sans",system-ui,-apple-system,sans-serif;
+}
+.spatial-page .spatial-hover-card > strong{
+  font-size:11px!important;
+  line-height:1.25;
+  color:var(--text-strong);
+}
+.spatial-page .spatial-hover-card > span{
+  font-size:11px!important;
+  font-weight:800;
+  color:var(--primary);
+  font-variant-numeric:tabular-nums;
+}
+.spatial-page .spatial-hover-card > small{
+  font-size:10px!important;
+  line-height:1.3;
+  color:var(--text-muted);
+}
+/* Force hover bubble above the feature, with its triangle below it. */
+.spatial-page .dta-hover-popup .maplibregl-popup-content{
+  background:var(--card-bg)!important;
+  color:var(--text-main)!important;
+  border:1px solid var(--border-color)!important;
+  box-shadow:0 7px 18px rgba(24,36,55,.14)!important;
+}
+.spatial-page .dta-hover-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{
+  left:50%!important;
+  right:auto!important;
+  margin:0!important;
+  transform:translateX(-50%)!important;
+  border-top-color:var(--card-bg)!important;
+  border-bottom-color:transparent!important;
+}
+[data-theme="dark"] .spatial-page .dta-hover-popup .maplibregl-popup-content{
+  background:var(--card-bg)!important;
+  border-color:var(--border-color)!important;
+  box-shadow:0 8px 22px rgba(0,0,0,.34)!important;
+}
+[data-theme="dark"] .spatial-page .dta-hover-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{
+  left:50%!important;
+  right:auto!important;
+  margin:0!important;
+  transform:translateX(-50%)!important;
+  border-top-color:var(--card-bg)!important;
+}
+
+/* Anchored DTA color panel; native OS picker is opened only from its visible color input. */
+.spatial-page .dta-colorpicker-panel:not(.native-picker-proxy){
+  z-index:6500!important;
+}
+
+/* ============================================================
+   v1.3.0 final polish — method zones, construction QC, hover tip
+   ============================================================ */
+/* HSS method interaction is 1/3 selection + 2/3 disclosure, without a visible split. */
+.spatial-page .hss-method-select-zone{
+  flex:0 0 33.333%!important;
+  width:33.333%!important;
+  border-right:0!important;
+}
+.spatial-page .hss-method-collapse-zone{
+  flex:1 1 66.667%!important;
+  width:66.667%!important;
+  border-left:0!important;
+}
+.spatial-page .hss-method-card-head{
+  background:var(--card-bg)!important;
+}
+.spatial-page .hss-method-select-zone:hover,
+.spatial-page .hss-method-collapse-zone:hover{
+  background:color-mix(in srgb,var(--primary) 4%,var(--card-bg))!important;
+}
+
+/* The visible Gama-I construction consists only of X-A, X-B and X-C.
+   Medium Teal remains readable on either basemap; text keeps a white halo. */
+.spatial-page #map .maplibregl-canvas{outline:none}
+
+/* Layer-summary eye is compact and visually secondary to the group title. */
+.spatial-page .layer-eye-toggle{
+  width:25px!important;
+  height:25px!important;
+  border:0!important;
+  border-radius:6px!important;
+  background:transparent!important;
+  transform:none!important;
+}
+.spatial-page .layer-eye-toggle:hover,
+.spatial-page .layer-eye-toggle:focus-visible{
+  background:var(--surface-soft)!important;
+  transform:none!important;
+}
+.spatial-page .layer-eye-toggle svg{width:14px!important;height:14px!important}
+
+/* MapLibre places bottom-anchor tips with flex alignment.  Keep the triangle exactly
+   centered under the hover card; do not translate it sideways. */
+.spatial-page .dta-hover-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{
+  position:static!important;
+  align-self:center!important;
+  left:auto!important;
+  right:auto!important;
+  margin:0!important;
+  transform:none!important;
+  border-top-color:var(--card-bg)!important;
+  border-bottom-color:transparent!important;
+}
+[data-theme="dark"] .spatial-page .dta-hover-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip{
+  border-top-color:var(--card-bg)!important;
+  border-bottom-color:transparent!important;
+}
+/* Exact centered pointer for DTA/derived hover cards. Native MapLibre tips can shift
+   when popup content width changes, so draw one triangle from the card itself. */
+.spatial-page .dta-hover-popup .maplibregl-popup-tip{display:none!important}
+.spatial-page .dta-hover-popup .maplibregl-popup-content{position:relative!important}
+.spatial-page .dta-hover-popup .maplibregl-popup-content::after{
+  content:"";
+  position:absolute;
+  left:50%;
+  bottom:-7px;
+  transform:translateX(-50%);
+  width:0;height:0;
+  border-left:7px solid transparent;
+  border-right:7px solid transparent;
+  border-top:7px solid var(--card-bg);
+  pointer-events:none;
+}
+/* Interaction zones are behavioral only; hovering must not reveal the 1/3–2/3 split. */
+.spatial-page .hss-method-select-zone:hover,
+.spatial-page .hss-method-collapse-zone:hover{background:transparent!important}
+.spatial-page .hss-method-card-head:hover{background:color-mix(in srgb,var(--primary) 4%,var(--card-bg))!important}
+
+/* ============================================================
+   v1.3.0 layer hierarchy refinement
+   ============================================================ */
+.spatial-page .layer-summary-leading{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.spatial-page .layer-summary-leading > span:last-child{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.spatial-page .layer-collapse-summary > .layer-summary-actions{
+  margin-left:auto;
+}
+.spatial-page .layer-summary-color,
+.spatial-page .derived-color-row > .color-input,
+.spatial-page .layer-subcollapse-summary .color-input{
+  width:24px!important;
+  height:24px!important;
+  min-width:24px!important;
+  padding:1px!important;
+  border-radius:5px!important;
+}
+.spatial-page .layer-summary-info{
+  width:24px!important;
+  height:24px!important;
+  min-width:24px!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+}
+.spatial-page .layer-summary-info svg{width:14px!important;height:14px!important}
+.spatial-page .derived-color-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.spatial-page .derived-color-row > .check-row{flex:1 1 auto;min-width:0}
+.spatial-page .layer-subcollapsible{
+  margin:1px 0 0 12px;
+  padding:0;
+  border:0;
+}
+.spatial-page .layer-subcollapse-summary{
+  min-height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  padding:3px 0;
+  list-style:none;
+  cursor:pointer;
+}
+.spatial-page .layer-subcollapse-summary::-webkit-details-marker{display:none}
+.spatial-page .layer-subcollapse-summary > .check-row{
+  flex:1 1 auto;
+  min-width:0;
+  margin:0!important;
+}
+.spatial-page .layer-subcollapse-summary > .layer-summary-actions > svg:last-child{
+  width:13px;height:13px;transition:transform .16s ease;
+}
+.spatial-page .layer-subcollapsible[open] > .layer-subcollapse-summary > .layer-summary-actions > svg:last-child{transform:rotate(180deg)}
+.spatial-page .layer-subcollapsible-body{
+  margin:1px 0 4px 20px!important;
+  padding-left:8px;
+  border-left:1px solid var(--border-color);
+}
+.spatial-page .characteristic-river-orders{
+  grid-template-columns:1fr 1fr!important;
+  gap:4px 8px!important;
+}
+/* Eye is part of the layer title, not the disclosure/action edge. */
+.spatial-page .layer-summary-leading .layer-eye-toggle{flex:0 0 25px}
+
+/* ============================================================
+   v1.3.0 R4 — layer alignment, derived hover, DTA-card identity
+   ============================================================ */
+/* All first-level rows use the same checkbox/text origin as "Tampilkan batas". */
+.spatial-page .layer-collapsible > .layer-collapsible-body > .check-row,
+.spatial-page .layer-collapsible > .layer-collapsible-body > .derived-color-row > .check-row,
+.spatial-page #characteristicLayerGroup > .layer-collapsible-body > .check-row,
+.spatial-page #hssGamaLayerGroup > .layer-collapsible-body > .check-row,
+.spatial-page .layer-subcollapse-summary > .check-row{
+  padding-left:0!important;
+  margin-left:0!important;
+}
+.spatial-page .derived-color-row{margin-left:0!important;padding-left:0!important}
+.spatial-page .layer-subcollapsible{
+  margin-left:0!important;
+}
+/* Official-river hierarchy is nested only beneath Tampilkan jaringan; Label sungai stays a sibling. */
+.spatial-page .official-river-options{
+  margin:1px 0 3px 22px;
+  padding-left:0;
+}
+.spatial-page .official-river-options > .check-row{margin-left:0!important;padding-left:0!important}
+.spatial-page .official-river-orders{
+  padding-left:0!important;
+  grid-template-columns:1fr 1fr!important;
+  gap:2px 8px!important;
+}
+.spatial-page .official-river-orders .check-row{margin:3px 0!important}
+/* Strahler hierarchy remains visually nested under Total jaringan sungai. */
+.spatial-page .characteristic-river-orders{
+  margin-top:2px!important;
+  padding-left:0!important;
+}
+
+/* Derived hover: parameter + metric share the first row, DTA identity on the second. */
+.spatial-page .spatial-hover-card{
+  min-width:185px!important;
+  gap:4px!important;
+}
+.spatial-page .spatial-hover-head{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:18px;
+}
+.spatial-page .spatial-hover-head > strong{
+  font-size:11.5px!important;
+  line-height:1.2!important;
+  font-weight:800!important;
+  color:var(--text-strong)!important;
+  white-space:nowrap;
+}
+.spatial-page .spatial-hover-head > span{
+  font-size:11.5px!important;
+  line-height:1.2!important;
+  font-weight:800!important;
+  color:var(--text-strong)!important;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+.spatial-page .spatial-hover-card > small{
+  font-size:10px!important;
+  color:var(--text-muted)!important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+/* Closed DTA card: eye + point name on row 1; river starts flush-left on row 2. */
+.spatial-page .point-card > summary{
+  display:grid!important;
+  grid-template-columns:25px auto minmax(0,1fr) auto 14px!important;
+  grid-template-areas:
+    "visibility point spacer area chevron"
+    "meta meta meta meta chevron"!important;
+  column-gap:7px!important;
+  row-gap:4px!important;
+  align-items:center!important;
+}
+.spatial-page .point-card > summary > .dta-master-visibility-toggle{
+  grid-area:visibility!important;
+  align-self:center!important;
+  justify-self:start!important;
+}
+.spatial-page .point-card > summary > .point-name-chip{
+  grid-area:point!important;
+  justify-self:start!important;
+  margin:0!important;
+}
+.spatial-page .point-card > summary > .point-summary-area{
+  grid-area:area!important;
+  justify-self:end!important;
+  align-self:center!important;
+}
+.spatial-page .point-card > summary > .point-chevron{
+  grid-area:chevron!important;
+  align-self:center!important;
+  justify-self:end!important;
+}
+.spatial-page .point-card > summary > .point-summary-main{
+  grid-area:meta!important;
+  width:100%!important;
+  min-width:0!important;
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) auto!important;
+  grid-template-areas:
+    "river basin"
+    "warning warning"!important;
+  column-gap:10px!important;
+  align-items:center!important;
+  margin:0!important;
+}
+.spatial-page .point-summary-river{
+  grid-area:river!important;
+  justify-self:start!important;
+  margin:0!important;
+  text-align:left!important;
+}
+.spatial-page .point-summary-basin{
+  grid-area:basin!important;
+  justify-self:end!important;
+  margin:0!important;
+  text-align:right!important;
+}
+.spatial-page .point-summary-main .result-state-badge{
+  grid-area:warning!important;
+  justify-self:start!important;
+}
+
+
+/* ============================================================
+   v1.3.0 R5 — crisp MapLibre popup typography + equal hover size
+   ============================================================ */
+/* Spatial-derived hover and ordinary DTA hover use one footprint.  This keeps
+   AU/WL/WU/L/Lca/L10–85 from looking like a larger secondary component. */
+.spatial-page .point-hover-card,
+.spatial-page .spatial-hover-card{
+  width:172px!important;
+  min-width:172px!important;
+  max-width:172px!important;
+  min-height:37px!important;
+  box-sizing:border-box!important;
+}
+.spatial-page .spatial-hover-card{
+  gap:3px!important;
+}
+.spatial-page .spatial-hover-head{
+  min-height:15px!important;
+}
+
+/* Popup content must remain a normal text layer.  motion.css is loaded after
+   spatial.css, therefore these !important guards also protect against future
+   transform-based popup animations. */
+.spatial-page .dta-hover-popup .maplibregl-popup-content,
+.spatial-page .pending-point-popup .maplibregl-popup-content,
+.spatial-page .location-preview-popup .maplibregl-popup-content,
+.spatial-page .existing-point-popup .maplibregl-popup-content{
+  transform:none!important;
+  will-change:auto!important;
+  filter:none!important;
+  backface-visibility:visible!important;
+  -webkit-font-smoothing:antialiased!important;
+  text-rendering:geometricPrecision!important;
+}
+
+/* ============================================================
+   v1.3.0 R6 — crisp coordinate/location preview popup
+   Small 8–10 px text combined with forced grayscale antialiasing looked soft
+   on Windows/Edge.  Use normal UI text sizing and native browser smoothing.
+   ============================================================ */
+.spatial-page .maplibregl-popup-content{
+  -webkit-font-smoothing:auto!important;
+  text-rendering:auto!important;
+}
+.spatial-page .location-preview-popup .maplibregl-popup-content{
+  padding:11px 12px!important;
+  min-width:235px!important;
+  max-width:270px!important;
+  border-radius:10px!important;
+  font-family:"Plus Jakarta Sans",Arial,sans-serif!important;
+  transform:none!important;
+  will-change:auto!important;
+  filter:none!important;
+}
+.spatial-page .location-preview-card{
+  display:grid!important;
+  gap:7px!important;
+  min-width:211px!important;
+  max-width:246px!important;
+  color:var(--text-main)!important;
+}
+.spatial-page .location-preview-card>strong{
+  font-size:12px!important;
+  line-height:1.3!important;
+  font-weight:800!important;
+  letter-spacing:0!important;
+  color:var(--text-strong)!important;
+}
+.spatial-page .location-preview-card>span{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace!important;
+  font-size:10.5px!important;
+  line-height:1.45!important;
+  font-weight:600!important;
+  color:var(--text-muted)!important;
+  font-variant-numeric:tabular-nums!important;
+}
+.spatial-page .location-preview-card>p{
+  margin:1px 0 0!important;
+  font-size:11px!important;
+  line-height:1.48!important;
+  font-weight:500!important;
+  color:var(--text-muted)!important;
+}
+.spatial-page .location-preview-card>p b{
+  font-weight:800!important;
+  color:var(--text-main)!important;
+}
+.spatial-page .location-preview-popup .maplibregl-popup-close-button{
+  width:28px!important;
+  height:28px!important;
+  font-size:16px!important;
+  line-height:28px!important;
+}
+
+
+/* Right-click coordinate context popup */

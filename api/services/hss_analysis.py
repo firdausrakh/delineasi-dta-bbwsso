@@ -79,23 +79,38 @@ def _inputs(analysis: dict[str, Any]) -> dict[str, float | None]:
     flow_slope = terrain.get("flowpath_slope") or {}
     gama = drainage.get("gama1") or {}
     area = _finite(morph.get("area_km2"), positive=True)
+
+    # HSS longitudinal parameters follow the river-network definitions:
+    # L  = length of the main river,
+    # Lc = distance along the main river from outlet to the point nearest the basin centroid,
+    # S  = main-river slope.
+    # Terrain flowpath values are retained only as a last-resort fallback when the
+    # analysis river network is genuinely unavailable/invalid.
     main_length = _finite(drainage.get("main_channel_length_km"), positive=True)
+    main_lc = _finite(drainage.get("main_channel_centroidal_length_km"), positive=True)
+    main_slope_pct = _finite(drainage.get("main_channel_slope_pct"), positive=True)
     longest = _finite(terrain.get("longest_flow_path_km"), positive=True)
-    centroid = _finite(terrain.get("centroidal_flowpath_km"), positive=True)
-    # L and Lc must refer to one consistent outlet-to-upstream path. Protect HSS from
-    # stale/legacy analyses where a tiny clipped reach was stored as the main channel.
-    use_flowpath_fallback = bool(longest and (main_length is None or (centroid and main_length < centroid)))
-    if use_flowpath_fallback:
-        main_length = longest
-    slope_pct = _finite(drainage.get("main_channel_slope_pct"), positive=True)
-    if slope_pct is None or use_flowpath_fallback:
-        slope_pct = _finite(flow_slope.get("longest_flowpath_pct"), positive=True) or slope_pct
+    terrain_lc = _finite(terrain.get("centroidal_flowpath_km"), positive=True)
+    terrain_slope_pct = _finite(flow_slope.get("longest_flowpath_pct"), positive=True)
+
+    main_valid = main_length is not None and (
+        (main_lc is not None and main_lc <= main_length * 1.001)
+        or (main_lc is None and (terrain_lc is None or terrain_lc <= main_length * 1.001))
+    )
+    if main_valid:
+        length = main_length
+        centroid = main_lc if main_lc is not None else terrain_lc
+        slope_pct = main_slope_pct
+    else:
+        length = longest or main_length
+        centroid = terrain_lc or main_lc
+        slope_pct = terrain_slope_pct or main_slope_pct
+
     return {
         "A": area,
-        "L": main_length or longest,
+        "L": length,
         "Lc": centroid,
         "S": (slope_pct / 100.0) if slope_pct is not None else None,
-        # Source morphometry retained explicitly for editable HSS inputs.
         "Lt": _finite(drainage.get("total_stream_length_km"), positive=True),
         "L1": _finite(gama.get("source_stream_length_km")),
         "N": _finite(drainage.get("stream_count"), positive=True),
@@ -111,7 +126,6 @@ def _inputs(analysis: dict[str, Any]) -> dict[str, float | None]:
         "RUA": _finite(gama.get("relative_upstream_area"), positive=True),
         "SIM": _finite(gama.get("symmetry_factor"), positive=True),
     }
-
 
 
 
@@ -517,8 +531,11 @@ def calculate_hss(*, point_id: str, label: str | None, hydrologic_analysis: dict
                 "warnings": [f"Perhitungan {METHOD_LABELS[method]} gagal: {exc}"],
             })
     available = [item for item in results if item.get("available")]
+    gama1_spatial = None
+    if "gama1" in method_keys:
+        gama1_spatial = (((hydrologic_analysis or {}).get("drainage") or {}).get("gama1") or {}).get("spatial")
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "point_id": point_id,
         "label": label or point_id,
         "formula_profile": FORMULA_PROFILE,
@@ -526,6 +543,7 @@ def calculate_hss(*, point_id: str, label: str | None, hydrologic_analysis: dict
         "global_tr_hours": round(tr, 8),
         "input_overrides": clean_overrides,
         "inputs": inputs,
+        "gama1_spatial": gama1_spatial,
         "methods": results,
         "available_method_count": len(available),
         "requested_method_count": len(method_keys),

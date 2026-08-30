@@ -1,0 +1,12 @@
+{
+  "name": "delineasi-dta-bbwsso",
+  "version": "1.3.0",
+  "description": "Delineasi DTA BBWS Serayu Opak - Web-based GIS application for watershed delineation",
+  "private": true,
+  "scripts": {
+    "build": "echo 'No build step required for Speed Insights'"
+  },
+  "dependencies": {
+    "@vercel/speed-insights": "^1.1.0"
+  }
+}

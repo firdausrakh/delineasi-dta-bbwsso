@@ -18,6 +18,14 @@
   {% block head_extra %}{% endblock %}
   <link rel="stylesheet" href="/static/css/motion.css?v=1.0.8-native-popup-text">
   <script src="/static/js/common.js?v=1.6.0-characteristics"></script>
+  <!-- Vercel Speed Insights -->
+  <script>
+    window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+  </script>
+  <script type="module">
+    import { injectSpeedInsights } from '/static/js/vendor/speed-insights.mjs';
+    injectSpeedInsights();
+  </script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header id="appHeader" class="app-header spatial-header is-hidden">

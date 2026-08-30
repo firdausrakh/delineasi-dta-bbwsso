@@ -207,10 +207,14 @@ Runtime menerapkan perlindungan berikut tanpa mengubah algoritma hidrologi:
 - satu job GIS berat aktif per worker secara default;
 - antrean terbatas agar request tidak menumpuk tanpa batas;
 - request delineasi lama ditandai superseded oleh request browser yang lebih baru;
+- request lama juga dihentikan di sela rekonsiliasi topology, bukan hanya saat tracing raster;
 - frontend membatalkan koneksi `fetch` delineasi sebelumnya;
+- warm-up backend dimulai segera saat HTML diterima sehingga pemeriksaan titik tidak menunggu cold start;
 - cache hybrid D8 dan boundary stitching menggunakan `(LINKNO, raster row, raster column)`, bukan koordinat floating point;
 - cache topology dan geometry mempunyai batas terpisah;
 - cache geometry dibersihkan saat RSS memory melewati threshold;
+- hasil karakteristik final memakai cache LRU berbasis hash geometri;
+- koneksi SQLite toponim dan koneksi HTTP R2 dipakai ulang pada warm worker;
 - map-assets public dimuat langsung dari custom domain R2 tanpa redirect melalui Vercel;
 - map-assets memakai versi bundle dan cache immutable;
 - statistik job, antrean, RSS, cache, dan transfer R2 tersedia pada `/api/info`.
@@ -485,7 +489,9 @@ Contoh lengkap tersedia di `.env.example`.
 | `DTA_UPSTREAM_UNION_CACHE_SIZE` | opsional | default `24`, cache polygon upstream |
 | `DTA_HYBRID_CACHE_SIZE` | opsional | default `16`, cache hybrid D8 per sel |
 | `DTA_BOUNDARY_CACHE_SIZE` | opsional | default `16`, cache boundary stitching per sel |
+| `DTA_ANALYSIS_CACHE_SIZE` | opsional | default `3`, cache hasil karakteristik per geometri |
 | `DTA_CACHE_PRESSURE_MB` | opsional | default `1400`, threshold pembersihan cache geometry |
+| `DTA_PREWARM_TOPONYM` | opsional | default `1`, siapkan database toponim R2 di background |
 | `NOMINATIM_USER_AGENT` | disarankan | identitas request Nominatim |
 | `GOOGLE_MAPS_TILE_URL` | opsional | endpoint custom jika diperlukan |
 | `GOOGLE_SATELLITE_TILE_URL` | opsional | endpoint custom jika diperlukan |
@@ -837,7 +843,7 @@ Contoh:
 2.0.0.0  Perubahan besar
 ```
 
-Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.0`.
+Nomor `p29` sampai `p34` adalah **penanda refinement internal**. Versi aplikasi pada paket ini mengikuti `APP_VERSION` dan saat ini adalah `1.3.1`.
 
 ---
 
@@ -885,6 +891,16 @@ Riwayat versi diurutkan dari rilis terbaru hingga rilis web pertama.
 - rekomendasi Tc memakai metode sesuai domain yang konsisten dan mencatat metode dasar serta tingkat keyakinan;
 - komponen tooltip informasi dan field pengaturan distandarkan untuk desktop serta mobile;
 - tidak ada perubahan object data spasial, sehingga bundle dan upload Cloudflare R2 tidak perlu dijalankan ulang untuk rilis kode ini.
+
+### 1.3.1 — Runtime Performance — 30 August 2026
+
+- validasi lokasi memakai luas DAS yang sudah dihitung saat startup dan tidak lagi menampilkan status “Memeriksa lokasi titik…”;
+- cold-start engine dimulai segera setelah HTML diterima, sementara aset shell tetap dapat dirender tanpa menunggu GeoPandas/Rasterio;
+- pencarian jaringan karakteristik memakai indeks spasial dan prepared geometry;
+- penilaian kecocokan ribuan ruas terhadap lintasan utama dikerjakan secara batch;
+- jaringan sungai detail dimuat terpisah di background agar hasil numerik tidak tertahan payload GeoJSON besar;
+- hasil karakteristik memakai cache LRU berbasis hash geometri dan object R2 independen diunduh paralel;
+- pada benchmark lokal Hilir Serayu 1 km², karakteristik cold turun dari sekitar 29,7 detik menjadi 4,4 detik dan cache ulang sekitar 19 ms.
 
 ### 1.0.0.2 — R2 Performance v2 — 28 August 2026
 

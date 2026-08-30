@@ -19,8 +19,18 @@ import rasterio
 from rasterio import features as rio_features
 from rasterio.enums import Resampling
 from rasterio.windows import Window, from_bounds
+from shapely import covers as geometry_covers
+from shapely import distance as geometry_distance
+from shapely import intersection as geometry_intersection
+from shapely import length as geometry_length
+from shapely import line_interpolate_point, line_locate_point
+from shapely import linestrings as geometry_linestrings
+from shapely import prepare as geometry_prepare
+from shapely import set_precision as geometry_set_precision
 from shapely.geometry import LineString, MultiLineString, Point, Polygon, mapping, shape
 from shapely.ops import split, transform, substring
+from shapely.prepared import prep
+from shapely.strtree import STRtree
 from pyproj import CRS, Transformer
 
 
@@ -491,6 +501,12 @@ def _cached_raster_cell(ds, row: int, col: int, cache: dict[tuple[int, int], tup
     return value
 
 
+def _cell_center(transform_matrix, row: int, col: int) -> tuple[float, float]:
+    """Fast equivalent of DatasetReader.xy(row, col) for a cell centre."""
+    x, y = transform_matrix * (float(col) + 0.5, float(row) + 0.5)
+    return float(x), float(y)
+
+
 def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, plen_path: Path) -> tuple[LineString, float] | None:
     """Trace the TauDEM longest-upstream branch from the DTA outlet using D8 topology and plen."""
     # TauDEM coding: E, NE, N, NW, W, SW, S, SE.
@@ -508,6 +524,8 @@ def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, p
         outlet_raster = Point(float(ox), float(oy))
         cell_size = (abs(float(fds.transform.a)) + abs(float(fds.transform.e))) / 2.0
         path_domain = raster_geom.buffer(cell_size * 0.8)
+        raster_domain_prepared = prep(raster_geom)
+        path_domain_prepared = prep(path_domain)
         base_row, base_col = fds.index(ox, oy)
         fcache: dict[tuple[int, int], tuple[np.ndarray, Window]] = {}
         pcache: dict[tuple[int, int], tuple[np.ndarray, Window]] = {}
@@ -524,14 +542,14 @@ def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, p
                     flowdir = _cached_raster_cell(fds, row, col, fcache)
                     if plen is None or flowdir is None or int(round(flowdir)) not in direction_offset:
                         continue
-                    x, y = fds.xy(row, col)
+                    x, y = _cell_center(fds.transform, row, col)
                     point = Point(float(x), float(y))
                     # Prefer a true DTA cell.  The small buffered domain is only a fallback for
                     # outlets that lie exactly on a raster/polygon boundary, so a downstream
                     # regional-network cell cannot win merely because its plen is larger.
-                    if raster_geom.covers(point):
+                    if raster_domain_prepared.covers(point):
                         start_candidates.append((plen, row, col))
-                    elif path_domain.covers(point):
+                    elif path_domain_prepared.covers(point):
                         fallback_candidates.append((plen, row, col))
             if start_candidates:
                 break
@@ -542,7 +560,7 @@ def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, p
             return None
         _, row, col = max(start_candidates, key=lambda item: item[0])
         plen_at_outlet = _cached_raster_cell(pds, row, col, pcache) or 0.0
-        sx, sy = fds.xy(row, col)
+        sx, sy = _cell_center(fds.transform, row, col)
         coords: list[tuple[float, float]] = [(outlet_raster.x, outlet_raster.y)]
         if math.hypot(float(sx) - outlet_raster.x, float(sy) - outlet_raster.y) > cell_size * 0.05:
             coords.append((float(sx), float(sy)))
@@ -566,8 +584,8 @@ def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, p
                     offset = direction_offset.get(int(round(direction)))
                     if offset is None or (nr + offset[0], nc + offset[1]) != (cr, cc):
                         continue
-                    x, y = fds.xy(nr, nc)
-                    if not path_domain.covers(Point(float(x), float(y))):
+                    x, y = _cell_center(fds.transform, nr, nc)
+                    if not path_domain_prepared.covers(Point(float(x), float(y))):
                         continue
                     candidates.append((plen, nr, nc))
             if not candidates:
@@ -575,7 +593,7 @@ def _trace_longest_flowpath(geom, outlet, source_crs: Any, flowdir_path: Path, p
             # plen is the longest upslope length terminating at a cell. The incoming branch with
             # the largest plen therefore continues the hydraulically most remote upstream path.
             _, nr, nc = max(candidates, key=lambda item: item[0])
-            x, y = fds.xy(nr, nc)
+            x, y = _cell_center(fds.transform, nr, nc)
             coords.append((float(x), float(y)))
             current = (nr, nc)
         if len(coords) < 2:
@@ -608,6 +626,7 @@ def _raster_cell_area_m2(ds) -> float:
 def _main_channel_from_plen_threshold(
     geom, outlet, source_crs: Any, flowdir_path: Path | None, plen_path: Path | None,
     dem_path: Path | None = None, *, threshold_km2: float = MAIN_CHANNEL_THRESHOLD_KM2,
+    canonical_line: LineString | None = None,
 ) -> dict[str, Any] | None:
     """Build Lm as the channelized subset of canonical L using a drainage-area threshold.
 
@@ -618,10 +637,11 @@ def _main_channel_from_plen_threshold(
     """
     if flowdir_path is None or plen_path is None:
         return None
-    traced = _trace_longest_flowpath(geom, outlet, source_crs, flowdir_path, plen_path)
-    if traced is None:
-        return None
-    canonical_line, _ = traced
+    if canonical_line is None:
+        traced = _trace_longest_flowpath(geom, outlet, source_crs, flowdir_path, plen_path)
+        if traced is None:
+            return None
+        canonical_line, _ = traced
     if canonical_line is None or canonical_line.is_empty or canonical_line.length <= 0:
         return None
 
@@ -633,6 +653,7 @@ def _main_channel_from_plen_threshold(
         threshold_cells = max(1, int(math.ceil(float(threshold_km2) * 1_000_000.0 / cell_area_m2)))
         cell_run = max(abs(float(ds.transform.a)), abs(float(ds.transform.e)))
         path_domain = raster_geom.buffer(cell_run * 0.8)
+        path_domain_prepared = prep(path_domain)
         direction_offset = {
             1: (0, 1), 2: (-1, 1), 3: (-1, 0), 4: (-1, -1),
             5: (0, -1), 6: (1, -1), 7: (1, 0), 8: (1, 1),
@@ -675,8 +696,8 @@ def _main_channel_from_plen_threshold(
                     offset = direction_offset.get(int(round(direction)))
                     if offset is None or (nr + offset[0], nc + offset[1]) != (cr, cc):
                         continue
-                    x, y = ds.xy(nr, nc)
-                    if not path_domain.covers(Point(float(x), float(y))):
+                    x, y = _cell_center(ds.transform, nr, nc)
+                    if not path_domain_prepared.covers(Point(float(x), float(y))):
                         continue
                     total += capped_upstream_count((nr, nc))
                     if total >= threshold_cells:
@@ -702,7 +723,7 @@ def _main_channel_from_plen_threshold(
         outlet_raster = Point(float(outlet_xy[0]), float(outlet_xy[1]))
         coords: list[tuple[float, float]] = [(float(outlet_raster.x), float(outlet_raster.y))]
         for row, col in qualifying:
-            x, y = ds.xy(row, col)
+            x, y = _cell_center(ds.transform, row, col)
             xy = (float(x), float(y))
             if math.hypot(xy[0] - coords[-1][0], xy[1] - coords[-1][1]) > 1e-6:
                 coords.append(xy)
@@ -769,6 +790,9 @@ def _spatial_geojson_feature(
     try:
         transformer = Transformer.from_crs(source_crs, "EPSG:4326", always_xy=True)
         geometry_web = transform(transformer.transform, geometry)
+        # Nine decimal degrees is sub-millimetre precision, preserving the exact
+        # Gama construction axes while reducing noisy projection digits in JSON.
+        geometry_web = geometry_set_precision(geometry_web, 1e-9, mode="pointwise")
     except Exception:
         return None
     props = {"parameter": parameter, "value": value, "unit": unit}
@@ -901,6 +925,7 @@ def _flowpath_metrics(geom, outlet, source_crs: Any, dem_path: Path, flowdir_pat
         },
         "plen_at_outlet_km": _round(plen_at_outlet_m / 1000.0, 3),
         "flowpath_method": "Penelusuran arah aliran dan elevasi titik lintasan",
+        "_canonical_flowpath": line,
         "spatial": _flowpath_spatial_features(
             line, centroid, flow_crs,
             line_length_m=line_length, centroid_distance_m=centroid_distance,
@@ -1588,23 +1613,22 @@ def _analysis_streams_feature_collection(selected: gpd.GeoDataFrame, stream_crs:
     """
     features: list[dict[str, Any]] = []
     try:
-        transformer = Transformer.from_crs(stream_crs, "EPSG:4326", always_xy=True)
+        web_geometries = gpd.GeoSeries(
+            selected["_clipped_geometry"].array, index=selected.index, crs=stream_crs,
+        ).to_crs("EPSG:4326").array
     except Exception:
         return {"type": "FeatureCollection", "features": []}
-    for _, row in selected.iterrows():
-        geometry = row.get("_clipped_geometry")
-        if geometry is None or geometry.is_empty:
+    links = selected[link_col].to_numpy(copy=False)
+    orders = selected[order_col].to_numpy(copy=False) if order_col else np.zeros(len(selected), dtype=np.int16)
+    for geometry_web, raw_link, raw_order in zip(web_geometries, links, orders):
+        if geometry_web is None or geometry_web.is_empty:
             continue
         try:
-            geometry_web = transform(transformer.transform, geometry)
-        except Exception:
-            continue
-        try:
-            linkno = int(row.get(link_col))
+            linkno = int(raw_link)
         except (TypeError, ValueError):
             linkno = None
         try:
-            order = int(row.get(order_col, 0) or 0) if order_col else 0
+            order = int(raw_order or 0)
         except (TypeError, ValueError):
             order = 0
         props: dict[str, Any] = {"strahler_order": max(0, order)}
@@ -1612,6 +1636,40 @@ def _analysis_streams_feature_collection(selected: gpd.GeoDataFrame, stream_crs:
             props["linkno"] = linkno
         features.append({"type": "Feature", "properties": props, "geometry": mapping(geometry_web)})
     return {"type": "FeatureCollection", "features": features}
+
+
+def _clip_stream_network(selected: gpd.GeoDataFrame, target, stream_crs: Any) -> gpd.GeoDataFrame:
+    """Clip a selected network with vectorized Shapely operations.
+
+    Reaches fully covered by the DTA are reused unchanged. Only boundary-crossing
+    reaches need an expensive intersection, which is a small fraction for large DTAs.
+    """
+    if selected.empty:
+        return selected
+    geometries = np.asarray(selected.geometry.array, dtype=object)
+    # Preparing the complex DTA once makes this predicate tens of times faster
+    # for a large basin than evaluating covered_by(line, polygon) repeatedly.
+    geometry_prepare(target)
+    wholly_inside = np.asarray(geometry_covers(target, geometries), dtype=bool)
+    clipped = geometries.copy()
+    crossing = ~wholly_inside
+    if np.any(crossing):
+        clipped[crossing] = geometry_intersection(geometries[crossing], target)
+    lengths = np.asarray(geometry_length(clipped), dtype="float64")
+    output = selected.loc[lengths > 1e-6].copy()
+    kept = lengths > 1e-6
+    output["_clipped_geometry"] = gpd.GeoSeries(clipped[kept], index=output.index, crs=stream_crs)
+    output["_clipped_length_m"] = lengths[kept]
+    return output
+
+
+def _select_intersecting_streams(streams: gpd.GeoDataFrame, target) -> gpd.GeoDataFrame:
+    """Use the GeoDataFrame spatial index instead of testing every regional reach."""
+    try:
+        positions = np.asarray(streams.sindex.query(target, predicate="intersects"), dtype=np.intp)
+        return streams.iloc[positions].copy()
+    except Exception:
+        return streams.loc[streams.intersects(target)].copy()
 
 
 def analysis_streams_geojson_for_dta(geom, source_crs: Any, stream_path: Path | None) -> dict[str, Any]:
@@ -1624,12 +1682,10 @@ def analysis_streams_geojson_for_dta(geom, source_crs: Any, stream_path: Path | 
         return {"type": "FeatureCollection", "features": []}
     streams = _load_analysis_streams(stream_path)
     target = geom if str(streams.crs) == str(source_crs) else gpd.GeoSeries([geom], crs=source_crs).to_crs(streams.crs).iloc[0]
-    selected = streams.loc[streams.intersects(target)].copy()
+    selected = _select_intersecting_streams(streams, target)
     if selected.empty:
         return {"type": "FeatureCollection", "features": []}
-    selected["_clipped_geometry"] = [geometry.intersection(target) for geometry in selected.geometry]
-    selected["_clipped_length_m"] = [float(geometry.length) for geometry in selected["_clipped_geometry"]]
-    selected = selected[selected["_clipped_length_m"] > 1e-6].copy()
+    selected = _clip_stream_network(selected, target, streams.crs)
     if selected.empty:
         return {"type": "FeatureCollection", "features": []}
     link_col = "LINKNO" if "LINKNO" in selected.columns else "linkno" if "linkno" in selected.columns else None
@@ -1658,15 +1714,13 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
         streams = _load_analysis_streams(stream_path)
         target = geom if str(streams.crs) == str(source_crs) else gpd.GeoSeries([geom], crs=source_crs).to_crs(streams.crs).iloc[0]
         outlet_target = outlet if str(streams.crs) == str(source_crs) else gpd.GeoSeries([outlet], crs=source_crs).to_crs(streams.crs).iloc[0]
-        selected = streams.loc[streams.intersects(target)].copy()
+        selected = _select_intersecting_streams(streams, target)
         if selected.empty:
             empty["missing"].append("data jaringan sungai analisis tidak beririsan")
             return empty
 
-        selected["_clipped_geometry"] = [geometry.intersection(target) for geometry in selected.geometry]
-        selected["_clipped_length_m"] = [float(geometry.length) for geometry in selected["_clipped_geometry"]]
         # A reach that merely touches the DTA boundary must not contribute its full regional length.
-        selected = selected[selected["_clipped_length_m"] > 1e-6].copy()
+        selected = _clip_stream_network(selected, target, streams.crs)
         if selected.empty:
             empty["missing"].append("data jaringan sungai analisis hanya menyentuh batas DTA")
             return empty
@@ -1679,9 +1733,14 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
         ds_col = "DSLINKNO" if "DSLINKNO" in selected.columns else "downstream_linkno" if "downstream_linkno" in selected.columns else None
         order_col = "strmOrder" if "strmOrder" in selected.columns else "strm_order" if "strm_order" in selected.columns else None
         slope_col = "Slope" if "Slope" in selected.columns else "slope" if "slope" in selected.columns else None
-        analysis_streams_geojson = _analysis_streams_feature_collection(selected, streams.crs, link_col, order_col)
+        # The detailed network can contain tens of thousands of features. It is
+        # fetched lazily through /api/characteristic-streams when the map needs it,
+        # keeping the numeric analysis response small and quick to transfer.
+        analysis_streams_geojson = None
 
-        rows: dict[int, Any] = {int(row[link_col]): row for _, row in selected.iterrows()}
+        rows: dict[int, Any] = {
+            int(record[link_col]): record for record in selected.to_dict(orient="records")
+        }
         lengths = np.asarray([float(row.get("_clipped_length_m", 0.0) or 0.0) for row in rows.values()], dtype=float)
         total_length_m = float(lengths.sum())
 
@@ -1780,6 +1839,23 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
 
         reference_link_scores: dict[int, float] = {}
         reference_link_progress: dict[int, float] = {}
+        reference_segments = None
+        reference_segment_starts = None
+        reference_segment_tree = None
+        if reference_selection_used and reference_line is not None:
+            reference_coordinates = np.asarray(reference_line.coords, dtype="float64")
+            if len(reference_coordinates) >= 2:
+                segment_pairs = np.stack((reference_coordinates[:-1], reference_coordinates[1:]), axis=1)
+                segment_lengths = np.hypot(
+                    segment_pairs[:, 1, 0] - segment_pairs[:, 0, 0],
+                    segment_pairs[:, 1, 1] - segment_pairs[:, 0, 1],
+                )
+                nonempty = segment_lengths > 0
+                if np.any(nonempty):
+                    all_starts = np.concatenate(([0.0], np.cumsum(segment_lengths[:-1])))
+                    reference_segments = geometry_linestrings(segment_pairs[nonempty])
+                    reference_segment_starts = all_starts[nonempty]
+                    reference_segment_tree = STRtree(reference_segments)
 
         def reference_link_metrics(link: int) -> tuple[float, float]:
             """Return length-weighted fit and furthest station reached on canonical L.
@@ -1810,29 +1886,107 @@ def analysis_stream_metrics(geom, outlet, source_crs: Any, stream_path: Path | N
                 if length <= 0:
                     continue
                 sample_count = max(7, min(25, int(math.ceil(length / max(reference_tolerance, 1.0))) + 5))
-                distances: list[float] = []
-                stations: list[float] = []
-                for idx in range(sample_count):
-                    station = length * idx / max(1, sample_count - 1)
-                    point = part.interpolate(station)
-                    distances.append(float(reference_line.distance(point)))
-                    stations.append(float(reference_line.project(point)))
+                sample_stations = np.linspace(0.0, length, sample_count)
+                sample_points = line_interpolate_point(part, sample_stations)
+                if reference_segment_tree is not None and reference_segments is not None and reference_segment_starts is not None:
+                    nearest_pairs, nearest_distances = reference_segment_tree.query_nearest(
+                        sample_points, return_distance=True, all_matches=False,
+                    )
+                    input_positions = nearest_pairs[0]
+                    segment_positions = nearest_pairs[1]
+                    distances = np.empty(sample_count, dtype="float64")
+                    stations = np.empty(sample_count, dtype="float64")
+                    distances[input_positions] = nearest_distances
+                    local_stations = line_locate_point(
+                        reference_segments[segment_positions], sample_points[input_positions],
+                    )
+                    stations[input_positions] = reference_segment_starts[segment_positions] + local_stations
+                else:
+                    distances = np.asarray(geometry_distance(reference_line, sample_points), dtype="float64")
+                    stations = np.asarray(line_locate_point(reference_line, sample_points), dtype="float64")
                 proximity = float(np.mean([math.exp(-((distance / distance_scale) ** 2)) for distance in distances]))
                 corridor = float(np.mean([1.0 if distance <= distance_scale else 0.0 for distance in distances]))
-                station_span = max(stations) - min(stations) if stations else 0.0
+                station_span = float(np.ptp(stations)) if len(stations) else 0.0
                 progression = max(0.0, min(1.0, station_span / max(length, 1e-9)))
                 # Median distance makes one local crossing at the confluence insufficient
                 # to classify a tributary as the canonical branch.
-                median_distance = float(np.median(distances)) if distances else float("inf")
+                median_distance = float(np.median(distances)) if len(distances) else float("inf")
                 median_fit = math.exp(-((median_distance / distance_scale) ** 2)) if math.isfinite(median_distance) else 0.0
                 fit = 0.40 * proximity + 0.30 * progression + 0.20 * median_fit + 0.10 * corridor
                 weighted_fit += length * fit
-                trusted_stations = [station for station, distance in zip(stations, distances) if distance <= progress_corridor]
-                if trusted_stations:
-                    max_progress = max(max_progress, max(trusted_stations))
+                trusted_stations = stations[distances <= progress_corridor]
+                if len(trusted_stations):
+                    max_progress = max(max_progress, float(np.max(trusted_stations)))
             reference_link_scores[link] = weighted_fit
             reference_link_progress[link] = max_progress
             return weighted_fit, max_progress
+
+        def precompute_reference_link_metrics() -> None:
+            """Score all reaches with one nearest-segment query.
+
+            Large downstream basins contain around ten thousand detailed reaches.
+            Calling STRtree once per reach creates substantial Python/GEOS overhead;
+            batching preserves the same samples and scoring formula.
+            """
+            if not reference_selection_used or reference_line is None or reference_tolerance is None:
+                return
+            sample_batches: list[np.ndarray] = []
+            part_slices: list[tuple[int, float, int, int]] = []
+            offset = 0
+            for link, row in rows.items():
+                reference_link_scores[link] = 0.0
+                reference_link_progress[link] = 0.0
+                for part in _line_parts(row.get("_clipped_geometry")):
+                    length = float(part.length)
+                    if length <= 0:
+                        continue
+                    sample_count = max(7, min(25, int(math.ceil(length / max(reference_tolerance, 1.0))) + 5))
+                    samples = np.asarray(
+                        line_interpolate_point(part, np.linspace(0.0, length, sample_count)),
+                        dtype=object,
+                    )
+                    sample_batches.append(samples)
+                    part_slices.append((link, length, offset, offset + sample_count))
+                    offset += sample_count
+            if not sample_batches:
+                return
+            sample_points = np.concatenate(sample_batches)
+            if reference_segment_tree is not None and reference_segments is not None and reference_segment_starts is not None:
+                nearest_pairs, nearest_distances = reference_segment_tree.query_nearest(
+                    sample_points, return_distance=True, all_matches=False,
+                )
+                input_positions = nearest_pairs[0]
+                segment_positions = nearest_pairs[1]
+                distances = np.empty(len(sample_points), dtype="float64")
+                stations = np.empty(len(sample_points), dtype="float64")
+                distances[input_positions] = nearest_distances
+                stations[input_positions] = reference_segment_starts[segment_positions] + line_locate_point(
+                    reference_segments[segment_positions], sample_points[input_positions],
+                )
+            else:
+                distances = np.asarray(geometry_distance(reference_line, sample_points), dtype="float64")
+                stations = np.asarray(line_locate_point(reference_line, sample_points), dtype="float64")
+
+            distance_scale = max(350.0, reference_tolerance, min(1800.0, float(reference_line.length) * 0.025))
+            progress_corridor = max(600.0, distance_scale * 1.35)
+            for link, length, start, stop in part_slices:
+                part_distances = distances[start:stop]
+                part_stations = stations[start:stop]
+                proximity = float(np.mean(np.exp(-np.square(part_distances / distance_scale))))
+                corridor = float(np.mean(part_distances <= distance_scale))
+                station_span = float(np.ptp(part_stations)) if len(part_stations) else 0.0
+                progression = max(0.0, min(1.0, station_span / max(length, 1e-9)))
+                median_distance = float(np.median(part_distances)) if len(part_distances) else float("inf")
+                median_fit = math.exp(-((median_distance / distance_scale) ** 2)) if math.isfinite(median_distance) else 0.0
+                fit = 0.40 * proximity + 0.30 * progression + 0.20 * median_fit + 0.10 * corridor
+                reference_link_scores[link] += length * fit
+                trusted_stations = part_stations[part_distances <= progress_corridor]
+                if len(trusted_stations):
+                    reference_link_progress[link] = max(
+                        reference_link_progress[link], float(np.max(trusted_stations)),
+                    )
+
+        precompute_reference_link_metrics()
 
         # path, length_m, accumulated_fit, furthest_station_on_L
         reference_memo: dict[int, tuple[list[int], float, float, float]] = {}
@@ -2540,6 +2694,7 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
     metric_geom = _metric_geometry(geom, source_crs)
     perimeter_km = float(metric_geom.length / 1000.0)
     terrain = terrain_metrics(geom, outlet, source_crs, dem_path, plen_path, flowdir_path)
+    canonical_flowpath = terrain.pop("_canonical_flowpath", None)
     # Delineation remains tied to the 1 km² network. Morphometric drainage metrics
     # deliberately use the independent high-detail analysis stream data when supplied.
     drainage = analysis_stream_metrics(
@@ -2561,6 +2716,7 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
             raster_main_channel = _main_channel_from_plen_threshold(
                 geom, outlet, source_crs, flowdir_path, plen_path, dem_path,
                 threshold_km2=MAIN_CHANNEL_THRESHOLD_KM2,
+                canonical_line=canonical_flowpath,
             )
         except (OSError, ValueError, rasterio.errors.RasterioError):
             raster_main_channel = None
@@ -2574,6 +2730,9 @@ def build_hydrologic_analysis(*, geom, outlet, source_crs: Any, area_km2: float,
     if main_channel_spatial is not None:
         characteristic_spatial.setdefault("crs", "EPSG:4326")
         characteristic_spatial["MAIN_CHANNEL"] = main_channel_spatial
+    # The canonical features now live in characteristic_spatial. Avoid returning
+    # the same long coordinate arrays a second time under terrain.spatial.
+    terrain.pop("spatial", None)
     landcover = landcover_metrics(geom, source_crs, landcover_path, area_km2)
     landsystem = landsystem_metrics(geom, source_crs, landsystem_path)
     curve_number = curve_number_metrics(geom, source_crs, cn_path)

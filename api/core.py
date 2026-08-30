@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
+import pickle
 import re
 import shutil
 import sqlite3
@@ -15,6 +17,8 @@ import urllib.request
 import tempfile
 import zipfile
 import atexit
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from functools import lru_cache
@@ -109,7 +113,7 @@ LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsy
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 MAX_POINTS = 10
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 
@@ -141,6 +145,7 @@ TOPOLOGY_CACHE_SIZE = max(256, int(os.getenv("DTA_TOPOLOGY_CACHE_SIZE", "2048"))
 UPSTREAM_UNION_CACHE_SIZE = max(4, int(os.getenv("DTA_UPSTREAM_UNION_CACHE_SIZE", "24")))
 HYBRID_CACHE_SIZE = max(4, int(os.getenv("DTA_HYBRID_CACHE_SIZE", "16")))
 BOUNDARY_CACHE_SIZE = max(4, int(os.getenv("DTA_BOUNDARY_CACHE_SIZE", "16")))
+ANALYSIS_CACHE_SIZE = max(1, int(os.getenv("DTA_ANALYSIS_CACHE_SIZE", "3")))
 CACHE_PRESSURE_MB = max(256.0, float(os.getenv("DTA_CACHE_PRESSURE_MB", "1400")))
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_USER_AGENT = os.getenv(
@@ -206,6 +211,9 @@ official_by_code = {
 }
 official_geometries = list(official_basins.geometry.values)
 official_tree = STRtree(official_geometries)
+official_area_km2 = (
+    official_basins.to_crs(CRS_AREA).geometry.area.to_numpy(dtype="float64", copy=False) / 1_000_000.0
+)
 supported_basin_codes = set(link_to_official_code.values())
 official_river_geometries = list(official_rivers.geometry.values)
 official_river_tree = STRtree(official_river_geometries)
@@ -306,6 +314,7 @@ def _topology_tolerance_m2() -> float:
 # Label points are generated from the largest polygon component of each DAS only.
 # This prevents repeated labels on small offshore/island components while preserving the
 # original official boundary geometry for display and analysis.
+@lru_cache(maxsize=1)
 def _build_basin_label_fc() -> dict[str, Any]:
     features = []
     for _, row in official_basins.iterrows():
@@ -335,6 +344,17 @@ print(
     f"in {time.perf_counter() - _start_load:.2f}s; "
     f"hybrid raster={'ON' if HYBRID_RASTER_AVAILABLE else 'OFF'}"
 )
+
+
+def _prewarm_toponym_object() -> None:
+    try:
+        ensure_toponym_db_path(RUNTIME_DATA)
+    except Exception:
+        pass
+
+
+if DATA_BACKEND == "r2" and os.getenv("DTA_PREWARM_TOPONYM", "1").strip().lower() not in {"0", "false", "no"}:
+    threading.Thread(target=_prewarm_toponym_object, name="r2-toponym-prewarm", daemon=True).start()
 
 
 class OutletPoint(BaseModel):
@@ -644,7 +664,7 @@ def official_basin_at_point(point_projected: Point) -> dict[str, Any] | None:
     return {
         "code": code,
         "name": name,
-        "area_km2": area_km2_equal(row.geometry),
+        "area_km2": float(official_area_km2[int(idxs[0])]),
         "supported": supported,
         "karst": name in KARST_BASIN_NAMES,
         "direct_official": (not supported) and name not in KARST_BASIN_NAMES,
@@ -811,6 +831,10 @@ def _constrain_network_cached(
 _CACHE_TRIM_LOCK = threading.Lock()
 _CACHE_TRIM_COUNT = 0
 _LAST_CACHE_TRIM = 0.0
+_ANALYSIS_CACHE_LOCK = threading.Lock()
+_ANALYSIS_CACHE: OrderedDict[tuple[Any, ...], bytes] = OrderedDict()
+_ANALYSIS_CACHE_HITS = 0
+_ANALYSIS_CACHE_MISSES = 0
 
 
 def _rss_memory_mb() -> float:
@@ -843,6 +867,8 @@ def _trim_geometry_caches_if_needed() -> bool:
         _upstream_union_excluding_outlet.cache_clear()
         _hybrid_watershed_cached.cache_clear()
         _constrain_network_cached.cache_clear()
+        with _ANALYSIS_CACHE_LOCK:
+            _ANALYSIS_CACHE.clear()
         _CACHE_TRIM_COUNT += 1
         _LAST_CACHE_TRIM = time.monotonic()
         return True
@@ -859,16 +885,41 @@ def _analysis_data_paths() -> dict[str, Path | None]:
                 "streams_analysis": ANALYSIS_STREAM_PATH, "landsystem": LANDSYSTEM_PATH}
     if DATA_BACKEND != "r2":
         return defaults
-    resolved: dict[str, Path | None] = {}
-    for name, fallback in defaults.items():
-        if name not in RUNTIME_DATA.lazy_objects:
-            resolved[name] = fallback
-            continue
+
+    resolved: dict[str, Path | None] = {
+        name: fallback for name, fallback in defaults.items() if name not in RUNTIME_DATA.lazy_objects
+    }
+    pending = {
+        name: fallback for name, fallback in defaults.items() if name in RUNTIME_DATA.lazy_objects
+    }
+
+    def resolve(name: str, fallback: Path | None):
         try:
-            resolved[name] = ensure_runtime_object(RUNTIME_DATA, name)
+            return ensure_runtime_object(RUNTIME_DATA, name)
         except Exception:
-            resolved[name] = fallback
+            return fallback
+
+    # These objects are independent. Parallel transfer removes serial R2 round
+    # trips from the first Characteristic request while keeping CPU work bounded.
+    workers = max(1, min(int(os.getenv("R2_DOWNLOAD_WORKERS", "4")), len(pending))) if pending else 1
+    if workers == 1:
+        resolved.update({name: resolve(name, fallback) for name, fallback in pending.items()})
+    else:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="analysis-r2") as pool:
+            futures = {pool.submit(resolve, name, fallback): name for name, fallback in pending.items()}
+            for future in as_completed(futures):
+                resolved[futures[future]] = future.result()
     return resolved
+
+
+def _analysis_stream_data_path() -> Path | None:
+    """Resolve only the stream layer used by the lightweight restore endpoint."""
+    if DATA_BACKEND != "r2" or "streams_analysis" not in RUNTIME_DATA.lazy_objects:
+        return ANALYSIS_STREAM_PATH
+    try:
+        return ensure_runtime_object(RUNTIME_DATA, "streams_analysis")
+    except Exception:
+        return ANALYSIS_STREAM_PATH
 
 
 def build_point_result(
@@ -1119,9 +1170,26 @@ def _compute_hydrologic_analysis_for_result(result: dict[str, Any], *, decimal_s
     Delineation intentionally does not call this function. It is invoked only by the
     Karakteristik/HSS flows or when an analysis report is explicitly requested.
     """
+    global _ANALYSIS_CACHE_HITS, _ANALYSIS_CACHE_MISSES
     geom = _result_native_geometry(result)
     if geom is None or geom.is_empty:
         raise ValueError("Geometri DTA tidak tersedia untuk analisis karakteristik.")
+    geometry_digest = hashlib.blake2b(geom.wkb, digest_size=16).digest()
+    cache_key = (
+        ACTIVE_DATASET_ID,
+        geometry_digest,
+        result.get("outlet_linkno"),
+        round(float(result["snapped_lon"]), 8),
+        round(float(result["snapped_lat"]), 8),
+        decimal_separator,
+    )
+    with _ANALYSIS_CACHE_LOCK:
+        cached = _ANALYSIS_CACHE.get(cache_key)
+        if cached is not None:
+            _ANALYSIS_CACHE.move_to_end(cache_key)
+            _ANALYSIS_CACHE_HITS += 1
+            return pickle.loads(cached)
+        _ANALYSIS_CACHE_MISSES += 1
     snapped = Point(*to_data.transform(float(result["snapped_lon"]), float(result["snapped_lat"])))
     outlet_linkno = result.get("outlet_linkno")
     upstream_ids = set(collect_upstream_ids(int(outlet_linkno))) if outlet_linkno is not None else set()
@@ -1139,7 +1207,13 @@ def _compute_hydrologic_analysis_for_result(result: dict[str, Any], *, decimal_s
         landcover_path=analysis_paths["landcover"], cn_path=analysis_paths["cn2"],
         analysis_stream_path=analysis_paths["streams_analysis"], landsystem_path=analysis_paths["landsystem"],
     )
-    return refresh_characteristic_narratives(analysis, decimal_separator)
+    analysis = refresh_characteristic_narratives(analysis, decimal_separator)
+    with _ANALYSIS_CACHE_LOCK:
+        _ANALYSIS_CACHE[cache_key] = pickle.dumps(analysis, protocol=pickle.HIGHEST_PROTOCOL)
+        _ANALYSIS_CACHE.move_to_end(cache_key)
+        while len(_ANALYSIS_CACHE) > ANALYSIS_CACHE_SIZE:
+            _ANALYSIS_CACHE.popitem(last=False)
+    return analysis
 
 
 def _refresh_reconciled_hydrologic_analysis(result: dict[str, Any], upstream_ids: set[int]) -> None:
@@ -1202,7 +1276,11 @@ def _branch_partition_score(a, b, raw_a, raw_b, base_a, base_b) -> float:
     return raw_cost * 2.0 + display_cost
 
 
-def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: list[set[int]]) -> list[dict[str, Any]]:
+def reconcile_final_geometries(
+    results: list[dict[str, Any]],
+    upstream_sets: list[set[int]],
+    cancel_check=None,
+) -> list[dict[str, Any]]:
     """Reconcile independently smoothed DTA while preserving smooth display geometry.
 
     RAW D8 polygons remain the topology authority, but are never substituted into the
@@ -1218,6 +1296,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
     - Different tributary branches stay disjoint by removing smoothing overlap from
       the lower-cost side; no RAW polygon fallback is allowed.
     """
+    if cancel_check:
+        cancel_check()
     if len(results) < 2:
         return results
 
@@ -1251,6 +1331,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
     same_flow_pairs.sort(key=lambda pair: (-raw_area(pair[1]), -raw_area(pair[0]), results[pair[1]]["point_id"]))
 
     for ui, di in same_flow_pairs:
+        if cancel_check:
+            cancel_check()
         aligned, meta = align_expected_shared_boundary(
             finals[ui], finals[di], raws[ui], raws[di],
             snap_tolerance_m=snap_tol, raw_contact_tolerance_m=raw_contact_tol, relationship="inside",
@@ -1264,6 +1346,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
     # Enforce strict nesting by reducing only the upstream polygon.  Expanding the
     # downstream polygon with union(upstream) was the source of saw-tooth fragments.
     for _ in range(max(1, len(results))):
+        if cancel_check:
+            cancel_check()
         changed = False
         for ui, di in same_flow_pairs:
             outside = _geometry_outside_area(finals[ui], finals[di], epsilon_m=0.25)
@@ -1286,6 +1370,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
     # (more stable context for PAEK), then remove any residual smoothing overlap using
     # whichever one-sided cut best preserves both RAW and smoothed areas.
     for ai, bi in branch_pairs:
+        if cancel_check:
+            cancel_check()
         if raw_area(ai) >= raw_area(bi):
             ref_i, move_i = ai, bi
         else:
@@ -1336,6 +1422,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
     # (intersection/difference only), so they cannot recreate the old RAW staircase.
     numeric_eps_m2 = 0.05
     for _ in range(max(2, len(results) * 2)):
+        if cancel_check:
+            cancel_check()
         changed = False
 
         # Same-flow cumulative DTA must be strictly nested.
@@ -1395,6 +1483,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
 
     pair_qa: list[dict[str, Any]] = []
     for rel in net.get("pair_relations", []):
+        if cancel_check:
+            cancel_check()
         relation = rel.get("relation")
         qa = {
             "point_a": rel.get("point_a"),
@@ -1421,6 +1511,8 @@ def reconcile_final_geometries(results: list[dict[str, Any]], upstream_sets: lis
         pair_qa.append(qa)
 
     for i, result in enumerate(results):
+        if cancel_check:
+            cancel_check()
         geom = clean_dta_polygon(finals[i])
         raw = raws[i]
         result["dta_geojson"] = mapping(transform(to_web.transform, geom))
@@ -1483,7 +1575,10 @@ def apply_incremental_geometries(results: list[dict[str, Any]], upstream_sets: l
 def _normalize_search_text(value: str) -> str:
     value = unicodedata.normalize("NFKD", str(value or "").strip().lower())
     value = "".join(ch for ch in value if not unicodedata.combining(ch))
-    return re.sub(r"\\s+", " ", value).strip()
+    return re.sub(r"\s+", " ", value).strip()
+
+
+_TOPONYM_CONNECTIONS = threading.local()
 
 
 def _toponym_connection() -> sqlite3.Connection | None:
@@ -1493,8 +1588,15 @@ def _toponym_connection() -> sqlite3.Connection | None:
         return None
     if not path.exists():
         return None
+    cached = getattr(_TOPONYM_CONNECTIONS, "connection", None)
+    cached_path = getattr(_TOPONYM_CONNECTIONS, "path", None)
+    if cached is not None and cached_path == str(path):
+        return cached
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only=ON")
+    _TOPONYM_CONNECTIONS.connection = conn
+    _TOPONYM_CONNECTIONS.path = str(path)
     return conn
 
 
@@ -1514,7 +1616,6 @@ def _search_local_toponyms_cached(query_text: str) -> tuple[dict[str, Any], ...]
         return ()
     qn = _normalize_search_text(query_text)
     if len(qn) < 2:
-        conn.close()
         return ()
     rows = conn.execute(
         """
@@ -1532,7 +1633,6 @@ def _search_local_toponyms_cached(query_text: str) -> tuple[dict[str, Any], ...]
         """,
         (f"%{qn}%", qn, f"{qn}%"),
     ).fetchall()
-    conn.close()
     return tuple(
         {
             "display_name": f"{row['name']} · {row['category']}" if row["category"] else row["name"],
@@ -1572,8 +1672,6 @@ def _nearby_settlement_candidates_cached(lon_key: float, lat_key: float) -> tupl
         """,
         (lon - lon_delta, lon + lon_delta, lat - lat_delta, lat + lat_delta),
     ).fetchall()
-    conn.close()
-
     candidates: list[dict[str, Any]] = []
     for row in rows:
         category = str(row["category"] or "").strip()
@@ -1869,6 +1967,12 @@ def info():
         "upstream_union_cache": _upstream_union_excluding_outlet.cache_info()._asdict(),
         "hybrid_cache": _hybrid_watershed_cached.cache_info()._asdict(),
         "boundary_geometry_cache": _constrain_network_cached.cache_info()._asdict(),
+        "analysis_cache": {
+            "size": len(_ANALYSIS_CACHE),
+            "max_size": ANALYSIS_CACHE_SIZE,
+            "hits": _ANALYSIS_CACHE_HITS,
+            "misses": _ANALYSIS_CACHE_MISSES,
+        },
     }
     return {
         "app_version": APP_VERSION,
@@ -2094,7 +2198,11 @@ def delineate_multi(req: MultiDelineateRequest, request: Request):
                 results.append(result)
                 upstream_sets.append(upstream)
             LATEST_REQUESTS.ensure_current(token)
-            reconcile_final_geometries(results, upstream_sets)
+            reconcile_final_geometries(
+                results,
+                upstream_sets,
+                cancel_check=lambda: LATEST_REQUESTS.ensure_current(token),
+            )
             apply_incremental_geometries(results, upstream_sets)
             LATEST_REQUESTS.ensure_current(token)
             return {
@@ -2128,8 +2236,13 @@ def reconcile_results(req: CachedResultsRequest, request: Request):
                 link = result.get("outlet_linkno")
                 upstream_sets.append(set(collect_upstream_ids(int(link))) if link is not None else set())
             LATEST_REQUESTS.ensure_current(token)
-            reconcile_final_geometries(results, upstream_sets)
+            reconcile_final_geometries(
+                results,
+                upstream_sets,
+                cancel_check=lambda: LATEST_REQUESTS.ensure_current(token),
+            )
             apply_incremental_geometries(results, upstream_sets)
+            LATEST_REQUESTS.ensure_current(token)
             return {
                 "results": results,
                 "network_analysis": analyze_point_network(results, upstream_sets),
@@ -2384,22 +2497,29 @@ def _write_vector_by_format(gdf: gpd.GeoDataFrame, path: Path, fmt: str, name: s
 @app.post("/api/characteristics")
 def characteristics_analysis(req: CharacteristicAnalysisRequest):
     try:
-        return _compute_hydrologic_analysis_for_result(dict(req.point_result), decimal_separator=req.decimal_separator)
+        with _heavy_job_context():
+            _trim_geometry_caches_if_needed()
+            return _compute_hydrologic_analysis_for_result(dict(req.point_result), decimal_separator=req.decimal_separator)
     except (ValueError, TypeError, KeyError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
 
 
 @app.post("/api/characteristic-streams")
 def characteristic_streams(req: CharacteristicAnalysisRequest):
     """Restore only the detailed Strahler network without recomputing all characteristics."""
     try:
-        result = dict(req.point_result)
-        geom = _result_native_geometry(result)
-        if geom is None or geom.is_empty:
-            raise ValueError("Geometri DTA tidak tersedia untuk jaringan karakteristik.")
-        return analysis_streams_geojson_for_dta(geom, streams.crs, ANALYSIS_STREAM_PATH)
+        with _heavy_job_context():
+            result = dict(req.point_result)
+            geom = _result_native_geometry(result)
+            if geom is None or geom.is_empty:
+                raise ValueError("Geometri DTA tidak tersedia untuk jaringan karakteristik.")
+            return analysis_streams_geojson_for_dta(geom, streams.crs, _analysis_stream_data_path())
     except (ValueError, TypeError, KeyError, OSError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
 
 
 @app.post("/api/hss")

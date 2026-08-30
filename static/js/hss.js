@@ -38,6 +38,32 @@
   let currentPointId = null;
   let currentChartMethod = 'comparison';
   let chartInstance = null;
+  let chartRuntimePromise = null;
+
+  function loadRuntimeScript(src,ready){
+    if(ready())return Promise.resolve();
+    return new Promise((resolve,reject)=>{
+      const existing=document.querySelector(`script[data-hss-runtime="${src}"]`);
+      if(existing){existing.addEventListener('load',resolve,{once:true});existing.addEventListener('error',reject,{once:true});return;}
+      const script=document.createElement('script');
+      script.src=src;script.async=true;script.crossOrigin='anonymous';script.dataset.hssRuntime=src;
+      script.addEventListener('load',resolve,{once:true});script.addEventListener('error',()=>{script.remove();reject(new Error(`Gagal memuat ${src}`));},{once:true});
+      document.head.appendChild(script);
+    });
+  }
+
+  function ensureChartRuntime(){
+    if(window.Chart&&window.Hammer&&window.Chart.registry?.plugins?.get?.('zoom'))return Promise.resolve();
+    if(chartRuntimePromise)return chartRuntimePromise;
+    chartRuntimePromise=Promise.all([
+      loadRuntimeScript('https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js',()=>Boolean(window.Chart)),
+      loadRuntimeScript('https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js',()=>Boolean(window.Hammer)),
+    ]).then(()=>loadRuntimeScript(
+      'https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js',
+      ()=>Boolean(window.Chart?.registry?.plugins?.get?.('zoom')),
+    )).catch(error=>{chartRuntimePromise=null;throw error;});
+    return chartRuntimePromise;
+  }
 
   const cloneDefaults = () => Object.fromEntries(METHOD_DEFS.map(method => [
     method.id,
@@ -265,7 +291,9 @@
     // sub-DTA kecil ke DTA yang lebih besar. DTA aktif baru dipakai bila semuanya
     // sudah selesai dihitung.
     const pointId=renderDtaSelector(preferredHssPointOnOpen());if(!pointId){showAppToast('Belum ada DTA yang dapat dianalisis.');return;}
-    openMapModal($('hssAnalysisModal'));refreshIcons($('hssAnalysisModal'));await loadPointForHss(pointId);
+    openMapModal($('hssAnalysisModal'));refreshIcons($('hssAnalysisModal'));
+    ensureChartRuntime().then(()=>{if(currentPointId===pointId&&!$('hssAnalysisModal')?.classList.contains('hidden'))renderHssResults(pointId);}).catch(()=>showAppToast('Grafik interaktif belum dapat dimuat. Data HSS tetap tersedia.'));
+    await loadPointForHss(pointId);
   }
 
   async function calculateCurrentHss(){
@@ -309,12 +337,14 @@
   function renderChart(payload,methodId='comparison',normalized=false){
     const canvas=$('hssChart'),details=$('hssChartDetails');if(!canvas)return;const series=chartSeries(payload,methodId,normalized);if(chartInstance){chartInstance.destroy();chartInstance=null;}
     if(!series.length){canvas.parentElement.innerHTML='<div class="hss-empty-chart">Kurva HSS belum tersedia.</div>';if(details)details.innerHTML='';return;}
-    if(!window.Chart){canvas.parentElement.innerHTML='<div class="hss-empty-chart">Chart.js belum termuat. Muat ulang halaman untuk menampilkan grafik interaktif.</div>';return;}
+    if(!window.Chart){canvas.parentElement.innerHTML='<div class="hss-empty-chart">Menyiapkan grafik interaktif…</div>';return;}
     chartInstance=new Chart(canvas,{type:'line',data:{datasets:series.map(item=>({label:item.label,data:item.points,borderColor:item.color,backgroundColor:item.color,borderWidth:2.2,pointRadius:0,pointHoverRadius:4,pointHitRadius:9,tension:.12,fill:false}))},options:{responsive:true,maintainAspectRatio:false,animation:{duration:180},normalized:true,interaction:{mode:'nearest',intersect:false,axis:'xy'},plugins:{legend:{display:methodId==='comparison',position:'bottom',labels:{usePointStyle:true,boxWidth:8,boxHeight:8,font:{size:12}}},tooltip:{enabled:true,callbacks:{title:(items)=>items.length?`Waktu: ${hssNumber(items[0].parsed.x,3)} jam`:'',label:(ctx)=>`${ctx.dataset.label}: ${hssNumber(ctx.parsed.y,4)} m³/s`}},zoom:{limits:{x:{min:0,minRange:.05}},pan:{enabled:true,mode:'x'},zoom:{wheel:{enabled:true,speed:.08},pinch:{enabled:true},drag:{enabled:false},mode:'x'}}},scales:{x:{type:'linear',title:{display:true,text:'Waktu (jam)',font:{weight:'600'}},min:0,grid:{color:cssColor('--border-color','#e0e5ed')}},y:{type:'linear',title:{display:true,text:'Debit (m³/s)',font:{weight:'600'}},beginAtZero:true,grid:{color:cssColor('--border-color','#e0e5ed')}}}}});
     if(details){if(methodId==='comparison')details.innerHTML='<span>Tooltip menampilkan waktu dan debit setiap kurva. Gunakan tab metode untuk melihat parameter individual.</span>';else{const method=series[0].method,paramText=Object.entries(method.parameters||{}).map(([key,value])=>`${key}=${hssNumber(value,3)}`).join(' · '),tpLabel=method.method==='gama1'?'TR = Tp':'Tp';details.innerHTML=`<div><b>${tpLabel}</b><span>${hssNumber(method.Tp_hours,3)} jam</span></div><div><b>Qp</b><span>${hssNumber(normalized?method.Qp_m3s*method.normalization_factor:method.Qp_m3s,4)} m³/s</span></div><div><b>Tb</b><span>${hssNumber(method.Tb_hours,3)} jam</span></div><div><b>Volume</b><span>${normalized?'1,000 mm':`${hssNumber(method.equivalent_runoff_mm,4)} mm`}</span></div>${paramText?`<p>${escapeHtml(paramText)}</p>`:''}`;}}
   }
 
   $('hssAnalysisBtn')?.addEventListener('click',openHssAnalysis);
+  $('hssAnalysisBtn')?.addEventListener('pointerenter',()=>ensureChartRuntime().catch(()=>{}),{passive:true,once:true});
+  $('hssAnalysisBtn')?.addEventListener('focus',()=>ensureChartRuntime().catch(()=>{}),{passive:true,once:true});
   $('closeHssAnalysisModal')?.addEventListener('click',()=>{if(chartInstance){chartInstance.destroy();chartInstance=null;}closeMapModal($('hssAnalysisModal'));});
   $('hssDtaSelect')?.addEventListener('change',async event=>{currentPointId=event.currentTarget.value;currentChartMethod='comparison';await loadPointForHss(currentPointId);refreshIcons($('hssAnalysisModal'));});
   $('hssGlobalTr')?.addEventListener('input',event=>{if(!currentPointId)return;const value=Number(event.currentTarget.value);if(Number.isFinite(value)){hssTr.set(currentPointId,value);markDirty(currentPointId,'Tr berubah. Hitung ulang HSS agar metode yang memerlukan durasi hujan efektif menggunakan nilai terbaru.');}});

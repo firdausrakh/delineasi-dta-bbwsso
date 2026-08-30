@@ -546,6 +546,9 @@ async function ensureHydrologicAnalysis(id){
     result.hydrologic_analysis=payload;
     window.setCharacteristicSpatialForPoint?.(id,payload.characteristic_spatial);
     window.setCharacteristicAnalysisStreamsForPoint?.(id,payload.analysis_streams_geojson);
+    // The detailed stream network is intentionally decoupled from the numeric
+    // response so very large basins can open immediately. Load the layer in background.
+    ensureCharacteristicAnalysisStreams(id).catch(()=>{});
     refreshAnalysisDownloadOption();
     persistState();
     return payload;
@@ -872,6 +875,12 @@ async function warmBackend({force=false}={}){
   const now=Date.now();
   if(!force&&backendWarmPromise)return backendWarmPromise;
   if(!force&&now-backendLastWarmAt<BACKEND_WARM_TTL_MS)return true;
+  if(!force&&window.DTA_CORE_WARM_PROMISE){
+    backendWarmPromise=window.DTA_CORE_WARM_PROMISE
+      .then(ok=>{if(ok)backendLastWarmAt=Date.now();return ok;})
+      .finally(()=>{window.DTA_CORE_WARM_PROMISE=null;backendWarmPromise=null;});
+    return backendWarmPromise;
+  }
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),12_000);
   backendWarmPromise=fetch('/api/health',{cache:'no-store',signal:controller.signal})
@@ -2307,7 +2316,6 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
   // Show the clicked candidate immediately. Validation/snapping may still need
   // a cold backend, but the user should never wonder whether the click worked.
   renderSnapPreview({lon,lat},null);
-  setStatus(isMove?'Memeriksa lokasi baru…':'Memeriksa lokasi titik…','busy');
   warmBackend().catch(()=>{});
 
   let check=null;
@@ -2475,13 +2483,14 @@ map.on('style.load',addOperationalLayers);
 map.on('load',async()=>{
   setSidebarCollapsed(sidebarCollapsed,{save:false});setHeaderVisible(false);applyBasemapVisibility();renderRequestedPoints();renderPointCards();refreshIcons();
 
-  // Start warming immediately, but never block the visible map while the GIS
-  // engine is cold. /api/info follows the same lazy initialization path.
-  warmBackend().catch(()=>{});
+  // /api/info itself warms the same lazy GIS core. Avoid issuing /api/health in
+  // parallel: both requests otherwise wait for the same cold-start lock.
   try{
+    if(window.DTA_CORE_WARM_PROMISE)await window.DTA_CORE_WARM_PROMISE;
     const response=await fetch('/api/info',{cache:'no-store'});
     if(!response.ok)throw new Error('info unavailable');
     info=await response.json();
+    backendLastWarmAt=Date.now();
     studyBounds=[[info.bounds_wgs84[0],info.bounds_wgs84[1]],[info.bounds_wgs84[2],info.bounds_wgs84[3]]];
     if(!restoredState.camera)map.fitBounds(studyBounds,{padding:40,maxZoom:8});
   }catch(_){setStatus('Peta siap. Engine analisis sedang dipanaskan…','neutral');}

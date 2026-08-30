@@ -14,9 +14,12 @@ from heapq import heappop, heappush
 from typing import Iterable
 
 import numpy as np
-from shapely import make_valid, union_all
+from shapely import distance as geometry_distance
+from shapely import linestrings as geometry_linestrings
+from shapely import make_valid, points as geometry_points, union_all
 from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import substring
+from shapely.strtree import STRtree
 
 
 @dataclass
@@ -680,11 +683,30 @@ def _cyclic_contact_runs(component: Polygon, official_boundary, match_tolerance_
         return [], sample_step
     verts = dense[:-1]
     n = len(verts)
-    status: list[bool] = []
-    for i in range(n):
-        a = verts[i]; b = verts[(i + 1) % n]
-        mid = Point((a[0] + b[0]) * 0.5, (a[1] + b[1]) * 0.5)
-        status.append(mid.distance(official_boundary) <= float(match_tolerance_m))
+    # Shapely 2 ufuncs cross the Python/GEOS boundary once for the full ring.
+    # Large downstream DTAs can have tens of thousands of classified segments;
+    # constructing and measuring every Point separately dominated cold requests.
+    vertices = np.asarray(verts, dtype="float64")
+    next_vertices = np.roll(vertices, -1, axis=0)
+    midpoints = geometry_points((vertices[:, 0] + next_vertices[:, 0]) * 0.5,
+                                (vertices[:, 1] + next_vertices[:, 1]) * 0.5)
+    # A direct point-to-MultiLine distance scans a very large official boundary
+    # repeatedly. Index its individual segments once, then query every midpoint.
+    segment_pairs = []
+    for part in _line_parts(official_boundary):
+        coordinates = np.asarray(part.coords, dtype="float64")
+        if len(coordinates) >= 2:
+            segment_pairs.append(np.stack((coordinates[:-1], coordinates[1:]), axis=1))
+    if segment_pairs:
+        boundary_segments = geometry_linestrings(np.concatenate(segment_pairs, axis=0))
+        nearest_pairs, nearest_distances = STRtree(boundary_segments).query_nearest(
+            midpoints, return_distance=True, all_matches=False,
+        )
+        midpoint_distances = np.empty(n, dtype="float64")
+        midpoint_distances[nearest_pairs[0]] = nearest_distances
+    else:
+        midpoint_distances = np.asarray(geometry_distance(midpoints, official_boundary), dtype="float64")
+    status = (midpoint_distances <= float(match_tolerance_m)).tolist()
     if all(x == status[0] for x in status):
         return [{"matched": status[0], "line": LineString(dense)}], sample_step
 
@@ -714,7 +736,10 @@ def _cyclic_contact_runs(component: Polygon, official_boundary, match_tolerance_
             continue
         coords = list(run["line"].coords)
         stride = max(1, int(np.ceil(len(coords) / 64)))
-        max_dist = max((Point(xy).distance(official_boundary) for xy in coords[::stride]), default=float("inf"))
+        sampled = np.asarray(coords[::stride], dtype="float64")
+        max_dist = float(np.max(geometry_distance(
+            geometry_points(sampled[:, 0], sampled[:, 1]), official_boundary,
+        ))) if len(sampled) else float("inf")
         if max_dist <= contact_limit:
             run["matched"] = True
 
@@ -748,8 +773,11 @@ def _directed_vertex_distance_stats(source: LineString, target: LineString, max_
     sampled = coords[::stride]
     if sampled[-1] != coords[-1]:
         sampled.append(coords[-1])
-    distances = [Point(xy).distance(target) for xy in sampled]
-    return float(max(distances, default=float("inf"))), float(np.mean(distances)) if distances else float("inf")
+    coordinates = np.asarray(sampled, dtype="float64")
+    distances = np.asarray(geometry_distance(
+        geometry_points(coordinates[:, 0], coordinates[:, 1]), target,
+    ), dtype="float64")
+    return float(np.max(distances, initial=float("-inf"))), float(np.mean(distances)) if len(distances) else float("inf")
 
 
 def _best_official_arc(raw_segment: LineString, official_geom, match_tolerance_m: float, sample_step_m: float):

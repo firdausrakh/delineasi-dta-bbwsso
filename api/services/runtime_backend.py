@@ -9,6 +9,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -109,7 +110,9 @@ def _r2_endpoint_url() -> str:
     return f"https://{values['R2_ACCOUNT_ID']}.r2.cloudflarestorage.com"
 
 
+@lru_cache(maxsize=1)
 def _r2_client():
+    """Reuse the thread-safe S3 client and its HTTP/TLS connection pool."""
     values = _required_env("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
     try:
         import boto3

@@ -16,13 +16,14 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
-SHELL_VERSION = "1.3.0"
+SHELL_VERSION = "1.3.1"
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -48,8 +49,25 @@ def _load_project_dotenv_lightweight() -> None:
 _load_project_dotenv_lightweight()
 
 shell = FastAPI(title="Delineasi DTA Web Shell", version=SHELL_VERSION)
+shell.add_middleware(GZipMiddleware, minimum_size=1000)
 shell.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+@shell.middleware("http")
+async def shell_cache_headers(request: Request, call_next):
+    """Cache and compress the lightweight first-paint path too.
+
+    Root/static requests intentionally never enter ``api.core``, so the cache
+    middleware declared there cannot affect the assets that matter most to the
+    initial render.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif request.url.path == "/":
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
 
 
 @shell.get("/")

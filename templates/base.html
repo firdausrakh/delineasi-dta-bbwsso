@@ -26,6 +26,14 @@
     import { injectSpeedInsights } from '/static/js/vendor/speed-insights.mjs';
     injectSpeedInsights();
   </script>
+  <!-- Vercel Web Analytics -->
+  <script>
+    window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+  </script>
+  <script type="module">
+    import { inject } from '/static/js/vendor/analytics.mjs';
+    inject();
+  </script>
 </head>
 <body class="{% block body_class %}{% endblock %}">
   <header id="appHeader" class="app-header spatial-header is-hidden">

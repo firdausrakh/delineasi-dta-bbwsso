@@ -22,7 +22,6 @@ const KARST_MESSAGE = 'Delineasi berbasis topografi permukaan tidak valid untuk 
 const DTA_CONFIG = window.DTA_CONFIG || {};
 const MAP_ASSETS_BASE = String(DTA_CONFIG.mapAssetsBase || '').replace(/\/$/,'');
 const MAP_ASSETS_VERSION = String(DTA_CONFIG.mapAssetsVersion || '');
-const MAP_ASSETS_PROXY = DTA_CONFIG.mapAssetsProxy === true;
 const MAP_ASSET_FILES = {
   'official-basins':'official_basins.geojson',
   'official-rivers-z6-8':'official_rivers_z6_8.geojson',
@@ -883,7 +882,7 @@ function appendQuery(url,key,value){
   const join=url.includes('?')?'&':'?';
   return `${url}${join}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
-function mapAssetUrl(key,{retryToken=null,proxy=MAP_ASSETS_PROXY&&Boolean(MAP_ASSETS_BASE)}={}){
+function mapAssetUrl(key,{retryToken=null,proxy=Boolean(MAP_ASSETS_BASE)}={}){
   const filename=MAP_ASSET_FILES[key];
   let url=(MAP_ASSETS_BASE&&filename&&!proxy)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
   if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
@@ -936,10 +935,10 @@ function retryOperationalSource(sourceId,{force=false}={}){
     const key=operationalAssetKeyForSource(sourceId);
     if(!key)return;
     mapAssetRetryAttempts.set(sourceId,attempt+1);
-    // Production retries stay on the same-origin Vercel endpoint. Local
-    // development remains direct-to-R2 because its Python server may not have
-    // access to the public r2.dev hostname.
-    const proxy=MAP_ASSETS_PROXY&&Boolean(MAP_ASSETS_BASE);
+    // Route production map assets through the same-origin Vercel endpoint.
+    // This makes the browser independent of R2 CORS behavior and of a stale
+    // cross-origin CDN entry; Vercel/R2 handles the upstream request instead.
+    const proxy=Boolean(MAP_ASSETS_BASE);
     try{source.setData(mapAssetUrl(key,{retryToken:`${attempt+1}-${Date.now()}`,proxy}));}catch(_){}
     setTimeout(()=>retryOperationalSource(sourceId),Math.min(2200,700+(attempt*450)));
   },delay);

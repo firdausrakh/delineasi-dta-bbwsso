@@ -64,7 +64,7 @@ class ShellPerformanceTests(unittest.TestCase):
         self.assertEqual(headers["cache-control"], "no-cache")
         html = body.decode("utf-8")
         self.assertIn("window.DTA_CORE_WARM_PROMISE=fetch('/api/health'", html)
-        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.2-payload"></script>', html)
+        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.3-point-name-limit"></script>', html)
         self.assertNotIn('<script src="https://cdn.jsdelivr.net/npm/chart.js', html)
 
     def test_location_check_has_no_blocking_status_message(self):
@@ -74,6 +74,14 @@ class ShellPerformanceTests(unittest.TestCase):
         self.assertNotIn("Memeriksa lokasi baru", source)
         self.assertIn("readApiJsonResponse", source)
         self.assertIn("delete copy.hydrologic_analysis", source)
+
+    def test_point_name_limit_warning_is_shown_only_at_maximum(self):
+        source = (Path(__file__).parents[1] / "static" / "js" / "spatial.js").read_text(encoding="utf-8")
+
+        self.assertIn("input.value.length>=POINT_NAME_MAX_LENGTH", source)
+        self.assertIn("setPointNameLimitWarning(input,input.value.length>=POINT_NAME_MAX_LENGTH)", source)
+        self.assertIn("maxlength=\"25\"", source)
+        self.assertIn("Maksimal 25 karakter.", source)
 
 
 if __name__ == "__main__":

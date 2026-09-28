@@ -235,19 +235,20 @@ function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;',
 function clampPointName(value){
   return String(value??'').trim().slice(0,POINT_NAME_MAX_LENGTH);
 }
-function showPointNameLimitWarning(input){
+function setPointNameLimitWarning(input,visible){
   const warning=input?.closest('label')?.querySelector('.point-name-limit-warning');
-  if(warning){
-    warning.classList.remove('hidden');
-    clearTimeout(warning._hideTimer);
-    warning._hideTimer=setTimeout(()=>warning.classList.add('hidden'),2200);
-  }
+  if(warning)warning.classList.toggle('hidden',!visible);
+}
+function showPointNameLimitWarning(input){
+  setPointNameLimitWarning(input,true);
   showAppToast(`Nama titik maksimal ${POINT_NAME_MAX_LENGTH} karakter.`);
 }
 function bindPointNameLimit(input){
   if(!input||input.dataset.pointNameLimitBound==='1')return;
   input.dataset.pointNameLimitBound='1';
   input.maxLength=POINT_NAME_MAX_LENGTH;
+  input.addEventListener('input',()=>setPointNameLimitWarning(input,input.value.length>=POINT_NAME_MAX_LENGTH));
+  setPointNameLimitWarning(input,input.value.length>=POINT_NAME_MAX_LENGTH);
   input.addEventListener('beforeinput',event=>{
     const type=String(event.inputType||'');
     if(!type.startsWith('insert'))return;

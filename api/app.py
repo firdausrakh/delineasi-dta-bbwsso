@@ -12,32 +12,18 @@ import importlib
 import os
 import threading
 import time
-import urllib.parse
-import urllib.request
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
-SHELL_VERSION = "1.3.3"
-
-MAP_ASSET_FILES = {
-    "official-basins": "official_basins.geojson",
-    "official-rivers-z6-8": "official_rivers_z6_8.geojson",
-    "official-rivers-z8-10": "official_rivers_z8_10.geojson",
-    "official-rivers-z10-11": "official_rivers_z10_11.geojson",
-    "official-rivers-z11-12": "official_rivers_z11_12.geojson",
-    "official-rivers-z12-14": "official_rivers_z12_14.geojson",
-    "official-rivers": "official_rivers.geojson",
-}
+SHELL_VERSION = "1.3.2"
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -61,24 +47,6 @@ def _load_project_dotenv_lightweight() -> None:
 
 
 _load_project_dotenv_lightweight()
-
-
-@lru_cache(maxsize=1)
-def _map_asset_client():
-    """Small R2 client that does not import the hydrologic runtime."""
-    import boto3
-    from botocore.config import Config
-
-    account = os.getenv("R2_ACCOUNT_ID", "").strip()
-    endpoint = os.getenv("R2_ENDPOINT_URL", "").strip().rstrip("/") or f"https://{account}.r2.cloudflarestorage.com"
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
-        aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
-        region_name="auto",
-        config=Config(signature_version="s3v4", retries={"max_attempts": 3, "mode": "standard"}),
-    )
 
 shell = FastAPI(title="Delineasi DTA Web Shell", version=SHELL_VERSION)
 shell.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -104,57 +72,18 @@ async def shell_cache_headers(request: Request, call_next):
 
 @shell.get("/")
 def index(request: Request):
-    # The map asset proxy also runs in this lightweight shell, so basin/river
-    # layers do not wait for the hydrologic engine to warm.
+    # Production map display assets are public R2 objects, so the map can draw
+    # basin/river layers before the heavy hydrologic engine has finished warming.
     return templates.TemplateResponse(
         request=request,
         name="spatial.html",
         context={
-            # A deployment-level value can be supplied explicitly. Otherwise
-            # the shell release changes the browser cache key.
+            "map_assets_public_base": os.getenv("R2_MAP_ASSETS_PUBLIC_BASE", "").strip().rstrip("/"),
+            # A deployment-level value can be supplied explicitly. If omitted,
+            # cache validation is left to the public object/CDN headers.
             "map_assets_version": os.getenv("R2_MAP_ASSETS_VERSION", "").strip() or SHELL_VERSION,
         },
     )
-
-
-@shell.get("/api/map-assets/{asset_key}")
-async def map_asset(asset_key: str):
-    """Serve display GeoJSON from this origin so browsers never depend on R2 CORS."""
-    filename = MAP_ASSET_FILES.get(asset_key)
-    if filename is None:
-        raise HTTPException(status_code=404, detail="Map asset tidak ditemukan.")
-
-    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
-    for path in (STATIC_DIR / "data" / filename, ROOT_DIR / "r2_bundle" / "map-assets" / filename):
-        if path.is_file():
-            return FileResponse(path, media_type="application/geo+json", headers=headers)
-
-    bucket = os.getenv("R2_MAP_ASSETS_BUCKET", "").strip()
-    public_base = os.getenv("R2_MAP_ASSETS_PUBLIC_BASE", "").strip().rstrip("/")
-    body = None
-    if bucket:
-        try:
-            obj = await asyncio.to_thread(lambda: _map_asset_client().get_object(Bucket=bucket, Key=filename))
-            body = obj["Body"]
-        except Exception:
-            if not public_base:
-                raise HTTPException(status_code=502, detail="Aset peta belum dapat dimuat dari R2.")
-    if body is None and public_base:
-        url = f"{public_base}/{urllib.parse.quote(filename)}"
-        try:
-            body = await asyncio.to_thread(urllib.request.urlopen, url, timeout=25)
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail="Aset peta belum dapat dimuat dari R2.") from exc
-    if body is None:
-        raise HTTPException(status_code=503, detail="Sumber aset peta belum dikonfigurasi.")
-
-    def chunks():
-        try:
-            for chunk in iter(lambda: body.read(256 * 1024), b""):
-                yield chunk
-        finally:
-            body.close()
-    return StreamingResponse(chunks(), media_type="application/geo+json", headers=headers)
 
 
 _core_app: Any | None = None
@@ -198,7 +127,7 @@ class LazyCoreDispatcher:
             return
 
         # The root page and static files never need the heavy GIS runtime.
-        if path == "/" or path.startswith("/static/") or path.startswith("/api/map-assets/"):
+        if path == "/" or path.startswith("/static/"):
             await shell(scope, receive, send)
             return
 

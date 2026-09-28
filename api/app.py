@@ -107,9 +107,10 @@ def index(request: Request):
 def proxy_map_asset(asset_key: str, proxy: int = 0, v: str = ""):
     """Serve a CORS-independent fallback for public R2 map display assets.
 
-    Browser map requests use this same-origin endpoint in production.  It
-    avoids Chrome-specific CORS/CDN-cache failures while R2 remains the
-    upstream object store.
+    Normal map requests still go directly to the public R2 hostname.  The
+    browser switches to this endpoint only after that request fails, which
+    avoids a Chrome-specific CORS/CDN cache failure without making Vercel the
+    normal data path.
     """
     filename = MAP_ASSET_FILENAMES.get(asset_key)
     if not filename:

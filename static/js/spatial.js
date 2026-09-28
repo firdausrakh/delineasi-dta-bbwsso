@@ -882,7 +882,7 @@ function appendQuery(url,key,value){
   const join=url.includes('?')?'&':'?';
   return `${url}${join}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
-function mapAssetUrl(key,{retryToken=null,proxy=Boolean(MAP_ASSETS_BASE)}={}){
+function mapAssetUrl(key,{retryToken=null,proxy=false}={}){
   const filename=MAP_ASSET_FILES[key];
   let url=(MAP_ASSETS_BASE&&filename&&!proxy)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
   if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
@@ -935,10 +935,10 @@ function retryOperationalSource(sourceId,{force=false}={}){
     const key=operationalAssetKeyForSource(sourceId);
     if(!key)return;
     mapAssetRetryAttempts.set(sourceId,attempt+1);
-    // Route production map assets through the same-origin Vercel endpoint.
-    // This makes the browser independent of R2 CORS behavior and of a stale
-    // cross-origin CDN entry; Vercel/R2 handles the upstream request instead.
-    const proxy=Boolean(MAP_ASSETS_BASE);
+    // A direct public-R2 request is quickest.  If it failed once, switch the
+    // retry to the same-origin Vercel proxy: this bypasses browser CORS and
+    // problematic CDN cache entries while retaining the direct happy path.
+    const proxy=Boolean(MAP_ASSETS_BASE)&&attempt>0;
     try{source.setData(mapAssetUrl(key,{retryToken:`${attempt+1}-${Date.now()}`,proxy}));}catch(_){}
     setTimeout(()=>retryOperationalSource(sourceId),Math.min(2200,700+(attempt*450)));
   },delay);

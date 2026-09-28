@@ -12,15 +12,11 @@ import importlib
 import os
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -28,15 +24,6 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
 SHELL_VERSION = "1.3.2"
-MAP_ASSET_FILENAMES = {
-    "official-basins": "official_basins.geojson",
-    "official-rivers-z6-8": "official_rivers_z6_8.geojson",
-    "official-rivers-z8-10": "official_rivers_z8_10.geojson",
-    "official-rivers-z10-11": "official_rivers_z10_11.geojson",
-    "official-rivers-z11-12": "official_rivers_z11_12.geojson",
-    "official-rivers-z12-14": "official_rivers_z12_14.geojson",
-    "official-rivers": "official_rivers.geojson",
-}
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -60,10 +47,6 @@ def _load_project_dotenv_lightweight() -> None:
 
 
 _load_project_dotenv_lightweight()
-
-# The dotenv loader above is intentionally lightweight, so resolve this only
-# after it has populated the production environment.
-MAP_ASSETS_PUBLIC_BASE = os.getenv("R2_MAP_ASSETS_PUBLIC_BASE", "").strip().rstrip("/")
 
 shell = FastAPI(title="Delineasi DTA Web Shell", version=SHELL_VERSION)
 shell.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -101,45 +84,6 @@ def index(request: Request):
             "map_assets_version": os.getenv("R2_MAP_ASSETS_VERSION", "").strip() or SHELL_VERSION,
         },
     )
-
-
-@shell.get("/api/map-assets/{asset_key}")
-def proxy_map_asset(asset_key: str, proxy: int = 0, v: str = ""):
-    """Serve a CORS-independent fallback for public R2 map display assets.
-
-    Normal map requests still go directly to the public R2 hostname.  The
-    browser switches to this endpoint only after that request fails, which
-    avoids a Chrome-specific CORS/CDN cache failure without making Vercel the
-    normal data path.
-    """
-    filename = MAP_ASSET_FILENAMES.get(asset_key)
-    if not filename:
-        raise HTTPException(status_code=404, detail="Map asset tidak ditemukan.")
-    if proxy != 1 or not MAP_ASSETS_PUBLIC_BASE:
-        raise HTTPException(status_code=404, detail="Map asset proxy tidak tersedia.")
-
-    url = f"{MAP_ASSETS_PUBLIC_BASE}/{filename}"
-    if v:
-        url = f"{url}?{urllib.parse.urlencode({'v': v})}"
-    try:
-        upstream = urllib.request.urlopen(url, timeout=30)
-    except (urllib.error.URLError, OSError) as exc:
-        raise HTTPException(status_code=502, detail="Map asset upstream tidak dapat dimuat.") from exc
-
-    content_type = upstream.headers.get_content_type() or "application/geo+json"
-    content_length = upstream.headers.get("Content-Length")
-    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
-    if content_length:
-        headers["Content-Length"] = content_length
-
-    def chunks():
-        try:
-            while data := upstream.read(64 * 1024):
-                yield data
-        finally:
-            upstream.close()
-
-    return StreamingResponse(chunks(), media_type=content_type, headers=headers)
 
 
 _core_app: Any | None = None
@@ -184,13 +128,6 @@ class LazyCoreDispatcher:
 
         # The root page and static files never need the heavy GIS runtime.
         if path == "/" or path.startswith("/static/"):
-            await shell(scope, receive, send)
-            return
-
-        # Keep the optional R2 proxy off the GIS cold-start path.  Requests
-        # without the explicit proxy query still fall through to core so local
-        # development can generate display assets from local data as before.
-        if path.startswith("/api/map-assets/") and b"proxy=1" in scope.get("query_string", b"") and MAP_ASSETS_PUBLIC_BASE:
             await shell(scope, receive, send)
             return
 

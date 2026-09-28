@@ -235,20 +235,19 @@ function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;',
 function clampPointName(value){
   return String(value??'').trim().slice(0,POINT_NAME_MAX_LENGTH);
 }
-function setPointNameLimitWarning(input,visible){
-  const warning=input?.closest('label')?.querySelector('.point-name-limit-warning');
-  if(warning)warning.classList.toggle('hidden',!visible);
-}
 function showPointNameLimitWarning(input){
-  setPointNameLimitWarning(input,true);
+  const warning=input?.closest('label')?.querySelector('.point-name-limit-warning');
+  if(warning){
+    warning.classList.remove('hidden');
+    clearTimeout(warning._hideTimer);
+    warning._hideTimer=setTimeout(()=>warning.classList.add('hidden'),2200);
+  }
   showAppToast(`Nama titik maksimal ${POINT_NAME_MAX_LENGTH} karakter.`);
 }
 function bindPointNameLimit(input){
   if(!input||input.dataset.pointNameLimitBound==='1')return;
   input.dataset.pointNameLimitBound='1';
   input.maxLength=POINT_NAME_MAX_LENGTH;
-  input.addEventListener('input',()=>setPointNameLimitWarning(input,input.value.length>=POINT_NAME_MAX_LENGTH));
-  setPointNameLimitWarning(input,input.value.length>=POINT_NAME_MAX_LENGTH);
   input.addEventListener('beforeinput',event=>{
     const type=String(event.inputType||'');
     if(!type.startsWith('insert'))return;
@@ -882,11 +881,10 @@ function appendQuery(url,key,value){
   const join=url.includes('?')?'&':'?';
   return `${url}${join}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
-function mapAssetUrl(key,{retryToken=null,proxy=false}={}){
+function mapAssetUrl(key,{retryToken=null}={}){
   const filename=MAP_ASSET_FILES[key];
-  let url=(MAP_ASSETS_BASE&&filename&&!proxy)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
+  let url=(MAP_ASSETS_BASE&&filename)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
   if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
-  if(proxy)url=appendQuery(url,'proxy','1');
   if(retryToken!==null)url=appendQuery(url,'retry',retryToken);
   return url;
 }
@@ -935,11 +933,7 @@ function retryOperationalSource(sourceId,{force=false}={}){
     const key=operationalAssetKeyForSource(sourceId);
     if(!key)return;
     mapAssetRetryAttempts.set(sourceId,attempt+1);
-    // A direct public-R2 request is quickest.  If it failed once, switch the
-    // retry to the same-origin Vercel proxy: this bypasses browser CORS and
-    // problematic CDN cache entries while retaining the direct happy path.
-    const proxy=Boolean(MAP_ASSETS_BASE)&&attempt>0;
-    try{source.setData(mapAssetUrl(key,{retryToken:`${attempt+1}-${Date.now()}`,proxy}));}catch(_){}
+    try{source.setData(mapAssetUrl(key,{retryToken:`${attempt+1}-${Date.now()}`}));}catch(_){}
     setTimeout(()=>retryOperationalSource(sourceId),Math.min(2200,700+(attempt*450)));
   },delay);
   mapAssetRetryTimers.set(sourceId,timer);

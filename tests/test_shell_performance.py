@@ -64,7 +64,7 @@ class ShellPerformanceTests(unittest.TestCase):
         self.assertEqual(headers["cache-control"], "no-cache")
         html = body.decode("utf-8")
         self.assertIn("window.DTA_CORE_WARM_PROMISE=fetch('/api/health'", html)
-        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.8-map-assets-proxy"></script>', html)
+        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.7-map-assets-proxy"></script>', html)
         self.assertNotIn('<script src="https://cdn.jsdelivr.net/npm/chart.js', html)
 
     def test_location_check_has_no_blocking_status_message(self):

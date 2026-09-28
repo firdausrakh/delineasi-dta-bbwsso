@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,7 @@ TEMPLATES_DIR = ROOT_DIR / "templates"
 # This value is also the cache-busting fallback for public map GeoJSON URLs.
 # Keep it in sync with a frontend release whenever map loading behavior changes;
 # public R2 objects intentionally use immutable browser/CDN caching.
-SHELL_VERSION = "1.3.8"
+SHELL_VERSION = "1.3.9"
 MAP_ASSET_FILENAMES = {
     "official-basins": "official_basins.geojson",
     "official-rivers-z6-8": "official_rivers_z6_8.geojson",
@@ -47,6 +48,28 @@ def _is_local_host(scope: dict[str, Any]) -> bool:
     headers = dict(scope.get("headers") or [])
     host = headers.get(b"host", b"").decode("latin-1").split(":", 1)[0].lower()
     return host in {"localhost", "127.0.0.1", "::1", "[::1]"}
+
+
+@lru_cache(maxsize=1)
+def _map_assets_r2_client():
+    """Create the small authenticated R2 client used only for display assets."""
+    import boto3
+    from botocore.config import Config
+
+    account_id = os.getenv("R2_ACCOUNT_ID", "").strip()
+    access_key = os.getenv("R2_ACCESS_KEY_ID", "").strip()
+    secret_key = os.getenv("R2_SECRET_ACCESS_KEY", "").strip()
+    endpoint = os.getenv("R2_ENDPOINT_URL", "").strip().rstrip("/")
+    if not endpoint and account_id:
+        endpoint = f"https://{account_id}.r2.cloudflarestorage.com"
+    if not (endpoint and access_key and secret_key):
+        raise RuntimeError("Kredensial R2 map asset belum lengkap.")
+    return boto3.client(
+        "s3", endpoint_url=endpoint, aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key, region_name="auto",
+        config=Config(signature_version="s3v4", retries={"max_attempts": 4, "mode": "standard"},
+                      connect_timeout=10, read_timeout=120, tcp_keepalive=True),
+    )
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -128,19 +151,25 @@ def proxy_map_asset(asset_key: str, proxy: int = 0, v: str = ""):
     filename = MAP_ASSET_FILENAMES.get(asset_key)
     if not filename:
         raise HTTPException(status_code=404, detail="Map asset tidak ditemukan.")
-    if proxy != 1 or not MAP_ASSETS_PUBLIC_BASE:
+    bucket = os.getenv("R2_MAP_ASSETS_BUCKET", "").strip()
+    if proxy != 1 or not (bucket or MAP_ASSETS_PUBLIC_BASE):
         raise HTTPException(status_code=404, detail="Map asset proxy tidak tersedia.")
 
-    url = f"{MAP_ASSETS_PUBLIC_BASE}/{filename}"
-    if v:
-        url = f"{url}?{urllib.parse.urlencode({'v': v})}"
     try:
-        upstream = urllib.request.urlopen(url, timeout=30)
-    except (urllib.error.URLError, OSError) as exc:
+        if bucket:
+            payload = _map_assets_r2_client().get_object(Bucket=bucket, Key=filename)
+            upstream = payload["Body"]
+            content_type = str(payload.get("ContentType") or "application/geo+json")
+            content_length = str(payload["ContentLength"]) if payload.get("ContentLength") is not None else None
+        else:
+            url = f"{MAP_ASSETS_PUBLIC_BASE}/{filename}"
+            if v:
+                url = f"{url}?{urllib.parse.urlencode({'v': v})}"
+            upstream = urllib.request.urlopen(url, timeout=30)
+            content_type = upstream.headers.get_content_type() or "application/geo+json"
+            content_length = upstream.headers.get("Content-Length")
+    except Exception as exc:
         raise HTTPException(status_code=502, detail="Map asset upstream tidak dapat dimuat.") from exc
-
-    content_type = upstream.headers.get_content_type() or "application/geo+json"
-    content_length = upstream.headers.get("Content-Length")
     headers = {"Cache-Control": "public, max-age=31536000, immutable"}
     if content_length:
         headers["Content-Length"] = content_length

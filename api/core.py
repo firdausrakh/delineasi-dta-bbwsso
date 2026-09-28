@@ -1985,6 +1985,7 @@ def index(request: Request):
         context={
             "map_assets_public_base": MAP_ASSETS_PUBLIC_BASE or "",
             "map_assets_version": MAP_ASSETS_VERSION or APP_VERSION,
+            "map_assets_proxy": True,
         },
     )
 
@@ -2147,7 +2148,7 @@ def location_check(
     }
 
 @app.get("/api/map-assets/{asset_key}")
-def map_asset(asset_key: str):
+def map_asset(asset_key: str, proxy: int = 0):
     assets = {
         "official-basins": "official_basins.geojson",
         "official-rivers-z6-8": "official_rivers_z6_8.geojson",
@@ -2161,7 +2162,7 @@ def map_asset(asset_key: str):
     if not filename:
         raise HTTPException(status_code=404, detail="Map asset tidak ditemukan.")
 
-    if MAP_ASSETS_PUBLIC_BASE:
+    if MAP_ASSETS_PUBLIC_BASE and proxy != 1:
         suffix = f"?v={urllib.parse.quote(MAP_ASSETS_VERSION)}" if MAP_ASSETS_VERSION else ""
         return RedirectResponse(
             f"{MAP_ASSETS_PUBLIC_BASE}/{filename}{suffix}",

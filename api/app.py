@@ -27,7 +27,10 @@ from fastapi.templating import Jinja2Templates
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
-SHELL_VERSION = "1.3.2"
+# This value is also the cache-busting fallback for public map GeoJSON URLs.
+# Keep it in sync with a frontend release whenever map loading behavior changes;
+# public R2 objects intentionally use immutable browser/CDN caching.
+SHELL_VERSION = "1.3.7"
 MAP_ASSET_FILENAMES = {
     "official-basins": "official_basins.geojson",
     "official-rivers-z6-8": "official_rivers_z6_8.geojson",
@@ -99,6 +102,10 @@ def index(request: Request):
             # A deployment-level value can be supplied explicitly. If omitted,
             # cache validation is left to the public object/CDN headers.
             "map_assets_version": os.getenv("R2_MAP_ASSETS_VERSION", "").strip() or SHELL_VERSION,
+            # Browsers always use a same-origin path. Locally this is served
+            # from the already-loaded private R2 runtime; on Vercel it streams
+            # the public display object without exposing browser CORS to R2.
+            "map_assets_proxy": True,
         },
     )
 
@@ -186,10 +193,10 @@ class LazyCoreDispatcher:
             await shell(scope, receive, send)
             return
 
-        # Keep the optional R2 proxy off the GIS cold-start path.  Requests
-        # without the explicit proxy query still fall through to core so local
-        # development can generate display assets from local data as before.
-        if path.startswith("/api/map-assets/") and b"proxy=1" in scope.get("query_string", b"") and MAP_ASSETS_PUBLIC_BASE:
+        # On Vercel, stream public R2 display objects without browser CORS.
+        # Locally, core builds the same asset from its private R2 runtime,
+        # which avoids depending on access to the public r2.dev hostname.
+        if path.startswith("/api/map-assets/") and b"proxy=1" in scope.get("query_string", b"") and MAP_ASSETS_PUBLIC_BASE and os.getenv("VERCEL", "").strip() == "1":
             await shell(scope, receive, send)
             return
 

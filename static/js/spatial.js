@@ -20,17 +20,7 @@ const RIVER_FULL_DETAIL_ZOOM = 14;
 const RIVER_KEYS = ['1','2','3','other'];
 const KARST_MESSAGE = 'Delineasi berbasis topografi permukaan tidak valid untuk kawasan karst. Sistem hidrologi karst didominasi oleh sungai bawah tanah sehingga batas topografi permukaan tidak mencerminkan daerah tangkapan air yang sebenarnya.';
 const DTA_CONFIG = window.DTA_CONFIG || {};
-const MAP_ASSETS_BASE = String(DTA_CONFIG.mapAssetsBase || '').replace(/\/$/,'');
 const MAP_ASSETS_VERSION = String(DTA_CONFIG.mapAssetsVersion || '');
-const MAP_ASSET_FILES = {
-  'official-basins':'official_basins.geojson',
-  'official-rivers-z6-8':'official_rivers_z6_8.geojson',
-  'official-rivers-z8-10':'official_rivers_z8_10.geojson',
-  'official-rivers-z10-11':'official_rivers_z10_11.geojson',
-  'official-rivers-z11-12':'official_rivers_z11_12.geojson',
-  'official-rivers-z12-14':'official_rivers_z12_14.geojson',
-  'official-rivers':'official_rivers.geojson'
-};
 
 function browserClientId(){
   const key='delineasiDtaClientIdV1';
@@ -883,8 +873,9 @@ function appendQuery(url,key,value){
   return `${url}${join}${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
 }
 function mapAssetUrl(key,{retryToken=null}={}){
-  const filename=MAP_ASSET_FILES[key];
-  let url=(MAP_ASSETS_BASE&&filename)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
+  // Keep operational geometry on the app origin. Direct r2.dev requests can be
+  // blocked or cached without CORS in one browser while labels still load.
+  let url=`/api/map-assets/${key}`;
   if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
   if(retryToken!==null)url=appendQuery(url,'retry',retryToken);
   return url;

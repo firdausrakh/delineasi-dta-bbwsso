@@ -215,7 +215,7 @@ Runtime menerapkan perlindungan berikut tanpa mengubah algoritma hidrologi:
 - cache geometry dibersihkan saat RSS memory melewati threshold;
 - hasil karakteristik final memakai cache LRU berbasis hash geometri;
 - koneksi SQLite toponim dan koneksi HTTP R2 dipakai ulang pada warm worker;
-- map-assets public dimuat langsung dari custom domain R2 tanpa redirect melalui Vercel;
+- map-assets dimuat melalui origin aplikasi agar batas DAS dan sungai tidak bergantung pada koneksi atau CORS domain R2 di browser;
 - map-assets memakai versi bundle dan cache immutable;
 - statistik job, antrean, RSS, cache, dan transfer R2 tersedia pada `/api/info`.
 
@@ -452,6 +452,7 @@ R2_ACCOUNT_ID=...
 R2_ACCESS_KEY_ID=...
 R2_SECRET_ACCESS_KEY=...
 R2_RUNTIME_BUCKET=dta-runtime
+R2_MAP_ASSETS_BUCKET=dta-map-assets
 R2_MANIFEST_KEY=manifest.json
 R2_MAP_ASSETS_PUBLIC_BASE=https://data-domain-anda.example
 ```
@@ -787,22 +788,9 @@ Jika arah aliran dapat ditentukan secara stabil, logika penamaan dapat mempriori
 
 ## Map assets dan CORS
 
-Jika `R2_MAP_ASSETS_PUBLIC_BASE` menggunakan domain yang berbeda dari aplikasi, bucket `dta-map-assets` harus mengizinkan origin aplikasi melalui CORS untuk request `GET`/`HEAD`.
+Browser meminta GeoJSON melalui `/api/map-assets/{asset_key}` pada origin aplikasi. Shell ringan melayani berkas lokal `static/data` atau `r2_bundle/map-assets` saat pengembangan, lalu mengambil object dari bucket `R2_MAP_ASSETS_BUCKET` melalui S3 API pada deployment. Jika bucket belum dikonfigurasi atau akses S3 gagal, server memakai `R2_MAP_ASSETS_PUBLIC_BASE` sebagai sumber cadangan. Browser tidak lagi membutuhkan akses langsung ke domain publik R2 atau kebijakan CORS bucket.
 
-Untuk development lokal, origin yang umum:
-
-```text
-http://127.0.0.1:8000
-http://localhost:8000
-```
-
-Untuk production tambahkan domain Vercel/custom domain aplikasi.
-
-Performance v2 mengarahkan browser langsung ke custom domain tersebut. Aktifkan Cloudflare Cache/Cache Everything untuk hostname map-assets. Script upload memberi `Cache-Control: public, max-age=31536000, immutable`, sedangkan `map_assets_version` pada manifest membuat URL baru ketika isi bundle berubah.
-
-Setelah mengubah kebijakan CORS atau cache pada bucket yang sudah pernah diakses, purge cache hostname map-assets sebelum QA ulang.
-
-Jika `R2_MAP_ASSETS_PUBLIC_BASE` dikosongkan saat local testing, backend dapat melayani map asset dari runtime data sebagai fallback sesuai implementasi endpoint yang tersedia.
+Respons memakai `Cache-Control: public, max-age=31536000, immutable`. Naikkan `R2_MAP_ASSETS_VERSION` setiap kali isi map-assets berubah agar URL baru dipakai browser.
 
 ---
 

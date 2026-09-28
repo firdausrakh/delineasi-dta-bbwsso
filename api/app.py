@@ -30,7 +30,7 @@ TEMPLATES_DIR = ROOT_DIR / "templates"
 # This value is also the cache-busting fallback for public map GeoJSON URLs.
 # Keep it in sync with a frontend release whenever map loading behavior changes;
 # public R2 objects intentionally use immutable browser/CDN caching.
-SHELL_VERSION = "1.3.7"
+SHELL_VERSION = "1.3.8"
 MAP_ASSET_FILENAMES = {
     "official-basins": "official_basins.geojson",
     "official-rivers-z6-8": "official_rivers_z6_8.geojson",
@@ -40,6 +40,13 @@ MAP_ASSET_FILENAMES = {
     "official-rivers-z12-14": "official_rivers_z12_14.geojson",
     "official-rivers": "official_rivers.geojson",
 }
+
+
+def _is_local_host(scope: dict[str, Any]) -> bool:
+    """Return whether a request came from a local-development URL."""
+    headers = dict(scope.get("headers") or [])
+    host = headers.get(b"host", b"").decode("latin-1").split(":", 1)[0].lower()
+    return host in {"localhost", "127.0.0.1", "::1", "[::1]"}
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -196,7 +203,7 @@ class LazyCoreDispatcher:
         # On Vercel, stream public R2 display objects without browser CORS.
         # Locally, core builds the same asset from its private R2 runtime,
         # which avoids depending on access to the public r2.dev hostname.
-        if path.startswith("/api/map-assets/") and b"proxy=1" in scope.get("query_string", b"") and MAP_ASSETS_PUBLIC_BASE and os.getenv("VERCEL", "").strip() == "1":
+        if path.startswith("/api/map-assets/") and b"proxy=1" in scope.get("query_string", b"") and MAP_ASSETS_PUBLIC_BASE and not _is_local_host(scope):
             await shell(scope, receive, send)
             return
 

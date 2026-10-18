@@ -323,9 +323,9 @@ def _build_method_sheet(payload: dict[str, Any], method: dict[str, Any], sheet_n
     b.set_b_formula("Tb", tb_expr, method.get("Tb_hours"))
     if b.b("Tp"):
         if method_id == "gama1":
-            b.set_b_formula("dt", f"MAX(0.05,MIN(1,{b.b('Tp')}/20))", method.get("dt_hours"))
+            b.set_b_formula("dt", "1", method.get("dt_hours"))
         elif Tr:
-            b.set_b_formula("dt", f"MAX(0.05,MIN(1,{Tr},{b.b('Tp')}/20))", method.get("dt_hours"))
+            b.set_b_formula("dt", Tr, method.get("dt_hours"))
     if A and Re:
         b.set_b_formula("Vtarget", f"{A}*{Re}*1000", method.get("volume_target_m3"))
 

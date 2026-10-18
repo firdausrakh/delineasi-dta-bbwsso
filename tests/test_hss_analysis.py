@@ -103,6 +103,18 @@ def test_calibration_parameters_are_applied_per_request_with_one_global_tr():
     assert methods["itb2b"]["parameters"]["Tr"] == 0.5
 
 
+def test_hss_ordinate_interval_follows_effective_rain_duration():
+    payload = calculate_hss(
+        point_id="p1",
+        label="DTA Uji",
+        hydrologic_analysis=_sample_analysis(),
+        global_tr_hours=1.0,
+    )
+    methods = {method["method"]: method for method in payload["methods"]}
+    for method_id, method in methods.items():
+        assert method["dt_hours"] == pytest.approx(1.0), method_id
+
+
 def test_hss_workbook_has_summary_and_one_sheet_per_available_method(tmp_path: Path):
     payload = calculate_hss(
         point_id="p1",

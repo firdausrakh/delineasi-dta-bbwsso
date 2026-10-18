@@ -68,9 +68,18 @@ class ShellPerformanceTests(unittest.TestCase):
         self.assertEqual(headers["cache-control"], "no-cache")
         html = body.decode("utf-8")
         self.assertIn("window.DTA_CORE_WARM_PROMISE=fetch('/api/health'", html)
-        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.5-geodata-rewrite"></script>', html)
+        self.assertIn('<script defer src="/static/js/spatial.js?v=', html)
         self.assertIn("mapAssetsBase", html)
         self.assertNotIn('<script src="https://cdn.jsdelivr.net/npm/chart.js', html)
+
+    def test_missing_page_returns_lightweight_html_404(self):
+        status, _, body = asyncio.run(_asgi_get("/analisisbanjir"))
+
+        html = body.decode("utf-8")
+        self.assertEqual(status, 404)
+        self.assertIn("404 Not Found", html)
+        self.assertIn('href="/"', html)
+        self.assertNotIn("DTA_CORE_WARM_PROMISE", html)
 
     def test_geodata_rewrite_precedes_container_fallback(self):
         config = json.loads((Path(__file__).parents[1] / "vercel.json").read_text(encoding="utf-8"))

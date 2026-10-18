@@ -33,13 +33,13 @@ from rasterio import features as rio_features
 from rasterio.windows import from_bounds as raster_window_from_bounds
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from pyproj import Transformer
 from shapely import make_valid, set_precision, union_all
-from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, mapping, shape
+from shapely.geometry import GeometryCollection, MultiPolygon, Point, Polygon, box, mapping, shape
 from shapely.ops import nearest_points, transform
 
 from api.services.boundary_stitch import align_expected_shared_boundary, stitch_watershed_boundary
@@ -2194,6 +2194,21 @@ def map_asset(asset_key: str):
 @app.get("/api/basin-labels")
 def basin_labels():
     return _build_basin_label_fc()
+
+
+@app.get("/api/bbwsso-outside-mask")
+def bbwsso_outside_mask():
+    """Return the valid inverse geometry used to dim the area outside BBWS."""
+    coverage = union_all(official_basins.to_crs(CRS_WEB).geometry.values)
+    world = box(-180, -85.051129, 180, 85.051129)
+    return JSONResponse(content={
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {},
+            "geometry": mapping(world.difference(coverage)),
+        }],
+    }, headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/api/geocode")

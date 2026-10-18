@@ -86,6 +86,11 @@ def index(request: Request):
     )
 
 
+@shell.get("/{path:path}", status_code=404, include_in_schema=False)
+def not_found(request: Request, path: str):
+    return templates.TemplateResponse(request=request, name="404.html", status_code=404)
+
+
 _core_app: Any | None = None
 _core_error: BaseException | None = None
 _core_error_at = 0.0
@@ -126,8 +131,11 @@ class LazyCoreDispatcher:
             await shell(scope, receive, send)
             return
 
-        # The root page and static files never need the heavy GIS runtime.
-        if path == "/" or path.startswith("/static/"):
+        # Browser page routes that do not exist return a lightweight HTML 404.
+        # API and documentation routes retain the core application's behavior.
+        if path == "/" or path.startswith("/static/") or not (
+            path.startswith("/api/") or path in {"/docs", "/openapi.json", "/redoc"}
+        ):
             await shell(scope, receive, send)
             return
 

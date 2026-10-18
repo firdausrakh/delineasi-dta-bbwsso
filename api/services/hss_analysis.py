@@ -192,8 +192,10 @@ def _apply_input_overrides(inputs: dict[str, float | None], overrides: dict[str,
     return result, clean
 
 def _adaptive_dt(tp: float, tr: float = 1.0) -> float:
-    # At least ~20 samples to peak, while avoiding impractically fine output.
-    return max(0.05, min(1.0, tr, tp / 20.0))
+    # The HSS ordinate interval follows the effective-rain duration selected by
+    # the user.  Peak and end points are still added separately in _time_grid.
+    del tp
+    return tr
 
 
 def _time_grid(t_end: float, dt: float, extras: tuple[float, ...] = ()) -> np.ndarray:
@@ -239,7 +241,7 @@ def _pack(method: str, inputs: dict[str, Any], params: dict[str, Any], time_h: n
         "Tp_hours": round(float(tp), 6),
         "Qp_m3s": round(float(qp), 6),
         "Tb_hours": round(float(tb), 6) if tb is not None and math.isfinite(float(tb)) else None,
-        "dt_hours": round(float(np.min(np.diff(time_h))), 6) if len(time_h) > 1 else None,
+        "dt_hours": round(float(params.get("Tr", 1.0)), 6),
         "volume_target_m3": round(target_volume, 3),
         "volume_m3": round(volume, 3),
         "equivalent_runoff_mm": round(float(runoff), 6) if runoff is not None else None,

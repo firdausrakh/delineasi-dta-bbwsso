@@ -9,7 +9,7 @@ const DEFAULT_CHARACTERISTIC_L_COLOR = '#173B6C';
 const DEFAULT_CHARACTERISTIC_LCA_COLOR = '#D94841';
 const DEFAULT_CHARACTERISTIC_L1085_COLOR = '#16836B';
 const DEFAULT_CHARACTERISTIC_STREAM_COLOR = '#0000FF';
-const DEFAULT_BASEMAP = 'world-topo';
+const DEFAULT_BASEMAP = 'rbi';
 const APP_STATE_KEY = 'delineasiDtaUiStateV85';
 const DERIVED_LAYER_PREF_VERSION = 4;
 const HYDROLOGIC_ANALYSIS_CACHE_VERSION = 3;
@@ -22,6 +22,12 @@ const KARST_MESSAGE = 'Delineasi berbasis topografi permukaan tidak valid untuk 
 const DTA_CONFIG = window.DTA_CONFIG || {};
 const MAP_ASSETS_BASE = String(DTA_CONFIG.mapAssetsBase || '').replace(/\/$/,'');
 const MAP_ASSETS_VERSION = String(DTA_CONFIG.mapAssetsVersion || '');
+const ESRI_HILLSHADE_PROTOCOL = 'esri-hillshade';
+const ESRI_HILLSHADE_TILES = `${ESRI_HILLSHADE_PROTOCOL}://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}`;
+const BBWSSO_OUTSIDE_MASK_SOURCE = 'bbwsso-outside-mask';
+const BBWSSO_OUTSIDE_MASK_LAYER = 'bbwsso-outside-mask-layer';
+const BBWSSO_OUTSIDE_MASK = window.BBWSSO_OUTSIDE_MASK;
+const DEFAULT_STUDY_CAMERA = {center:[109.9251,-7.6867],zoom:9};
 const MAP_ASSET_FILES = {
   'official-basins':'official_basins.geojson',
   'official-rivers-z6-8':'official_rivers_z6_8.geojson',
@@ -192,7 +198,7 @@ const searchResultsEl = $('searchResults');
 
 function restorePreferenceControls(){
   const c=restoredState.controls||{};
-  const values={snapRadius:c.snapRadius,boundaryMatch:c.boundaryMatch,hillshadeOpacity:c.hillshadeOpacity,hatchOpacity:c.hatchOpacity,lineWidth:c.lineWidth,basinColor:c.basinColor,riverColor:c.riverColor,characteristicMainChannelColor:c.characteristicMainChannelColor,characteristicLColor:c.characteristicLColor,characteristicLcaColor:c.characteristicLcaColor,characteristicL1085Color:c.characteristicL1085Color,characteristicStreamsColor:c.characteristicStreamsColor};
+  const values={snapRadius:c.snapRadius,boundaryMatch:c.boundaryMatch,hillshadeOpacity:c.hillshadeOpacity==='100'?'65':c.hillshadeOpacity,hatchOpacity:c.hatchOpacity,lineWidth:c.lineWidth,basinColor:c.basinColor,riverColor:c.riverColor,characteristicMainChannelColor:c.characteristicMainChannelColor,characteristicLColor:c.characteristicLColor,characteristicLcaColor:c.characteristicLcaColor,characteristicL1085Color:c.characteristicL1085Color,characteristicStreamsColor:c.characteristicStreamsColor};
   for(const [id,value] of Object.entries(values)){if(value!==undefined&&$(id))$(id).value=String(value);}
   const derivedPrefsValid=restoredState.derivedLayerPrefVersion===DERIVED_LAYER_PREF_VERSION;
   const checks={showHillshade:c.showHillshade,showBasins:c.showBasins,showBasinLabels:c.showBasinLabels,showRivers:c.showRivers,autoRiverZoom:c.autoRiverZoom,showRiverLabels:c.showRiverLabels,showHatch:c.showHatch,showCharacteristicMainChannel:derivedPrefsValid?c.showCharacteristicMainChannel:false,showCharacteristicL:derivedPrefsValid?c.showCharacteristicL:false,showCharacteristicLca:derivedPrefsValid?c.showCharacteristicLca:false,showCharacteristicL1085:derivedPrefsValid?c.showCharacteristicL1085:false,showCharacteristicCentroid:derivedPrefsValid?c.showCharacteristicCentroid:false,showCharacteristicAnalysisStreams:derivedPrefsValid?c.showCharacteristicAnalysisStreams:false,showGamaAu:derivedPrefsValid?c.showGamaAu:false,showGamaWl:derivedPrefsValid?c.showGamaWl:false,showGamaWu:derivedPrefsValid?c.showGamaWu:false,showGamaConstruction:derivedPrefsValid?c.showGamaConstruction:false};
@@ -801,6 +807,28 @@ function parseCoordinate(text){
   throw new Error('Format koordinat belum dikenali. Gunakan DD atau DMS seperti contoh.');
 }
 
+async function loadTransparentHillshadeTile(params,abortController){
+  const tilePath=params.url.split('://')[1];
+  if(!tilePath)throw new Error('Alamat tile Esri World Hillshade tidak valid.');
+  const response=await fetch(`https://${tilePath}`,{signal:abortController.signal});
+  if(!response.ok)throw new Error(`Esri World Hillshade: ${response.status} ${response.statusText}`);
+  const bitmap=await createImageBitmap(await response.blob());
+  const canvas=typeof OffscreenCanvas==='function' ? new OffscreenCanvas(bitmap.width,bitmap.height) : Object.assign(document.createElement('canvas'),{width:bitmap.width,height:bitmap.height});
+  const context=canvas.getContext('2d',{willReadFrequently:true});
+  if(!context)throw new Error('Canvas 2D tidak tersedia untuk Esri World Hillshade.');
+  context.drawImage(bitmap,0,0);
+  bitmap.close?.();
+  const image=context.getImageData(0,0,canvas.width,canvas.height),pixels=image.data;
+  for(let i=0;i<pixels.length;i+=4){
+    const luminance=.2126*pixels[i]+.7152*pixels[i+1]+.0722*pixels[i+2];
+    const originalAlpha=pixels[i+3]/255;
+    pixels[i]=0;pixels[i+1]=0;pixels[i+2]=0;pixels[i+3]=Math.round((255-luminance)*originalAlpha);
+  }
+  context.putImageData(image,0,0);
+  return {data:await createImageBitmap(canvas)};
+}
+maplibregl.addProtocol(ESRI_HILLSHADE_PROTOCOL,loadTransparentHillshadeTile);
+
 const BASEMAP_DEFS = {
   'world-topo':{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}'],attribution:'Tiles © Esri',maxzoom:19},
   'esri-satellite':{tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],attribution:'Tiles © Esri',maxzoom:19},
@@ -824,6 +852,20 @@ function buildMapStyle(){
   }
   return {version:8,sources,layers};
 }
+
+function addBbwssoOutsideMask(){
+  const hasStaticMask=Boolean(BBWSSO_OUTSIDE_MASK?.features?.length);
+  if(!map.getSource(BBWSSO_OUTSIDE_MASK_SOURCE))map.addSource(BBWSSO_OUTSIDE_MASK_SOURCE,{type:'geojson',data:hasStaticMask?BBWSSO_OUTSIDE_MASK:emptyFC()});
+  if(!map.getLayer(BBWSSO_OUTSIDE_MASK_LAYER))map.addLayer({id:BBWSSO_OUTSIDE_MASK_LAYER,type:'fill',source:BBWSSO_OUTSIDE_MASK_SOURCE,layout:{visibility:hasStaticMask?'visible':'none'},paint:{'fill-color':'#000000','fill-opacity':.15}});
+  if(hasStaticMask)return;
+  fetch('/api/bbwsso-outside-mask')
+    .then(response=>{if(!response.ok)throw new Error(`Masker BBWS tidak tersedia (${response.status}).`);return response.json();})
+    .then(mask=>{
+      map.getSource(BBWSSO_OUTSIDE_MASK_SOURCE)?.setData(mask);
+      map.setLayoutProperty(BBWSSO_OUTSIDE_MASK_LAYER,'visibility','visible');
+    })
+    .catch(()=>{});
+}
 function applyBasemapVisibility(){
   for(const key of BASEMAP_KEYS)setLayerVisibility(`basemap-layer-${key}`,key===currentBasemap);
   if(map.getLayer('basemap-background'))map.setPaintProperty('basemap-background','background-color',document.documentElement.getAttribute('data-theme')==='dark'?'#151d2b':'#eef1f4');
@@ -836,6 +878,8 @@ function updateBasemapGallery(){
     card.classList.toggle('active',active);
     card.setAttribute('aria-pressed',active?'true':'false');
   });
+  const thumbnail=$('basemapThumbnail'),activeThumbnail=document.querySelector(`.basemap-card[data-basemap="${currentBasemap}"] .basemap-thumb`);
+  if(thumbnail)thumbnail.style.backgroundImage=activeThumbnail?getComputedStyle(activeThumbnail).backgroundImage:'none';
   const noneBtn=$('noBasemapBtn');if(noneBtn){const active=currentBasemap==='no-basemap';noneBtn.classList.toggle('active',active);noneBtn.setAttribute('aria-pressed',active?'true':'false');}
 }
 
@@ -849,11 +893,11 @@ class ExistingControl{
 const savedCamera=restoredState.camera||{};
 try{maplibregl.prewarm?.();}catch(_){}
 const map=new maplibregl.Map({
-  container:'map',center:Array.isArray(savedCamera.center)?savedCamera.center:[110.1,-7.55],zoom:Number.isFinite(savedCamera.zoom)?savedCamera.zoom:7,bearing:Number.isFinite(savedCamera.bearing)?savedCamera.bearing:0,pitch:0,minPitch:0,maxPitch:0,pitchWithRotate:false,touchPitch:false,style:buildMapStyle(),
+  container:'map',center:Array.isArray(savedCamera.center)?savedCamera.center:DEFAULT_STUDY_CAMERA.center,zoom:Number.isFinite(savedCamera.zoom)?savedCamera.zoom:DEFAULT_STUDY_CAMERA.zoom,bearing:Number.isFinite(savedCamera.bearing)?savedCamera.bearing:0,pitch:0,minPitch:0,maxPitch:0,pitchWithRotate:false,touchPitch:false,style:buildMapStyle(),
   locale:{'NavigationControl.ZoomIn':'Perbesar','NavigationControl.ZoomOut':'Perkecil','NavigationControl.ResetBearing':'Atur ulang arah','FullscreenControl.Enter':'Layar penuh','FullscreenControl.Exit':'Keluar layar penuh'}
 });
 map.addControl(new ExistingControl('mapSearchForm'),'top-left');
-map.addControl(new ExistingControl('mapToolbarControl'),'bottom-right');
+map.addControl(new ExistingControl('mapControlCluster'),'bottom-right');
 map.addControl(new ExistingControl('coordReadout'),'bottom-left');
 map.addControl(new maplibregl.ScaleControl({maxWidth:140,unit:'metric'}),'bottom-left');
 
@@ -1313,8 +1357,9 @@ function syncLayerSummaryEyes(){
 
 function addOperationalLayers(){
   const labelHalo='rgba(255,255,255,.97)';
-  if(!map.getSource('esri-hillshade'))map.addSource('esri-hillshade',{type:'raster',tiles:['https://services.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:16,attribution:'Hillshade © Esri'});
+  if(!map.getSource('esri-hillshade'))map.addSource('esri-hillshade',{type:'raster',tiles:[ESRI_HILLSHADE_TILES],tileSize:256,maxzoom:16,attribution:'© Esri and contributors'});
   if(!map.getLayer('esri-hillshade-layer'))map.addLayer({id:'esri-hillshade-layer',type:'raster',source:'esri-hillshade',layout:{visibility:$('showHillshade')?.checked?'visible':'none'},paint:{'raster-opacity':Number($('hillshadeOpacity')?.value||100)/100,'raster-fade-duration':0}});
+  addBbwssoOutsideMask();
 
   if(!map.getSource('official-basins'))map.addSource('official-basins',{type:'geojson',data:mapAssetUrl('official-basins'),tolerance:0,maxzoom:24,buffer:128});
   if(!map.getSource('official-basin-labels'))map.addSource('official-basin-labels',{type:'geojson',data:'/api/basin-labels'});
@@ -2515,7 +2560,7 @@ map.on('load',async()=>{
     info=await readApiJsonResponse(response,'Info backend gagal dimuat.');
     backendLastWarmAt=Date.now();
     studyBounds=[[info.bounds_wgs84[0],info.bounds_wgs84[1]],[info.bounds_wgs84[2],info.bounds_wgs84[3]]];
-    if(!restoredState.camera)map.fitBounds(studyBounds,{padding:40,maxZoom:8});
+  if(!points.length)map.fitBounds(studyBounds,{padding:40,maxZoom:9});
   }catch(_){setStatus('Peta siap. Engine analisis sedang dipanaskan…','neutral');}
   verifyOperationalSources();
   setTimeout(verifyOperationalSources,1200);
@@ -2700,7 +2745,7 @@ for(const id of ['closeClearModal','cancelClearBtn'])$(id).addEventListener('cli
 snapRadiusEl.addEventListener('change',()=>{persistState();if(points.length)runBatchDelineation({fit:false});});boundaryMatchEl.addEventListener('change',()=>{persistState();if(points.length)runBatchDelineation({fit:false});});
 $('sidebarSearchToggle').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setSidebarCollapsed(!sidebarCollapsed);});
 $('zoomInBtn').addEventListener('click',()=>map.zoomIn());$('zoomOutBtn').addEventListener('click',()=>map.zoomOut());$('resetNorthBtn').addEventListener('click',()=>map.easeTo({bearing:0,pitch:0,duration:350}));$('fullscreenBtn').addEventListener('click',async()=>{try{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen();}catch(_){}});document.addEventListener('fullscreenchange',()=>{$('fullscreenBtn').innerHTML=document.fullscreenElement?'<i data-lucide="minimize"></i>':'<i data-lucide="maximize"></i>';if(document.fullscreenElement)setHeaderVisible(false);updateHeaderHandleInteractivity();refreshIcons();setTimeout(()=>map.resize(),80);});
-$('homeBtn').addEventListener('click',()=>{if(studyBounds)map.fitBounds(studyBounds,{padding:45,maxZoom:8});});
+$('homeBtn').addEventListener('click',()=>{if(studyBounds)map.fitBounds(studyBounds,{padding:45,maxZoom:9});});
 $('toggleAllDtaVisibilityBtn')?.addEventListener('click',toggleAllDtaVisibility);
 $('focusAllDtaBtn')?.addEventListener('click',fitToResults);
 $('measureBtn').addEventListener('click',()=>setMeasureMode(!measureMode));$('clearMeasureBtn').addEventListener('click',clearMeasure);$('layerBtn').addEventListener('click',()=>{layerPanel.classList.toggle('hidden');if(!layerPanel.classList.contains('hidden'))clearDtaHover();updateHeaderHandleInteractivity();});$('closeLayerPanel').addEventListener('click',()=>{layerPanel.classList.add('hidden');updateHeaderHandleInteractivity();});
@@ -2719,11 +2764,11 @@ for(const id of ['showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'])
 
 function resetLayerStyling(){
   $('basinColor').value=DEFAULT_BASIN_COLOR;$('riverColor').value=DEFAULT_RIVER_COLOR;if($('characteristicMainChannelColor'))$('characteristicMainChannelColor').value=DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR;if($('characteristicLColor'))$('characteristicLColor').value=DEFAULT_CHARACTERISTIC_L_COLOR;if($('characteristicLcaColor'))$('characteristicLcaColor').value=DEFAULT_CHARACTERISTIC_LCA_COLOR;if($('characteristicL1085Color'))$('characteristicL1085Color').value=DEFAULT_CHARACTERISTIC_L1085_COLOR;if($('characteristicStreamsColor'))$('characteristicStreamsColor').value=DEFAULT_CHARACTERISTIC_STREAM_COLOR;
-  $('hillshadeOpacity').value='100';$('hillshadeOpacityValue').textContent='100%';
+  $('hillshadeOpacity').value='65';$('hillshadeOpacityValue').textContent='65%';
   $('hatchOpacity').value='22';$('hatchOpacityValue').textContent='22%';
   $('lineWidth').value='2';$('lineWidthValue').textContent='2.0 px';
-  $('showHillshade').checked=false;$('showBasins').checked=true;$('showBasinLabels').checked=true;
-  $('showRivers').checked=true;if($('autoRiverZoom'))$('autoRiverZoom').checked=true;$('showRiverLabels').checked=true;$('showHatch').checked=false;
+  $('showHillshade').checked=true;$('showBasins').checked=true;$('showBasinLabels').checked=true;
+  $('showRivers').checked=false;if($('autoRiverZoom'))$('autoRiverZoom').checked=true;$('showRiverLabels').checked=true;$('showHatch').checked=false;
   for(const id of ['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams','showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'])if($(id))$(id).checked=false;document.querySelectorAll('.characteristic-order-toggle').forEach(input=>{input.checked=true;});
   document.querySelectorAll('.river-order-toggle').forEach(x=>x.checked=true);
   if(map.getLayer('official-basins-line'))map.setPaintProperty('official-basins-line','line-color',DEFAULT_BASIN_COLOR);
@@ -2731,7 +2776,7 @@ function resetLayerStyling(){
   for(const k of RIVER_KEYS){if(map.getLayer(`official-river-${k}`))map.setPaintProperty(`official-river-${k}`,'line-color',DEFAULT_RIVER_COLOR);}
   if(map.getLayer('official-river-labels'))map.setPaintProperty('official-river-labels','text-color',DEFAULT_RIVER_COLOR);
   for(let i=1;i<=MAX_POINTS;i++)setDtaColor(`O${i}`,POINT_PALETTE[i-1],{save:false});
-  if(map.getLayer('esri-hillshade-layer'))map.setPaintProperty('esri-hillshade-layer','raster-opacity',1);
+  if(map.getLayer('esri-hillshade-layer'))map.setPaintProperty('esri-hillshade-layer','raster-opacity',.65);
   updateHatchOpacity();updateLineWidths();applyCharacteristicColors();applyLayerState();updateRiverVisibility();renderPointCards();persistState();setStatus('Tampilan layer dikembalikan ke bawaan.','success');
 }
 $('resetColorsBtn').addEventListener('click',resetLayerStyling);

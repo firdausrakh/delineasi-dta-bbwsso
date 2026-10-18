@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 ROOT_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT_DIR / "static"
 TEMPLATES_DIR = ROOT_DIR / "templates"
-SHELL_VERSION = "1.3.2"
+SHELL_VERSION = "1.3.3"
 
 
 def _load_project_dotenv_lightweight() -> None:
@@ -72,15 +72,15 @@ async def shell_cache_headers(request: Request, call_next):
 
 @shell.get("/")
 def index(request: Request):
-    # Production map display assets are public R2 objects, so the map can draw
-    # basin/river layers before the heavy hydrologic engine has finished warming.
+    # Direct public R2 access remains available only for local development.
+    is_local = request.url.hostname in {"127.0.0.1", "localhost"}
     return templates.TemplateResponse(
         request=request,
         name="spatial.html",
         context={
-            "map_assets_public_base": os.getenv("R2_MAP_ASSETS_PUBLIC_BASE", "").strip().rstrip("/"),
-            # A deployment-level value can be supplied explicitly. If omitted,
-            # cache validation is left to the public object/CDN headers.
+            "map_assets_public_base": (
+                os.getenv("R2_MAP_ASSETS_PUBLIC_BASE", "").strip().rstrip("/") if is_local else ""
+            ),
             "map_assets_version": os.getenv("R2_MAP_ASSETS_VERSION", "").strip() or SHELL_VERSION,
         },
     )

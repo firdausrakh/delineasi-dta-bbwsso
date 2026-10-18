@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
 from api.app import app
 
 
-async def _asgi_get(path: str, *, accept_encoding: str | None = None):
+async def _asgi_get(path: str, *, accept_encoding: str | None = None, host: str = "testserver"):
     request_sent = False
     messages: list[dict] = []
 
@@ -22,6 +25,7 @@ async def _asgi_get(path: str, *, accept_encoding: str | None = None):
         messages.append(message)
 
     headers = []
+    headers.append((b"host", host.encode("ascii")))
     if accept_encoding:
         headers.append((b"accept-encoding", accept_encoding.encode("ascii")))
     await app(
@@ -36,7 +40,7 @@ async def _asgi_get(path: str, *, accept_encoding: str | None = None):
             "query_string": b"",
             "headers": headers,
             "client": ("test", 123),
-            "server": ("testserver", 80),
+            "server": (host.split(":", 1)[0], 80),
             "root_path": "",
         },
         receive,
@@ -64,8 +68,27 @@ class ShellPerformanceTests(unittest.TestCase):
         self.assertEqual(headers["cache-control"], "no-cache")
         html = body.decode("utf-8")
         self.assertIn("window.DTA_CORE_WARM_PROMISE=fetch('/api/health'", html)
-        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.3-point-name-limit"></script>', html)
+        self.assertIn('<script defer src="/static/js/spatial.js?v=1.3.5-geodata-rewrite"></script>', html)
+        self.assertIn("mapAssetsBase", html)
         self.assertNotIn('<script src="https://cdn.jsdelivr.net/npm/chart.js', html)
+
+    def test_geodata_rewrite_precedes_container_fallback(self):
+        config = json.loads((Path(__file__).parents[1] / "vercel.json").read_text(encoding="utf-8"))
+        self.assertEqual(config["rewrites"][0]["source"], "/geodata/:path*")
+        self.assertIn(".r2.dev/:path*", config["rewrites"][0]["destination"])
+
+    def test_public_r2_base_is_used_only_on_localhost(self):
+        with patch.dict(os.environ, {"R2_MAP_ASSETS_PUBLIC_BASE": "https://assets.example"}):
+            _, _, local_body = asyncio.run(_asgi_get("/", host="localhost:8000"))
+            _, _, production_body = asyncio.run(_asgi_get("/", host="delineasi-dta-bbwsso.vercel.app"))
+
+        self.assertIn('mapAssetsBase: "https://assets.example"', local_body.decode("utf-8"))
+        self.assertIn('mapAssetsBase: ""', production_body.decode("utf-8"))
+
+    def test_map_assets_use_same_origin_geodata_in_production(self):
+        source = (Path(__file__).parents[1] / "static" / "js" / "spatial.js").read_text(encoding="utf-8")
+        self.assertIn("`/geodata/${filename}`", source)
+        self.assertNotIn("/api/map-assets/${key}", source)
 
     def test_location_check_has_no_blocking_status_message(self):
         source = (Path(__file__).parents[1] / "static" / "js" / "spatial.js").read_text(encoding="utf-8")

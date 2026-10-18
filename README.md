@@ -215,8 +215,8 @@ Runtime menerapkan perlindungan berikut tanpa mengubah algoritma hidrologi:
 - cache geometry dibersihkan saat RSS memory melewati threshold;
 - hasil karakteristik final memakai cache LRU berbasis hash geometri;
 - koneksi SQLite toponim dan koneksi HTTP R2 dipakai ulang pada warm worker;
-- map-assets public dimuat langsung dari custom domain R2 tanpa redirect melalui Vercel;
-- map-assets memakai versi bundle dan cache immutable;
+- map-assets dimuat dari `/geodata/*` pada origin aplikasi melalui external rewrite Vercel;
+- byte range dan header respons asset diteruskan oleh reverse proxy Vercel tanpa buffering aplikasi;
 - statistik job, antrean, RSS, cache, dan transfer R2 tersedia pada `/api/info`.
 
 Pada worker satu vCPU, jangan menaikkan `DTA_MAX_CONCURRENT_HEAVY_JOBS` di atas `1` tanpa benchmark production.
@@ -476,7 +476,7 @@ Contoh lengkap tersedia di `.env.example`.
 | `R2_RUNTIME_BUCKET` | wajib R2 | default `dta-runtime` |
 | `R2_MANIFEST_KEY` | opsional | default `manifest.json` |
 | `R2_MAP_ASSETS_BUCKET` | migrasi lokal | default `dta-map-assets` |
-| `R2_MAP_ASSETS_PUBLIC_BASE` | disarankan | public/custom domain map-assets tanpa trailing slash |
+| `R2_MAP_ASSETS_PUBLIC_BASE` | pengembangan lokal | public/custom domain map-assets tanpa trailing slash; tidak dipakai browser production |
 | `R2_REFRESH_CACHE` | opsional | `0` normal, `1` paksa refresh cache |
 | `DTA_RUNTIME_CACHE_DIR` | opsional | kosong = temporary directory sistem |
 | `R2_DOWNLOAD_WORKERS` | opsional | default `4`, download object inti secara paralel |
@@ -785,24 +785,13 @@ Jika arah aliran dapat ditentukan secara stabil, logika penamaan dapat mempriori
 
 ---
 
-## Map assets dan CORS
+## Map assets melalui Vercel rewrite
 
-Jika `R2_MAP_ASSETS_PUBLIC_BASE` menggunakan domain yang berbeda dari aplikasi, bucket `dta-map-assets` harus mengizinkan origin aplikasi melalui CORS untuk request `GET`/`HEAD`.
+Browser production mengambil batas DAS dan sungai dari `/geodata/*` pada origin aplikasi. `vercel.json` meneruskan prefix tetap tersebut ke hostname public R2 yang sudah dikonfigurasi, sehingga browser tidak meminta hostname `r2.dev` secara langsung. Tidak ada proxy FastAPI yang mengunduh seluruh asset ke memori.
 
-Untuk development lokal, origin yang umum:
+Untuk development lokal, `R2_MAP_ASSETS_PUBLIC_BASE` tetap dipakai sebagai URL langsung agar `run.bat` dan `run_linux_mac.sh` tetap bekerja; bucket perlu CORS yang mengizinkan origin lokal. Untuk menguji alur production secara lokal, gunakan `vercel dev`. Setelah deploy, periksa `/geodata/official_basins.geojson` dan `/geodata/official_rivers_z10_11.geojson` pada domain aplikasi; keduanya harus berstatus 200 tanpa `Location` ke R2.
 
-```text
-http://127.0.0.1:8000
-http://localhost:8000
-```
-
-Untuk production tambahkan domain Vercel/custom domain aplikasi.
-
-Performance v2 mengarahkan browser langsung ke custom domain tersebut. Aktifkan Cloudflare Cache/Cache Everything untuk hostname map-assets. Script upload memberi `Cache-Control: public, max-age=31536000, immutable`, sedangkan `map_assets_version` pada manifest membuat URL baru ketika isi bundle berubah.
-
-Setelah mengubah kebijakan CORS atau cache pada bucket yang sudah pernah diakses, purge cache hostname map-assets sebelum QA ulang.
-
-Jika `R2_MAP_ASSETS_PUBLIC_BASE` dikosongkan saat local testing, backend dapat melayani map asset dari runtime data sebagai fallback sesuai implementasi endpoint yang tersedia.
+Jika asset PMTiles atau COG ditambahkan kemudian, uji `Range` ke path `/geodata/*` dan pastikan respons tetap `206 Partial Content` dengan `Content-Range` yang benar.
 
 ---
 

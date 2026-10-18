@@ -884,7 +884,7 @@ function appendQuery(url,key,value){
 }
 function mapAssetUrl(key,{retryToken=null}={}){
   const filename=MAP_ASSET_FILES[key];
-  let url=(MAP_ASSETS_BASE&&filename)?`${MAP_ASSETS_BASE}/${filename}`:`/api/map-assets/${key}`;
+  let url=(MAP_ASSETS_BASE&&filename)?`${MAP_ASSETS_BASE}/${filename}`:`/geodata/${filename}`;
   if(MAP_ASSETS_VERSION)url=appendQuery(url,'v',MAP_ASSETS_VERSION);
   if(retryToken!==null)url=appendQuery(url,'retry',retryToken);
   return url;

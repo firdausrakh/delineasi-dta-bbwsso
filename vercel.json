@@ -9,6 +9,10 @@
   },
   "rewrites": [
     {
+      "source": "/geodata/:path*",
+      "destination": "https://pub-da9e3e61051e41cc9a3e4123c594a15e.r2.dev/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": {
         "service": "dta"

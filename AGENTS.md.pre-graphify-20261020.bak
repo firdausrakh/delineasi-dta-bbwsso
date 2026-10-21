@@ -1,0 +1,74 @@
+# AGENTS.md — Petunjuk Kerja Coding Agent
+
+> Berlaku untuk seluruh repository **Delineasi DTA BBWS Serayu Opak**. Baca sebelum membuat rencana, mengubah kode, UI, data, dokumentasi, atau pengujian. Ini bukan permintaan untuk menulis ulang seluruh repository.
+
+## 1. Konteks nyata project
+
+- Aplikasi WebGIS delineasi DTA, karakteristik hidrologi, HSS, dan model hidrologi.
+- Backend: Python + FastAPI (`api/app.py`, `api/core.py`, `api/services/`).
+- Frontend: Jinja2 HTML (`templates/`), CSS (`static/css/`), JavaScript biasa (`static/js/`), dan peta interaktif MapLibre. **Bukan React/Tailwind**; jangan menambah framework tanpa permintaan dan persetujuan eksplisit.
+- Produksi: Vercel Container; data spasial/runtime dipasok dari Cloudflare R2, sebagian data lokal untuk pengembangan. Jangan menganggap data besar tersedia di repository.
+- `README.md` adalah orientasi ringkas. README teknis lama **dipertahankan** di `docs/TECHNICAL_REFERENCE.md`; periksa bagian relevannya saat menyentuh runtime, dataset, atau metode.
+
+## 2. Urutan membaca dokumen (sesuai tugas)
+
+1. **Selalu:** `AGENTS.md`, `SPEC.md`, `README.md`, serta bagian relevan dari `TODO.md`.
+2. **Kebutuhan fitur dan alur pengguna:** `docs/PRD.md`, `docs/USERFLOW.md`, `docs/UX.md` **dan pemeriksaan implementasi aktual**.
+3. **UI, HTML, CSS, atau JavaScript visual:** **wajib** `docs/UI_DESIGN_RULES.md` sampai selesai; baca `docs/UI.md` dan `docs/UX.md` lalu cek komponen/style aktual.
+4. **Arsitektur, API, integrasi, atau data:** `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, serta bagian relevan `docs/TECHNICAL_REFERENCE.md` serta source/test aktual.
+5. **GIS, DTA, HSS, model hidrologi dan kalkulasi:** `docs/CALCULATION.md`, `docs/VALIDATION.md`, `docs/TESTING.md` ; cek sumber, satuan/CRS, implementasi aktual, dan tes regresi.
+6. **Keputusan lintas-fitur dan istilah:** `docs/DECISIONS.md` dan `docs/GLOSSARY.md` ; gunakan catatan keputusan dan definisi yang relevan.
+7. **Status dokumentasi:** sebelas dokumen domain kini tersedia di `docs/` sebagai baseline dari source snapshot DTA. Dokumen ini bukan konfirmasi semua ketentuan telah divalidasi secara ilmiah atau visual; review kembali bila kode lokal lebih baru. Jangan impor konten SOQ/current meter.
+
+**Prioritas saat ada pertentangan:** utamakan keamanan/ketepatan hidrologi dan bukti source/test aktual; klarifikasi scope jika dokumen lama berbeda. Untuk kebijakan tipografi, zoom, dan aksesibilitas, `docs/UI_DESIGN_RULES.md` menjadi guardrail wajib; `docs/UI.md` boleh merinci bahasa visual yang kompatibel. Catat perubahan keputusan penting di `docs/DECISIONS.md`.
+
+## 3. Alur kerja setiap tugas
+
+1. Telusuri berkas terkait dan pola yang sudah ada. Identifikasi fungsi, CSS selector, state, dan API yang mungkin terdampak.
+2. Tuliskan rencana singkat untuk pekerjaan yang kompleks; kerjakan perubahan paling kecil yang benar.
+3. Gunakan komponen/kelas/token yang sudah ada; hindari implementasi paralel, abstraksi berlebihan, dan global override CSS yang tidak perlu.
+4. Pertahankan perilaku MapLibre, proses delineasi DTA, hasil perhitungan, ekspor, serta performa cold start kecuali diminta mengubahnya.
+5. Jalankan tes yang relevan dan pemeriksaan manual yang memungkinkan. **Jangan mengklaim tes browser/zoom sudah lulus jika belum dijalankan.**
+6. Perbarui `TODO.md` hanya jika task benar-benar diputuskan/dikerjakan; dokumentasikan constraint dan langkah verifikasi tersisa.
+7. Laporkan: file diubah, alasan, hasil tes nyata, risiko, dan langkah manual yang belum diverifikasi.
+
+## 4. Aturan UI yang tidak dapat dinegosiasikan
+
+**Semua detail dan checklist ada di `docs/UI_DESIGN_RULES.md`.** Ringkasan penting:
+
+- Jangan paksa `px` sebagai ukuran tetap untuk konten/layout. Prioritaskan `rem` untuk tipografi/spacing; `%`, `fr`, `minmax()`, `max-width`, `clamp()` untuk dimensi fleksibel. `px` diperbolehkan ketika masuk akal (border, hairline, ikon/koordinat peta, breakpoint CSS yang diukur dalam CSS pixels).
+- Terapkan hierarki semantik page title → section title → card title → body → label → caption. Jangan membuat ukuran/weight baru sewenang-wenang.
+- Reflow panel kontrol, form, toolbar, daftar, dialog, dan kartu pada viewport sempit akibat browser zoom. Dukung uji 100%, 125%, 150%, 200%; uji reflow setara 320 CSS px/400% bila relevan.
+- Peta adalah kanvas dua dimensi yang memang memerlukan interaksi spasial; **pengecualian reflow untuk peta tidak berlaku untuk tombol, dialog, legend, sidebar, dan instruksi di sekelilingnya.** Jangan menyamakan zoom peta dengan browser zoom.
+- Jangan mengatasi overflow dengan `overflow: hidden` yang menyembunyikan fungsi. Tetapkan scrolling pada panel/dialog yang tepat tanpa mengganggu panning/zooming peta.
+- Hormati teks yang membesar, label panjang berbahasa Indonesia, navigasi keyboard, fokus, contrast, dark mode, reduced motion, dan target sentuh yang memadai.
+- Pastikan stylesheet yang benar benar dimuat oleh template (`app.css`, `ui-components.css`, `spatial.css`, `motion.css`); periksa cascade/breakpoint terkait sebelum menambah override baru.
+
+## 5. Ketepatan data & keamanan
+
+- Jangan menebak definisi parameter hidrologi, satuan, CRS, metode HSS, validasi, atau batas DAS. Verifikasi melalui kode, test, dan dokumen relevan.
+- Perubahan proses perhitungan/geometri menuntut tes regresi dan keterangan dampaknya pada output.
+- Jangan menyisipkan kunci API, token R2, isi `.env`, path lokal rahasia, dataset privat, atau contoh nilai sensitif ke dokumentasi/commit.
+- Jangan menjalankan unggah R2, migrasi data, atau deploy produksi tanpa izin eksplisit; jangan menambahkan side effect saat aplikasi startup.
+- Hormati performa/memori backend dan strategi lazy loading runtime GIS.
+
+## 6. Perintah verifikasi sesuai cakupan
+
+- Backend/core: `python -m pytest -q` **jika dependency dan fixture tersedia**, atau jalankan subset terkait di `tests/` dan sebutkan pembatasannya.
+- Python syntax cepat: `python -m compileall -q api scripts` (tidak membuktikan tes fungsional lulus).
+- UI: pemeriksaan interaksi manual pada viewport desktop + mobile dan browser zoom; uji pemanggilan API, pencarian/outlet, tombol panel, peta, popup, export, dark mode bila terpengaruh.
+- Penyesuaian visual **tidak dinyatakan lulus** hanya karena CSS valid atau tes Python lulus.
+
+## 7. Kebijakan dokumentasi: lengkap, jelas, tidak duplikatif
+
+- **Dokumen inti:** `README.md`, `SPEC.md`, `TODO.md` untuk orientasi, scope dan backlog.
+- **Dokumen domain tersedia:** `docs/ARCHITECTURE.md`, `docs/DATA_MODEL.md`, `docs/CALCULATION.md`, `docs/PRD.md`, `docs/UX.md`, `docs/USERFLOW.md`, `docs/UI.md`, `docs/TESTING.md`, `docs/VALIDATION.md`, `docs/DECISIONS.md`, `docs/GLOSSARY.md`.
+- **Aturan UI utama:** `docs/UI_DESIGN_RULES.md`. Dokumen `docs/UI.md` menjelaskan implementasi interface dan harus konsisten dengan aturan zoom, typography, reflow, dan accessibility.
+- **Referensi teknis/historis:** `docs/TECHNICAL_REFERENCE.md` menyimpan README lama secara utuh. Pisahkan catatan historis dari kontrak source aktif.
+- Dokumen domain baru disusun dari snapshot ZIP DTA, bukan dari SOQ. **Sebelum mengganti file dengan nama sama yang sudah ada di checkout lokal, bandingkan isinya terlebih dahulu** dan gabungkan informasi historis/keputusan yang penting.
+- Jangan menghapus atau mengarsipkan dokumen lain tanpa membaca isi dan menelusuri referensinya. `FLOWTRACKER2_MAPPING.md` pada SOQ bukan spesifikasi DTA.
+- Jika dokumen usang/duplikat, ajukan perbaikan atau pengarsipan terkontrol, bukan penghapusan diam-diam.
+
+## 8. Definition of Done
+
+Perubahan dinyatakan siap ditinjau setelah: (a) scope & risiko jelas, (b) tes yang relevan dilaporkan secara jujur, (c) untuk UI: hierarki teks, zoom, overflow, modal/sidebar/peta dan keyboard telah diperiksa atau ditandai belum diuji, (d) tidak ada rahasia terikut, (e) dokumen diperbarui hanya bila perlu.

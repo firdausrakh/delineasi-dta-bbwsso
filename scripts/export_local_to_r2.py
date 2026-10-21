@@ -21,6 +21,9 @@ if str(ROOT) not in sys.path:
 
 from api.services.runtime_backend import load_project_dotenv  # noqa: E402
 from api.services.river_display import RIVER_DISPLAY_TIERS, build_river_display_gdf  # noqa: E402
+from api.services.hydro_spatial import MODEL_VECTORS  # noqa: E402
+from api.services.hydro_soil import SOIL_RASTERS  # noqa: E402
+from api.services.hydro_rainfall import band_dates  # noqa: E402
 
 
 def _json_load(path: Path, default: Any = None) -> Any:
@@ -90,6 +93,57 @@ def _river_base_name(value: Any) -> str | None:
             text = text[len(prefix):].strip()
             break
     return text or None
+
+
+def export_hydro_assets(shared: Path, destination: Path) -> dict[str, str]:
+    """Analysis keeps full geometries in GeoPackage; PMTiles is for display only."""
+    destination.mkdir(parents=True, exist_ok=True)
+    exported = {}
+    rainfall = shared / 'rainfall.tif'
+    if rainfall.exists():
+        with rasterio.open(rainfall) as ds:
+            band_dates(ds)
+        if rainfall.resolve() != (destination / rainfall.name).resolve():
+            _copy_raster_as_cog(rainfall, destination / rainfall.name, categorical=False)
+        with rasterio.open(rainfall) as source, rasterio.open(destination / rainfall.name) as dest:
+            if band_dates(source) != band_dates(dest) or source.tags() != dest.tags():
+                raise RuntimeError('Konversi COG mengubah metadata hujan.')
+        exported['rainfall'] = 'shared/rainfall.tif'
+    daily = shared / 'daily_rainfall_gridded_0.02.nc'
+    if daily.exists():
+        if daily.resolve() != (destination / daily.name).resolve():
+            shutil.copy2(daily, destination / daily.name)
+        exported['daily_rainfall'] = f'shared/{daily.name}'
+    for name in SOIL_RASTERS:
+        source = shared / f'{name}.tif'
+        if not source.exists():
+            print(f'  Model: {source.name} belum tersedia; parameter tanah tidak lengkap.')
+            continue
+        with rasterio.open(source) as ds:
+            if ds.count != 6 or ds.crs is None:
+                raise RuntimeError(f'{source}: diperlukan enam band SoilGrids dengan CRS.')
+        _copy_raster_as_cog(source, destination / source.name, categorical=False)
+        exported[name] = f'shared/{source.name}'
+    vector_sources = [(name, shared / f'{name}.shp') for name in MODEL_VECTORS if (shared / f'{name}.shp').exists()]
+    if vector_sources:
+        if len(vector_sources) != len(MODEL_VECTORS):
+            raise RuntimeError('Layer Model Hidrologi belum lengkap: ' + ', '.join(name for name in MODEL_VECTORS if not (shared / f'{name}.shp').exists()))
+        target = destination / 'hydro_vectors.gpkg'
+        target.unlink(missing_ok=True)
+        from shapely import force_2d
+        for name, source in vector_sources:
+            frame = gpd.read_file(source)
+            if frame.crs is None or frame.empty or not frame.geometry.is_valid.all():
+                raise RuntimeError(f'{source}: CRS, kelengkapan, atau geometri tidak valid.')
+            frame = frame.to_crs('EPSG:32749')
+            frame.geometry = force_2d(frame.geometry.to_numpy())
+            frame.to_file(target, layer=name, driver='GPKG', index=False)
+            check = gpd.read_file(target, layer=name)
+            if len(check) != len(frame) or set(check.columns) != set(frame.columns):
+                raise RuntimeError(f'Konversi GeoPackage mengubah jumlah fitur/atribut {name}.')
+            print(f'  Model: {source.name} -> hydro_vectors.gpkg/{name} ({len(frame):,} fitur)')
+        exported['hydro_vectors'] = 'shared/hydro_vectors.gpkg'
+    return exported
 
 
 def _river_map_label(value: Any) -> str | None:
@@ -209,10 +263,28 @@ def main() -> int:
     parser.add_argument("--dataset", default=os.getenv("HYDRO_DATASET", "").strip() or None)
     parser.add_argument("--output", default=str(ROOT / "r2_bundle"))
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument('--hydro-only', action='store_true', help='Tambahkan COG tanah dan GeoPackage model ke bundle existing tanpa membangun ulang data delineasi.')
     args = parser.parse_args()
 
     data_dir = _resolve_data_dir(args.data_dir)
     dsid = _resolve_dataset(data_dir, args.dataset)
+    if args.hydro_only:
+        out = Path(args.output).resolve()
+        manifest_path = out / 'runtime' / 'manifest.json'
+        if not manifest_path.exists():
+            raise RuntimeError('Buat bundle runtime dasar dahulu sebelum --hydro-only.')
+        manifest = _json_load(manifest_path)
+        if dsid not in manifest.get('datasets', {}):
+            raise RuntimeError('Dataset tidak ditemukan pada bundle existing.')
+        assets = export_hydro_assets(data_dir / 'shared', out / 'runtime' / 'shared')
+        for name, rel in assets.items():
+            file = out / 'runtime' / rel
+            manifest['datasets'][dsid][name] = rel
+            manifest.setdefault('objects', {})[rel] = {'sha256': _sha256(file), 'size': file.stat().st_size, 'role': name}
+        manifest['schema_version'] = max(5, int(manifest.get('schema_version', 0)))
+        _json_dump(manifest_path, manifest)
+        print(f'Bundle Model Hidrologi siap: {len(assets)} object di {out}')
+        return 0
     paths = _validate_source(data_dir, dsid)
 
     out = Path(args.output).resolve()
@@ -252,6 +324,8 @@ def main() -> int:
         _copy_raster_as_cog(src, dst, categorical=categorical)
         print(f"  {src.name:32s} -> {dst.relative_to(runtime)} (COG)")
 
+    hydro_paths = export_hydro_assets(data_dir / 'shared', shared_out)
+
     print("[2/4] Membuat map-assets multiscale dari reference lokal...")
     basins = gpd.read_file(paths["official"], layer="official_basins").to_crs("EPSG:4326")
     rivers_source = gpd.read_file(paths["official"], layer="official_rivers")
@@ -288,6 +362,7 @@ def main() -> int:
         "official": "reference/official_reference.gpkg",
         "rivers_original": "reference/official_rivers_original.gpkg",
         "toponim": "reference/toponim.sqlite",
+        **hydro_paths,
     }
     checksums: dict[str, dict[str, Any]] = {}
     for name, rel in object_paths.items():
@@ -312,7 +387,7 @@ def main() -> int:
     map_assets_version = asset_digest.hexdigest()[:16]
 
     manifest = {
-        "schema_version": 4,
+        "schema_version": 5,
         "source": "local-runtime-data",
         "active_dataset": dsid,
         "map_assets_version": map_assets_version,
@@ -332,6 +407,7 @@ def main() -> int:
                 "landcover": object_paths["landcover"],
                 "streams_analysis": object_paths["streams_analysis"],
                 "landsystem": object_paths["landsystem"],
+                **hydro_paths,
             }
         },
         "reference": {

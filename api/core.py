@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import io
 import math
 import os
 import pickle
@@ -16,6 +17,7 @@ import urllib.parse
 import urllib.request
 import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 import atexit
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -77,6 +79,14 @@ from api.services.characteristics_workbook import create_characteristics_workboo
 from api.services.hss_analysis import calculate_hss
 from api.services.hss_workbook import create_hss_workbook
 from api.services.hss_report import create_hss_report
+from api.services.hydro_model import GROUPS as HYDRO_GROUPS, parse_debit_workbook, simulate as simulate_hydro, validate_records as validate_hydro_records
+from api.services.hydro_spatial import descriptors as hydro_descriptors, MODEL_RASTERS, MODEL_VECTORS
+from api.services.hydro_soil import SOIL_RASTERS, soil_parameters
+from api.services.hydro_climate import climate as hydro_climate
+from api.services.hydro_runoff import simulate_runoff
+from api.services.hydro_recession import recession_prior
+from api.services.hydro_mock_settings import configuration as mock_configuration
+from api.services.hydro_workbook import workbook_bytes as hydro_workbook_bytes
 from api.services.hss_spatial import gama1_grouped_frames
 from api.services.characteristics_spatial import characteristic_grouped_frames, clipped_analysis_streams
 from api.services.river_display import RIVER_DISPLAY_TIER_BY_FILENAME, build_river_display_gdf
@@ -113,8 +123,8 @@ LANDSYSTEM_PATH = optional_spatial_path(ROOT_DIR, "DTA_LANDSYSTEM_PATH", "landsy
 CRS_WEB = "EPSG:4326"
 CRS_AREA = "ESRI:54034"
 CRS_EXPORT = "EPSG:32749"
-APP_VERSION = "1.3.2"
-MAX_POINTS = 10
+APP_VERSION = "1.4.0"
+MAX_POINTS = 100
 KARST_BASIN_NAMES = {"Bribin", "Seropan", "Buh Putih"}
 
 # Shared delineation defaults. Keep these values in one place so request
@@ -368,6 +378,79 @@ class OutletPoint(BaseModel):
     lat: float = Field(..., ge=-90, le=90)
     source: str = Field("map", max_length=30)
     label: str | None = Field(None, max_length=160)
+    river_name: str | None = Field(None, max_length=160)
+
+
+_XLSX_NS = {"main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+
+
+def _xlsx_cell_value(cell: ET.Element, shared_strings: list[str]) -> str:
+    """Return the displayed scalar value from a standard XLSX cell."""
+    value = cell.findtext("main:v", default="", namespaces=_XLSX_NS)
+    if cell.get("t") == "s" and value:
+        try:
+            return shared_strings[int(value)]
+        except (IndexError, ValueError):
+            return ""
+    if cell.get("t") == "inlineStr":
+        return "".join(cell.itertext()).strip()
+    return value.strip()
+
+
+def _parse_uploaded_points_xlsx(payload: bytes) -> list[dict[str, Any]]:
+    """Read the four columns in the published point-upload template."""
+    if len(payload) > 2 * 1024 * 1024:
+        raise ValueError("Ukuran file .xlsx maksimal 2 MB.")
+    try:
+        with zipfile.ZipFile(io.BytesIO(payload)) as workbook:
+            shared_strings: list[str] = []
+            if "xl/sharedStrings.xml" in workbook.namelist():
+                root = ET.fromstring(workbook.read("xl/sharedStrings.xml"))
+                shared_strings = ["".join(item.itertext()).strip() for item in root.findall("main:si", _XLSX_NS)]
+            sheet = ET.fromstring(workbook.read("xl/worksheets/sheet1.xml"))
+    except (KeyError, ET.ParseError, zipfile.BadZipFile) as exc:
+        raise ValueError("File bukan .xlsx yang valid.") from exc
+
+    rows: list[dict[str, str]] = []
+    for row in sheet.findall(".//main:sheetData/main:row", _XLSX_NS):
+        values: dict[str, str] = {}
+        for cell in row.findall("main:c", _XLSX_NS):
+            column = re.match(r"[A-Z]+", cell.get("r", ""))
+            if column:
+                values[column.group(0)] = _xlsx_cell_value(cell, shared_strings)
+        rows.append(values)
+    if not rows:
+        raise ValueError("File .xlsx tidak memiliki data titik.")
+
+    headers = {str(value).strip().casefold(): column for column, value in rows[0].items()}
+    required = {"nama titik": "label", "nama sungai": "river_name", "lintang": "lat", "bujur": "lon"}
+    missing = [name for name in required if name not in headers]
+    if missing:
+        raise ValueError("Kolom template tidak lengkap: " + ", ".join(missing) + ".")
+
+    points: list[dict[str, Any]] = []
+    for index, row in enumerate(rows[1:], start=2):
+        lat_raw, lon_raw = row.get(headers["lintang"], ""), row.get(headers["bujur"], "")
+        if not lat_raw and not lon_raw:
+            continue
+        try:
+            lat = float(lat_raw.replace(",", "."))
+            lon = float(lon_raw.replace(",", "."))
+        except ValueError as exc:
+            raise ValueError(f"Baris {index}: Lintang dan Bujur harus berupa angka desimal.") from exc
+        if not -90 <= lat <= 90 or not -180 <= lon <= 180:
+            raise ValueError(f"Baris {index}: koordinat berada di luar rentang yang valid.")
+        points.append({
+            "lat": lat,
+            "lon": lon,
+            "label": row.get(headers["nama titik"], "").strip()[:25],
+            "river_name": row.get(headers["nama sungai"], "").strip()[:160],
+        })
+    if not points:
+        raise ValueError("Tidak ada baris titik yang valid pada file .xlsx.")
+    if len(points) > MAX_POINTS:
+        raise ValueError(f"Maksimal {MAX_POINTS} titik per unggahan .xlsx.")
+    return points
 
 
 class MultiDelineateRequest(BaseModel):
@@ -409,6 +492,41 @@ class HssRequest(BaseModel):
     global_tr_hours: float = Field(1.0, gt=0, le=24)
 
 
+class HydroDonor(BaseModel):
+    point_id: str
+    sheet: str = Field(..., min_length=1, max_length=31)
+    records: list[dict[str, Any]]
+
+
+class MockParameterValues(BaseModel):
+    model_config = {'extra':'forbid'}
+    smc_multiplier: float | None = Field(None, gt=0, strict=True)
+    infiltration: float | None = Field(None, ge=0, le=1, strict=True)
+    k30: float | None = Field(None, gt=0, lt=1, strict=True)
+
+
+class HydroModelRequest(BaseModel):
+    points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
+    donors: list[HydroDonor] = Field(default_factory=list)
+    model: str = Field('hydromodar', pattern='^(hydromodar|mock|random_forest|xgboost)$')
+    start_year: int = Field(1990, ge=1990, le=2100)
+    end_year: int = Field(2026, ge=1990, le=2100)
+    calibrate: bool = True
+    k30: float | None = Field(None, gt=0, lt=1)
+    mock_mode: str | None = Field(None, pattern='^(gis|manual|auto)$')
+    mock_parameters: dict[str, MockParameterValues] = Field(default_factory=dict)
+    mock_bounds: dict[str, list[float]] = Field(default_factory=dict)
+    mock_fit_parameters: list[str] = Field(default_factory=lambda:['smc_multiplier','infiltration','k30'])
+    warmup_years: int = Field(3, ge=0, le=100, strict=True)
+    groups: list[str] = Field(default_factory=list)
+    b: float = Field(1, gt=0, le=3)
+    soil_depth: int = 30
+    source_file: str = Field('', max_length=240)
+    source_notes: str = Field('', max_length=2000)
+    snap_radius_m: float = Field(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000)
+    boundary_match_m: float = Field(DEFAULT_BOUNDARY_MATCH_M, ge=10, le=500)
+
+
 class DownloadRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
     snap_radius_m: float = Field(DEFAULT_SNAP_RADIUS_M, gt=0, le=20000)
@@ -419,6 +537,8 @@ class DownloadRequest(BaseModel):
     include_analysis_report: bool = False
     include_hss: bool = False
     hss_results: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    include_hydro_model: bool = False
+    hydro_model: HydroModelRequest | None = None
     language: str = Field("id", pattern="^(id|en)$")
     decimal_separator: str = Field(",", pattern="^[,.]$")
 
@@ -943,6 +1063,8 @@ def build_point_result(
     requested_projected = Point(x, y)
     requested_official = official_basin_at_point(requested_projected)
     official_river = nearest_official_river(requested_projected)
+    if point.river_name:
+        official_river = {**(official_river or {}), "name": point.river_name}
     if cancel_check:
         cancel_check()
 
@@ -2146,6 +2268,16 @@ def location_check(
         },
     }
 
+
+@app.post("/api/points-xlsx")
+async def points_from_xlsx(request: Request):
+    """Validate a point-upload workbook before the browser starts delineation."""
+    try:
+        points = _parse_uploaded_points_xlsx(await request.body())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"points": points, "max_points": MAX_POINTS}
+
 @app.get("/api/map-assets/{asset_key}")
 def map_asset(asset_key: str):
     assets = {
@@ -2595,6 +2727,157 @@ def hss_analysis(req: HssRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.post('/api/hydro-model/workbook')
+async def hydro_model_upload(request: Request, allow_missing: bool = False):
+    payload = bytearray()
+    async for chunk in request.stream():
+        payload.extend(chunk)
+        if len(payload) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail='Ukuran Excel maksimal 10 MB.')
+    try:
+        return parse_debit_workbook(bytes(payload), allow_missing=allow_missing)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_only=False):
+    runoff = req.model != 'hydromodar'
+    if not parameters_only and runoff and req.start_year > req.end_year:
+        raise ValueError('Tahun awal harus ≤ tahun akhir.')
+    if not parameters_only and req.model=='mock' and req.start_year+req.warmup_years>req.end_year:
+        raise ValueError('Tidak ada tahun keluaran setelah pemanasan; perpanjang rentang iklim atau kurangi tahun pemanasan.')
+    if not runoff and (len(req.points)<2 or not req.donors):
+        raise ValueError('HydroMODAR memerlukan ≥2 DTA dan ≥1 referensi debit.')
+    if runoff:
+        # Validate observations before costly spatial extraction and remote ET0 requests.
+        for donor in req.donors:
+            validate_hydro_records(donor.records, allow_missing=True)
+        if req.model in ('random_forest','xgboost') and not req.donors:
+            raise ValueError('RF/XGBoost memerlukan debit pengamatan untuk pelatihan.')
+    if 'lithology' in req.groups:
+        raise ValueError('Litologi kini hanya konteks hidrogeologi. Muat ulang halaman dan pilih kembali parameter model.')
+    if set(req.groups) - set(HYDRO_GROUPS):
+        raise ValueError('Parameter model tidak dikenal.')
+    rainfall_years = ()
+    if not runoff and 'rainfall' in req.groups:
+        rainfall_years = sorted(set.intersection(*(set(validate_hydro_records(d.records)) for d in req.donors)))
+        if not rainfall_years:
+            raise ValueError('Tidak ada irisan tahun pencatatan seluruh DTA referensi.')
+    if built_results is None:
+        built_results, upstream_sets = [], []
+        for point in req.points:
+            result, upstream = build_point_result(point, req.snap_radius_m, req.boundary_match_m,
+                                                  DEFAULT_PAEK_TOLERANCE_M, DEFAULT_VW_TOLERANCE_M)
+            built_results.append(result)
+            upstream_sets.append(upstream)
+        reconcile_final_geometries(built_results, upstream_sets)
+    lookup = {r['point_id']: r for r in built_results}
+    if {p.point_id for p in req.points} != set(lookup):
+        raise ValueError('Daftar DTA model berbeda dari hasil delineasi. Jalankan ulang simulasi.')
+    paths = {}
+    names = (list(MODEL_RASTERS) if 'soil' in req.groups else []) + (['dem'] if 'terrain' in req.groups else [])
+    if runoff:
+        names = [*SOIL_RASTERS, 'dem'] + ([] if parameters_only else ['daily_rainfall'])
+    names.append('hydro_vectors')  # CAT and lithology provide context in every model mode.
+    if not runoff and 'rainfall' in req.groups:
+        names.append('rainfall')
+    for name in names:
+        if DATA_BACKEND == 'r2':
+            if name in RUNTIME_DATA.lazy_objects:
+                paths[name] = ensure_runtime_object(RUNTIME_DATA, name)
+        else:
+            path = RUNTIME_DATA.analysis_paths.get(name)
+            if path is not None and path.exists():
+                paths[name] = path
+    if DATA_BACKEND != 'r2':
+        shared = FDIR_PATH.parent
+        for name in MODEL_VECTORS:
+            paths[name] = shared / f'{name}.shp'
+    points_data, geometries = [], {}
+    for point in req.points:
+        result = lookup[point.point_id]
+        geom = _result_native_geometry(result)
+        if geom is None or geom.is_empty:
+            raise ValueError(f'{point.point_id}: batas DTA tidak tersedia.')
+        geometries[point.point_id] = geom
+        outlet = Point(*to_data.transform(float(result['snapped_lon']), float(result['snapped_lat'])))
+        try:
+            spatial_groups=('terrain','landcover','aquifer','recession') if req.model=='mock' else ('terrain','landcover') if runoff else req.groups
+            spatial = hydro_descriptors(geom, streams.crs, outlet, paths, spatial_groups, soil_depth=req.soil_depth, rainfall_years=rainfall_years)
+            if runoff:
+                terrain = spatial['features'].get('terrain')
+                if not terrain or not all(v is not None and math.isfinite(v) for v in terrain):
+                    raise ValueError('DEM dengan elevasi dan lereng valid wajib tersedia.')
+                spatial['soil_parameters'] = soil_parameters(paths, geom, streams.crs, terrain[1], spatial['features'].get('landcover'))
+                if req.model=='mock':
+                    spatial['recession_parameters'] = recession_prior(spatial)
+                    if not spatial['recession_parameters']['available']:
+                        spatial['warnings'].append(spatial['recession_parameters']['reason'])
+        except ValueError as exc:
+            raise ValueError(f'{point.label or point.point_id}: {exc}') from exc
+        points_data.append({'point_id': point.point_id, 'label': point.label or point.point_id,
+                            'area_km2': area_km2_equal(geom), **spatial, 'warnings': list(spatial['warnings'])})
+    if parameters_only:
+        return {'model':'mock','points':points_data}
+    if runoff:
+        if req.model=='mock':
+            mock_configuration(points_data,mode=req.mock_mode or ('auto' if req.calibrate else 'manual'),
+                bounds=req.mock_bounds,fit_parameters=req.mock_fit_parameters,k30=req.k30,
+                overrides={key:value.model_dump(exclude_none=True) for key,value in req.mock_parameters.items()})
+        rain_path = paths.get('daily_rainfall')
+        if rain_path is None or not rain_path.exists():
+            raise ValueError('NetCDF hujan harian belum tersedia pada backend ini.')
+        for p in points_data:
+            p['climate']=hydro_climate(rain_path,geometries[p['point_id']],streams.crs,req.start_year,req.end_year,
+                                      rain_path.parent/'et0_cache')
+    for i, donor in enumerate(req.donors):
+        if donor.point_id not in geometries:
+            raise ValueError('DTA referensi tidak ditemukan.')
+        for other in req.donors[i+1:]:
+            if other.point_id not in geometries:
+                raise ValueError('DTA referensi tidak ditemukan.')
+            a, c = geometries[donor.point_id], geometries[other.point_id]
+            fraction = a.intersection(c).area / min(a.area, c.area)
+            if fraction > .95:
+                message = f'Referensi {donor.point_id} dan {other.point_id} bersarang/saling mencakup; informasi debit tidak independen.'
+                for p in points_data:
+                    p['warnings'].append(message)
+    if runoff:
+        payload = simulate_runoff(points_data, [d.model_dump() for d in req.donors], model=req.model,
+            calibrate=req.calibrate, k30=req.k30, source_file=req.source_file, warmup_years=req.warmup_years,
+            mock_mode=req.mock_mode,mock_bounds=req.mock_bounds,mock_fit_parameters=req.mock_fit_parameters,
+            mock_parameters={key:value.model_dump(exclude_none=True) for key,value in req.mock_parameters.items()})
+    else:
+        payload = simulate_hydro(points_data, [d.model_dump() for d in req.donors], b=req.b, groups=req.groups,
+                                 soil_depth=req.soil_depth, source_file=req.source_file)
+    payload['source_notes'] = req.source_notes
+    return payload
+
+
+@app.post('/api/hydro-model/parameters')
+def hydro_model_parameters(req: HydroModelRequest):
+    if req.model!='mock':
+        raise HTTPException(status_code=400,detail='Pratinjau parameter GIS tersedia untuk FJ Mock.')
+    try:
+        with _heavy_job_context():
+            return _run_hydro_model(req,parameters_only=True)
+    except (ValueError,TypeError,KeyError) as exc:
+        raise HTTPException(status_code=400,detail=str(exc)) from exc
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
+
+
+@app.post('/api/hydro-model')
+def hydro_model(req: HydroModelRequest):
+    try:
+        with _heavy_job_context():
+            return _run_hydro_model(req)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except HeavyJobQueueFull as exc:
+        raise _performance_http_error(exc) from exc
+
+
 @app.post("/api/download")
 def download(req: DownloadRequest):
     try:
@@ -2603,6 +2886,8 @@ def download(req: DownloadRequest):
             return _download_impl(req)
     except HeavyJobQueueFull as exc:
         raise _performance_http_error(exc) from exc
+    except (ValueError, TypeError, KeyError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _download_impl(req: DownloadRequest):
@@ -2612,6 +2897,12 @@ def _download_impl(req: DownloadRequest):
         key = f.lower().strip()
         if key in allowed_formats and key not in formats:
             formats.append(key)
+    if req.include_hydro_model and req.hydro_model is None:
+        raise HTTPException(status_code=400, detail='Konfigurasi model hidrologi belum tersedia.')
+    if not formats and req.include_hydro_model:
+        payload = hydro_workbook_bytes(_run_hydro_model(req.hydro_model))
+        return StreamingResponse(iter([payload]), media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                 headers={'Content-Disposition': 'attachment; filename="Model_Hidrologi.xlsx"'})
     if not formats:
         raise HTTPException(status_code=400, detail="Pilih minimal satu format unduhan.")
 
@@ -2650,6 +2941,10 @@ def _download_impl(req: DownloadRequest):
             upstream_sets.append(upstream)
         reconcile_final_geometries(built_results, upstream_sets)
         apply_incremental_geometries(built_results, upstream_sets)
+
+        if req.include_hydro_model:
+            model = _run_hydro_model(req.hydro_model, built_results=built_results)
+            (root_dir / 'Model_Hidrologi.xlsx').write_bytes(hydro_workbook_bytes(model))
 
         for point, result in zip(req.points, built_results):
             river_name = (result.get("official_river") or {}).get("name") or "Tanpa Nama Sungai"

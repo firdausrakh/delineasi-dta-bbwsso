@@ -1,0 +1,30 @@
+# Local dependencies, builds, caches, and Graphify's own output
+.venv/
+venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+.vercel/
+graphify-out/
+dist/
+build/
+
+# Runtime datasets and generated hydrology/GIS outputs
+data/
+r2_bundle/
+static/data/
+hasil_delineasi/
+delineation_output/
+outputs/
+*.tif
+*.tiff
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.qix

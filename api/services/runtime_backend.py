@@ -352,6 +352,10 @@ def _load_r2(root: Path, requested_dataset_id: str | None) -> RuntimeBundle:
         "streams_analysis": ref("streams_analysis", key("streams_analysis", "shared/streams_analysis.zip"), cache_root / "shared" / "streams_analysis.zip"),
         "landsystem": ref("landsystem", key("landsystem", "shared/landsystem.zip"), cache_root / "shared" / "landsystem.zip"),
     }
+    for name in ('hydro_vectors', 'sand', 'silt', 'clay', 'bd', 'coarse', 'carbon', 'swc0033', 'swc1500', 'rainfall', 'daily_rainfall'):
+        if dataset_spec.get(name):
+            suffix = '.gpkg' if name == 'hydro_vectors' else '.nc' if name == 'daily_rainfall' else '.tif'
+            lazy_objects[name] = ref(name, str(dataset_spec[name]), cache_root / 'shared' / f'{name}{suffix}')
     download_started = time.perf_counter()
     paths = _download_many(client, refs)
     _metric_add("startup_download_ms", (time.perf_counter() - download_started) * 1000.0)
@@ -521,6 +525,13 @@ def _load_local(root: Path, requested_dataset_id: str | None) -> RuntimeBundle:
             "cn2": data_dir / "shared" / "cn2.tif", "landcover": data_dir / "shared" / "landcover.tif",
             "streams_analysis": data_dir / "shared" / "streams_analysis.zip",
             "landsystem": data_dir / "shared" / "landsystem.zip",
+            "hydro_vectors": data_dir / "shared" / "hydro_vectors.gpkg",
+            "sand": data_dir / "shared" / "sand.tif",
+            "silt": data_dir / "shared" / "silt.tif",
+            "clay": data_dir / "shared" / "clay.tif",
+            "rainfall": data_dir / "shared" / "rainfall.tif",
+            **{name: data_dir / 'shared' / f'{name}.tif' for name in ('bd','coarse','carbon','swc0033','swc1500')},
+            "daily_rainfall": data_dir / "shared" / "daily_rainfall_gridded_0.02.nc",
         },
     )
 

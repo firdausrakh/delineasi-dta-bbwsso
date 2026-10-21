@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -34,7 +35,7 @@ def _raster_content_signature(path: Path) -> tuple[tuple, str]:
     with rasterio.open(path) as ds:
         metadata = (
             str(ds.crs), tuple(ds.transform), ds.width, ds.height, ds.count,
-            tuple(ds.dtypes), tuple(ds.nodatavals),
+            tuple(ds.dtypes), tuple('nan' if v is not None and math.isnan(v) else v for v in ds.nodatavals),
         )
         for band in range(1, ds.count + 1):
             for row in range(0, ds.height, 512):
@@ -87,6 +88,9 @@ def main() -> int:
         "toponim": ref["toponim"],
     }
     object_meta = manifest.get("objects") or {}
+    for name in ('hydro_vectors', 'sand', 'silt', 'clay', 'bd', 'coarse', 'carbon', 'swc0033', 'swc1500', 'rainfall', 'daily_rainfall'):
+        if spec.get(name):
+            keys[name] = spec[name]
 
     print(f"Verifikasi R2 bucket={bucket} dataset={dsid}")
     print(
@@ -113,6 +117,36 @@ def main() -> int:
             if expected_hash and _sha256(path) != expected_hash:
                 raise RuntimeError(f"FAIL SHA256 R2 object: {key}")
 
+        for name in ('sand', 'silt', 'clay', 'bd', 'coarse', 'carbon', 'swc0033', 'swc1500'):
+            if name in local:
+                with rasterio.open(local[name]) as soil:
+                    if soil.count != 6 or soil.crs is None or soil.tags(ns='IMAGE_STRUCTURE').get('LAYOUT') != 'COG':
+                        raise RuntimeError(f'FAIL {name}: bukan COG SoilGrids enam band yang valid.')
+                source = _local_data_dir()
+                if source and (source / 'shared' / f'{name}.tif').exists():
+                    if _raster_content_signature(local[name]) != _raster_content_signature(source / 'shared' / f'{name}.tif'):
+                        raise RuntimeError(f'FAIL konversi COG mengubah nilai asli {name}.')
+        if 'daily_rainfall' in local:
+            import h5py
+            with h5py.File(local['daily_rainfall'], 'r') as daily:
+                if not all(n in daily for n in ('prcp','lat','lon','time')) or daily['prcp'].shape != (len(daily['time']),len(daily['lat']),len(daily['lon'])):
+                    raise RuntimeError('FAIL dimensi NetCDF hujan harian.')
+        if 'rainfall' in local:
+            from api.services.hydro_rainfall import band_dates
+            with rasterio.open(local['rainfall']) as rainfall:
+                band_dates(rainfall)
+                if rainfall.tags(ns='IMAGE_STRUCTURE').get('LAYOUT') != 'COG':
+                    raise RuntimeError('FAIL hujan: bukan COG.')
+            source = _local_data_dir()
+            if source and (source / 'shared/rainfall.tif').exists():
+                if _raster_content_signature(local['rainfall']) != _raster_content_signature(source / 'shared/rainfall.tif'):
+                    raise RuntimeError('FAIL konversi COG mengubah nilai asli hujan.')
+        if 'hydro_vectors' in local:
+            from api.services.hydro_spatial import MODEL_VECTORS
+            for layer in MODEL_VECTORS:
+                frame = gpd.read_file(local['hydro_vectors'], layer=layer)
+                if frame.empty or frame.crs is None or not frame.geometry.is_valid.all():
+                    raise RuntimeError(f'FAIL layer model {layer}.')
         streams = gpd.read_file(local["engine"], layer="streams_web")
         subbasins = gpd.read_file(local["engine"], layer="subbasins_web")
         basins = gpd.read_file(local["official"], layer="official_basins")

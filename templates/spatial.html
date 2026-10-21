@@ -4,7 +4,7 @@
 {% block head_extra %}
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" />
 {% if map_assets_public_base %}<link rel="preconnect" href="{{ map_assets_public_base }}" crossorigin>{% endif %}
-<link rel="stylesheet" href="/static/css/spatial.css?v=1.3.24-map-mask-cleanup" />
+<link rel="stylesheet" href="/static/css/spatial.css?v=1.6.26-basemap-label" />
 {% endblock %}
 {% block content %}
 <main id="spatialWorkspace" class="webgis-shell">
@@ -25,7 +25,7 @@
           <label>Koordinat <span class="muted-inline">(Lintang, Bujur)</span>
             <input id="coordinateInput" type="text" spellcheck="false" inputmode="text" placeholder="DD atau DMS" autocomplete="off" aria-describedby="coordinateHint" />
           </label>
-          <div id="coordinateHint" class="coordinate-example">Contoh DD: <code>-7.339961, 110.209919</code><br>Contoh DMS: <code>7°20'23.9&quot;S 110°12'35.7&quot;E</code></div>
+          <div id="coordinateHint" class="coordinate-example"><span class="coordinate-example-row"><span>Contoh DD:</span><code>-7.339961, 110.209919</code></span><span class="coordinate-example-row"><span>Contoh DMS:</span><code>7°20'23.9&quot;S 110°12'35.7&quot;E</code></span></div>
           <button id="previewCoordinateBtn" class="btn btn-neutral full" type="button"><i data-lucide="map-pin"></i>Tampilkan Titik</button>
         </section>
 
@@ -54,18 +54,23 @@
         <div id="status" class="status neutral hidden" aria-live="polite"></div>
 
         <section class="panel-section outlet-section">
-          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2><div class="point-limit-note">Maksimal 10 DTA<br>per pemrosesan</div></div><div class="result-heading-actions"><button id="toggleAllDtaVisibilityBtn" class="text-button result-icon-button" type="button" aria-label="Sembunyikan semua DTA" title="Sembunyikan semua DTA" disabled><i data-lucide="eye"></i></button><button id="focusAllDtaBtn" class="text-button focus-all-button result-icon-button" type="button" aria-label="Fokus semua DTA" title="Fokus semua DTA" disabled><i data-lucide="scan-search"></i></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus<br>Semua</span></button></div></div>
+          <div class="section-heading-row"><div><h2>Hasil DTA <span id="pointCount">0</span></h2></div></div>
+          <div class="point-limit-note">Maksimal 10 DTA per pemrosesan</div>
+          <div class="result-heading-actions"><button id="toggleAllDtaVisibilityBtn" class="text-button result-icon-button" type="button" aria-label="Sembunyikan semua DTA" title="Sembunyikan semua DTA" disabled><i data-lucide="eye"></i></button><button id="focusAllDtaBtn" class="text-button focus-all-button result-icon-button" type="button" aria-label="Fokus semua DTA" title="Fokus semua DTA" disabled><i data-lucide="scan-search"></i></button><button id="clearAllBtn" class="text-button danger-text-button result-stack-button" type="button" aria-label="Hapus semua DTA"><i data-lucide="trash-2"></i><span>Hapus Semua</span></button></div>
           <div id="pointList" class="point-list"><div class="empty-state">Belum ada hasil delineasi.</div></div>
           <div class="point-input-control-row spaced-add-point" role="group" aria-label="Kontrol penambahan titik">
+            <input id="xlsxUploadInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="visually-hidden" />
             <button id="addPointSessionBtn" class="btn btn-neutral add-point-session" type="button" aria-pressed="false"><i data-lucide="crosshair"></i>Mulai Tambah</button>
             <button id="pointModeBtn" class="btn btn-neutral point-mode-toggle" type="button" aria-pressed="false" aria-label="Ubah ke mode multi titik"><i data-lucide="map-pin"></i>Satu Titik</button>
           </div>
+          <button id="xlsxUploadBtn" class="btn btn-neutral xlsx-upload-button full" type="button"><i data-lucide="upload"></i>Unggah .xlsx</button>
         </section>
 
         <section id="relationshipPanel" class="panel-section hidden"><h2>Hubungan Antar Titik</h2><div id="relationshipContent" class="relationship-content"></div></section>
 
         <div class="sidebar-actions">
           <button id="hssAnalysisBtn" class="btn btn-neutral full hss-main-button" type="button" disabled><i data-lucide="activity"></i>Analisis HSS</button>
+          <button id="hydroModelBtn" class="btn btn-primary full hydro-model-button" type="button" disabled><i data-lucide="waves"></i>Model Hidrologi</button>
           <button id="downloadBtn" class="btn btn-download full" type="button" disabled><i data-lucide="download"></i>Unduh Hasil</button>
         </div>
 
@@ -78,7 +83,7 @@
       <form id="mapSearchForm" class="map-search maplibregl-ctrl hidden" autocomplete="off">
         <button id="sidebarSearchToggle" class="search-sidebar-toggle" type="button" title="Tampilkan/sembunyikan panel" aria-label="Tampilkan atau sembunyikan panel"><i data-lucide="panel-left-close"></i></button>
         <input id="searchInput" type="search" placeholder="Cari" aria-label="Cari" />
-        <button type="submit" class="search-submit" title="Cari"><i data-lucide="search"></i></button>
+        <button type="submit" class="search-submit" title="Cari" aria-label="Cari"><i data-lucide="search"></i></button>
         <div id="mapModeIndicator" class="map-mode-indicator single" role="status" aria-live="polite"><span class="mode-dot"></span><span id="mapModeIndicatorText">Satu titik</span></div>
         <div id="searchResults" class="map-search-results hidden"></div>
       </form>
@@ -109,7 +114,7 @@
       </div>
 
       <div id="layerPanel" class="map-panel layer-panel hidden">
-        <div class="panel-title-row"><strong>Layer & Tampilan</strong><button id="closeLayerPanel" class="panel-close" type="button"><i data-lucide="x"></i></button></div>
+        <div class="panel-title-row"><strong>Layer & Tampilan</strong><button id="closeLayerPanel" class="panel-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
         <div class="layer-group">
           <label class="check-row"><input id="showHillshade" type="checkbox" checked /> Esri Hillshade</label>
           <label class="range-row">Opasitas <input id="hillshadeOpacity" type="range" min="0" max="100" value="65" /><span id="hillshadeOpacityValue">65%</span></label>
@@ -214,12 +219,25 @@
       </div>
 
       <div id="confirmClearModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-        <div class="modal-card confirm-modal"><div class="modal-head"><div><span class="eyebrow">KONFIRMASI</span><h2>Hapus seluruh DTA?</h2></div><button id="closeClearModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div><p>Semua titik dan hasil delineasi akan dihapus dari peta.</p><div class="modal-actions"><button id="cancelClearBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmClearBtn" class="btn btn-danger" type="button"><i data-lucide="trash-2"></i>Hapus Semua</button></div></div>
+        <div class="modal-card confirm-modal"><div class="modal-head"><div><span class="eyebrow">KONFIRMASI</span><h2>Hapus seluruh DTA?</h2></div><button id="closeClearModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div><p>Semua titik dan hasil delineasi akan dihapus dari peta.</p><div class="modal-actions"><button id="cancelClearBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmClearBtn" class="btn btn-danger" type="button"><i data-lucide="trash-2"></i>Hapus Semua</button></div></div>
+      </div>
+
+      <div id="xlsxUploadModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="xlsxUploadTitle">
+        <div class="modal-card xlsx-upload-modal">
+          <div class="modal-head"><div><span class="eyebrow">UNGGAH TITIK</span><h2 id="xlsxUploadTitle">Unggah file .xlsx</h2></div><button id="closeXlsxUploadModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
+          <p>Gunakan template dengan kolom Nama Titik, Nama Sungai, Lintang, dan Bujur. Satu file dapat memuat maksimal 100 titik.</p>
+          <a class="xlsx-template-link" href="/static/templates/template_input_titik.xlsx" download><i data-lucide="download"></i>Unduh contoh template .xlsx</a>
+          <div id="xlsxDropZone" class="xlsx-file-choice" aria-label="Area unggah file Excel">
+            <span id="xlsxUploadFileName">Tarik dan lepas file .xlsx di sini, atau pilih file.</span>
+            <button id="chooseXlsxUploadBtn" class="btn btn-neutral" type="button"><i data-lucide="file-spreadsheet"></i>Pilih .xlsx</button>
+          </div>
+          <div class="modal-actions"><button id="cancelXlsxUploadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmXlsxUploadBtn" class="btn btn-primary" type="button" disabled><i data-lucide="upload"></i>Unggah dan Proses</button></div>
+        </div>
       </div>
 
       <div id="downloadModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
         <div class="modal-card download-modal">
-          <div class="modal-head"><div><span class="eyebrow">EKSPOR DATA</span><h2>Unduh Hasil DTA</h2></div><button id="closeDownloadModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <div class="modal-head"><div><span class="eyebrow">EKSPOR DATA</span><h2>Unduh Hasil DTA</h2></div><button id="closeDownloadModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <div class="download-section"><strong>Geometri DTA</strong>
             <label class="choice-card"><input class="geometry-mode" type="checkbox" value="smoothed" checked /><span><b>Diperhalus</b><small>Direkomendasikan untuk peta, laporan, dan penggunaan GIS.</small></span></label>
             <label class="choice-card"><input class="geometry-mode" type="checkbox" value="raw" /><span><b>Asli</b><small>Batas hasil perhitungan sebelum perapihan.</small></span></label>
@@ -233,6 +251,7 @@
           <div class="download-section"><label class="check-row"><input id="downloadRivers" type="checkbox" /> Sertakan jaringan sungai yang telah dipotong sesuai DTA</label></div>
           <div class="download-section"><label class="check-row"><input id="downloadAnalysisReport" type="checkbox" disabled /> Sertakan analisis karakteristik DTA (.pdf, .xlsx, dan spasial)</label><small id="downloadAnalysisHint" class="download-option-hint">Jalankan Analisis Karakteristik terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
           <div class="download-section"><label class="check-row"><input id="downloadHss" type="checkbox" disabled /> Sertakan analisis HSS (.pdf, .xlsx, dan spasial khusus Gama I)</label><small id="downloadHssHint" class="download-option-hint">Jalankan Analisis HSS terlebih dahulu untuk mengaktifkan pilihan ini.</small></div>
+          <div class="download-section"><label class="check-row"><input id="downloadHydroModel" type="checkbox" disabled /> Sertakan hasil model (.xlsx)</label><small id="downloadHydroModelHint" class="download-option-hint">Jalankan simulasi terlebih dahulu. Satu workbook, satu sheet per DTA target.</small></div>
           <div id="downloadSummary" class="download-summary" aria-live="polite"></div>
           <div id="downloadStatus" class="download-status"></div>
           <div class="modal-actions"><button id="cancelDownloadBtn" class="btn btn-neutral" type="button">Batal</button><button id="confirmDownloadBtn" class="btn btn-download" type="button"><i data-lucide="download"></i>Unduh</button></div>
@@ -246,11 +265,76 @@
         </div>
       </div>
 
+      <div id="hydroModelModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="hydroModelTitle">
+        <div class="modal-card hydro-model-modal">
+          <div class="modal-head"><div><span class="eyebrow">ESTIMASI DEBIT &amp; KETERSEDIAAN AIR</span><h2 id="hydroModelTitle">Model Hidrologi</h2></div><button id="closeHydroModel" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
+          <fieldset id="hydroModelPicker" class="hydro-model-picker"><legend>Pilih model</legend>
+            <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="hydromodar" aria-controls="hydroModarPanel"><span><strong>HydroMODAR</strong><small>Transfer debit dari DTA referensi.</small></span></label>
+            <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="mock" aria-controls="hydroMockPanel" disabled><span><strong>FJ Mock</strong><small>Simulasi hujan–debit. Sementara dinonaktifkan.</small></span></label>
+            <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="ml" aria-controls="hydroMlPanel" disabled><span><strong>Machine Learning</strong><small>Prediksi dari data pengamatan. Sementara dinonaktifkan.</small></span></label>
+          </fieldset>
+          <div id="hydroModelSetup" class="hidden">
+          <button id="chooseAnotherHydroModel" class="text-button" type="button"><i data-lucide="arrow-left"></i>Pilih model lain</button>
+          <div>
+          <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Data debit &amp; DTA referensi</h3><p>Wajib untuk HydroMODAR dan RF/XGBoost.</p></div></div>
+            <div id="hydroWorkbookDropzone" class="hydro-workbook-dropzone"><input id="hydroWorkbook" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="visually-hidden"><i data-lucide="file-spreadsheet"></i><div><strong>Unggah workbook debit (.xlsx)</strong><small>Tarik file ke sini atau pilih file · m³/det · maksimal 10 MB</small></div><button id="chooseHydroWorkbook" class="btn btn-neutral" type="button">Pilih file</button></div>
+            <a class="xlsx-template-link" href="/static/templates/template_input_debit.xlsx" download><i data-lucide="download"></i>Unduh contoh template debit .xlsx</a>
+            <div id="hydroWorkbookInfo" class="hydro-workbook-info" aria-live="polite"></div>
+            <div id="hydroObservedStatistics" aria-live="polite"></div>
+            <div id="hydroDonors" class="hydro-donor-list"></div>
+            <div id="hydroTargets" class="hydro-target-summary" aria-live="polite"></div>
+            <label class="hydro-notes-field"><span>Sumber / catatan debit</span><input id="hydroSourceNotes" type="text" maxlength="2000" placeholder="Opsional — dicantumkan pada workbook hasil"></label>
+          </section>
+          </div>
+          <div id="hydroModarPanel" data-hydro-panel="hydromodar" role="region" aria-label="Pengaturan HydroMODAR">
+          <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Parameter</h3></div></div>
+            <label>Paket parameter<select id="hydroPreset"><option value="area">Luas DTA saja</option><option value="climate">Luas + hujan tengah bulanan</option><option value="hydro">Luas + hidrogeologi</option><option value="physical">Luas + hidrogeologi + fisik DTA + hujan</option><option value="custom">Pilih sendiri</option></select></label>
+            <div class="hydro-parameter-options">
+              <label><input type="checkbox" checked disabled> Luas DTA (wajib)</label>
+              <label><input class="hydro-group" type="checkbox" value="aquifer"> Produktivitas akuifer</label>
+              <label><input class="hydro-group" type="checkbox" value="soil"> Tekstur tanah</label>
+              <label><input class="hydro-group" type="checkbox" value="landcover"> Tutupan lahan</label>
+              <label><input class="hydro-group" type="checkbox" value="terrain"> Elevasi dan lereng</label>
+              <label><input class="hydro-group" type="checkbox" value="rainfall"> Hujan tengah bulanan</label>
+            </div>
+            <div class="hydro-model-fields"><label>Eksponen luas b<input id="hydroExponent" type="number" value="1" min="0.01" max="3" step="0.05"></label><label>Profil tanah<select id="hydroSoilDepth"><option value="30">0–30 cm</option><option value="100">0–100 cm</option><option value="200">0–200 cm</option></select></label></div>
+            <p id="hydroMethodInfo" class="hydro-model-note"></p>
+          </section>
+          <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Periode simulasi</h3></div></div><div id="hydroPeriod" class="hydro-period-card" aria-live="polite">Unggah debit dan pilih referensi untuk melihat irisan tahun.</div></section>
+          </div>
+          <section id="hydroMockPanel" data-hydro-panel="mock" class="hidden" role="region" aria-labelledby="hydroMockTitle">
+            <div class="hydro-model-intro hydro-model-compact"><div class="hydro-model-mark"><i data-lucide="droplets"></i></div><div><strong id="hydroMockTitle">FJ Mock</strong><p>Hujan, tanah, dan aliran dasar.</p></div></div>
+            <div class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Pengaturan</h3></div></div>
+              <div class="hydro-model-fields"><label>Mode parameter / kalibrasi<select id="hydroMockMode" disabled aria-describedby="hydroMockCalibrationInfo"><option value="gis">GIS — simulasi awal</option><option value="manual">Manual — gunakan nilai yang diedit</option><option value="auto">Otomatis — cocokkan debit pengamatan</option></select></label><label>Pemanasan (tahun)<input id="hydroWarmupYears" type="number" value="3" min="0" max="100" step="1" aria-describedby="hydroWarmupInfo"></label></div>
+              <p id="hydroMockCalibrationInfo" class="hydro-model-note" role="status">Jalankan simulasi awal untuk membuka kalibrasi.</p>
+              <button id="hydroLoadGisParameters" class="btn btn-neutral" type="button">Muat parameter GIS</button>
+              <p id="hydroMockParameterStatus" class="hydro-model-note" role="status" aria-live="polite">Muat parameter GIS untuk melihat nilai awal.</p>
+              <div id="hydroMockParameterValues" class="hydro-model-table hydro-mock-values"></div>
+              <fieldset id="hydroMockBounds" class="hydro-mock-bounds" disabled><legend>Rentang kalibrasi otomatis</legend><div class="hydro-model-table"><table><thead><tr><th>Parameter</th><th>Optimalkan</th><th>Minimum</th><th>Maksimum</th></tr></thead><tbody>
+                <tr><th scope="row">Pengali SMC GIS</th><td><input type="checkbox" data-mock-fit="smc_multiplier" aria-label="Optimalkan pengali SMC" checked></td><td><input type="number" data-mock-lower="smc_multiplier" value="0.5" min="0.001" step="0.1" aria-label="Minimum pengali SMC"></td><td><input type="number" data-mock-upper="smc_multiplier" value="2" min="0.001" step="0.1" aria-label="Maksimum pengali SMC"></td></tr>
+                <tr><th scope="row">Infiltrasi i</th><td><input type="checkbox" data-mock-fit="infiltration" aria-label="Optimalkan infiltrasi" checked></td><td><input type="number" data-mock-lower="infiltration" value="0" min="0" max="1" step="0.01" aria-label="Minimum infiltrasi"></td><td><input type="number" data-mock-upper="infiltration" value="1" min="0" max="1" step="0.01" aria-label="Maksimum infiltrasi"></td></tr>
+                <tr><th scope="row">Resesi k30</th><td><input type="checkbox" data-mock-fit="k30" aria-label="Optimalkan resesi" checked></td><td><input type="number" data-mock-lower="k30" value="0.05" min="0.001" max="0.999" step="0.01" aria-label="Minimum resesi"></td><td><input type="number" data-mock-upper="k30" value="0.98" min="0.001" max="0.999" step="0.01" aria-label="Maksimum resesi"></td></tr>
+              </tbody></table></div></fieldset>
+            </div>
+          </section>
+          <section id="hydroMlPanel" data-hydro-panel="ml" class="hidden" role="region" aria-labelledby="hydroMlTitle">
+            <div class="hydro-model-intro hydro-model-compact"><div class="hydro-model-mark"><i data-lucide="network"></i></div><div><strong id="hydroMlTitle">Prediksi debit</strong><p>Gunakan data debit pengamatan.</p></div></div>
+            <div class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Algoritma</h3></div></div><label class="hydro-algorithm-field">Pilih algoritma<select id="hydroMlAlgorithm"><option value="random_forest">Random Forest</option><option value="xgboost">XGBoost</option></select></label>
+            </div>
+          </section>
+          <section class="hydro-model-section" data-hydro-climate-years hidden><div class="hydro-section-heading"><div><h3>Periode iklim</h3></div></div><div class="hydro-model-fields"><label>Tahun awal<input id="hydroStartYear" type="number" min="1990" max="2100" value="1990"></label><label>Tahun akhir<input id="hydroEndYear" type="number" min="1990" max="2100" value="2026"></label></div><p id="hydroWarmupInfo" class="hydro-model-note" role="status" aria-live="polite" hidden></p></section>          <div class="hydro-run-row"><small>Hasil tersedia di <b>Unduh Hasil</b>.</small><button id="runHydroModel" class="btn btn-primary" type="button"><i data-lucide="play"></i>Jalankan Simulasi</button></div>
+          <div id="hydroStatus" class="hydro-model-note" role="status" aria-live="polite"></div>
+          <div id="hydroResults"></div>
+          </div>
+
+        </div>
+      </div>
+
       <div id="hssAnalysisModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="hssAnalysisTitle">
         <div class="modal-card hss-analysis-modal">
           <div class="modal-head"><div><span class="eyebrow">HIDROGRAF SATUAN SINTETIS</span><h2 id="hssAnalysisTitle">Analisis HSS</h2></div><button id="closeHssAnalysisModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <div class="hss-compact-toolbar">
-            <div class="hss-dta-select"><span>DTA yang dianalisis</span><div class="hss-dta-control-row"><select id="hssDtaSelect"></select><span id="hssDtaStatusBadge" class="hss-dta-status-badge hidden" aria-live="polite"></span></div></div>
+            <div class="hss-dta-select"><label for="hssDtaSelect">DTA yang dianalisis</label><div class="hss-dta-control-row"><select id="hssDtaSelect"></select><span id="hssDtaStatusBadge" class="hss-dta-status-badge hidden" aria-live="polite"></span></div></div>
             <label class="hss-tr-compact"><span>Durasi hujan efektif (Tr)</span><div><input id="hssGlobalTr" type="number" min="0.05" max="24" step="0.05" value="1"><b>jam</b></div></label>
           </div>
           <div id="hssMorphometryControls" class="hss-morphometry-controls"></div>
@@ -263,10 +347,11 @@
 
       <div id="definitionModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
         <div class="modal-card definition-modal">
-          <div class="modal-head"><div><span class="eyebrow">REFERENSI</span><h2>Istilah & Definisi</h2></div><button id="closeDefinitionModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <div class="modal-head"><div><span class="eyebrow">REFERENSI</span><h2>Istilah & Definisi</h2></div><button id="closeDefinitionModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <article><h3>Daerah Aliran Sungai (DAS)</h3><p>Daerah Aliran Sungai yang selanjutnya disebut DAS adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan dan mengalirkan air yang berasal dari curah hujan ke danau atau ke laut secara alami, yang batas di darat merupakan pemisah topografis dan batas di laut sampai dengan daerah perairan yang masih terpengaruh aktivitas daratan.</p><cite>Peraturan Pemerintah Nomor 37 Tahun 2012 tentang Pengelolaan Daerah Aliran Sungai</cite></article>
           <article><h3>Daerah Tangkapan Air (DTA)</h3><p>Daerah Tangkapan Air adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan, dan mengalirkan Air yang berasal dari curah hujan ke titik bangunan pengambilan debit sungai yang ditinjau, yang batas di darat merupakan pemisah topografis dan batas di hilir sampai dengan bangunan bendung atau bendungan.</p><cite>Peraturan Pemerintah Nomor 30 Tahun 2024 tentang Pengelolaan Sumber Daya Air</cite><div class="app-definition-note"><b>Penerapan dalam aplikasi:</b> DTA digunakan untuk menyatakan wilayah yang berkontribusi aliran pada titik tinjau yang dipilih pengguna.</div></article>
           <article><h3>Sub DAS</h3><p>Sub DAS adalah bagian DAS yang menerima air hujan dan mengalirkannya melalui anak sungai ke sungai utama. Setiap DAS terbagi habis kedalam Sub DAS-Sub DAS.</p><cite>Keputusan Menteri Kehutanan Nomor 52/KPTS-II/2001 Tahun 2001 tentang Pedoman Penyelenggaraan Pengelolaan Daerah Aliran Sungai</cite></article>
+          <article><h3>Model regionalisasi debit</h3><p>Model regionalisasi debit mentransfer debit dari DTA referensi ke DTA target. Luas DTA adalah komponen inti; pengguna dapat menambahkan kelompok parameter spasial untuk membentuk bobot kemiripan antar-DTA secara transparan.</p><div class="app-definition-note"><b>Ruang lingkup saat ini:</b> estimasi debit tengah bulanan. FJ Mock dan RF/XGBoost memakai hujan harian yang diagregasi tengah bulanan; kualitas air belum dimodelkan.</div></article>
           <div class="definition-example">
             <h3>Contoh Hubungan DAS, Sub DAS, dan DTA</h3>
             <p>Hubungan DAS, Sub DAS, dan DTA dapat dipahami sebagai himpunan yang saling berada di dalam. Posisi outlet menentukan apakah DTA berada di dalam satu Sub DAS atau mewakili gabungan beberapa Sub DAS dan tangkapan langsung dalam satu DAS.</p>
@@ -329,11 +414,13 @@
 
       <div id="methodologyModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
         <div class="modal-card definition-modal">
-          <div class="modal-head"><div><span class="eyebrow">INFORMASI TEKNIS</span><h2>Metodologi & Sumber Data</h2></div><button id="closeMethodologyModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div>
+          <div class="modal-head"><div><span class="eyebrow">INFORMASI TEKNIS</span><h2>Metodologi & Sumber Data</h2></div><button id="closeMethodologyModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <article><h3>Model Elevasi Digital (DEM)</h3><p>Delineasi Daerah Tangkapan Air (DTA) pada sistem ini dilakukan berbasis <i>Digital Elevation Model</i> (DEM) menggunakan sumber data <b>FABDEM</b> (<i>Forest And Buildings removed Cop-DEM</i>) dengan resolusi spasial <b>1 arc-second</b> (setara ≈30 meter). FABDEM merupakan model elevasi permukaan tanah digital (<i>bare-earth Digital Elevation Model</i>) yang diturunkan dari Copernicus DEM (COP-DEM) dengan mengeliminasi artefak vegetasi, seperti tajuk hutan, dan bangunan menggunakan algoritma <i>machine learning</i>, sehingga menghasilkan elevasi permukaan tanah yang lebih sesuai untuk pemodelan hidrologi.</p></article>
           <article><h3>Koreksi Hidrologi DEM</h3><p>Untuk memastikan kontinuitas dan presisi pengaliran air (<i>flow routing</i>), DEM terlebih dahulu melalui tahap pra-pemrosesan koreksi hidrologi (<i>DEM reconditioning</i>). Tahap ini menerapkan dua pendekatan utama:</p><ol><li><b>Stream Burning:</b> Mereduksi nilai elevasi sel DEM secara rasional di sepanjang alur vektor jaringan sungai acuan untuk mengunci jalur aliran (<i>flow path</i>) agar konsisten dengan jaringan drainase eksisting.</li><li><b>Build Walls:</b> Meningkatkan nilai elevasi sel DEM di sepanjang garis Batas DAS yang mengacu pada <b>Keputusan Menteri Kehutanan Nomor 150 Tahun 2025 tentang Penetapan Batas Daerah Aliran Sungai</b>. Langkah ini bertujuan mencegah kebocoran aliran (<i>spillover</i>) melintasi batas DAS selama pembentukan arah dan akumulasi aliran.</li></ol></article>
           <article><h3>Delineasi Hybrid D8</h3><p>Sistem menggunakan pendekatan hybrid: unit DTA hulu yang telah terdefinisi ditelusuri melalui topologi jaringan, sedangkan bagian lokal pada subbasin tempat titik tuang berada didelineasi dari raster arah aliran D8. Batas hasil DEM kemudian diperhalus dan, bila berada dalam koridor penyesuaian serta lolos pemeriksaan topologi, dapat diselaraskan dengan Batas DAS. Sistem juga membuang komponen polygon terpisah yang merupakan artefak dan mengisi lubang interior berukuran kurang dari 6,25 hektare.</p></article>
           <article><h3>Perhitungan Luas</h3><p>Luas DTA pada antarmuka dihitung dari <b>geometri DTA final</b> setelah penghalusan batas dan penyesuaian Batas DAS. Perhitungan luas menggunakan proyeksi <b>World Cylindrical Equal Area</b>. Nilai yang tampil di antarmuka merupakan hasil pembulatan untuk meningkatkan keterbacaan. Nilai luas dengan presisi penuh tersedia pada atribut <code>LUAS_KM2</code> di data spasial hasil unduhan. Geometri <b>Diperhalus</b> menyimpan luas geometri final, sedangkan geometri <b>Asli</b> menyimpan hasil delineasi hidrologis sebelum smoothing dan boundary stitching, setelah pembersihan topologi dasar.</p></article>
+<article><h3>Algoritma model</h3><p>Untuk setiap periode, debit target dihitung dengan <b>Q<sub>target</sub> = Q<sub>referensi</sub> × (A<sub>target</sub>/A<sub>referensi</sub>)<sup>b</sup></b>, dengan <i>b</i> sebagai eksponen luas yang dapat diatur. Bila lebih dari satu referensi dipilih, debit hasil transfer digabung dengan bobot sama untuk mode luas saja; saat parameter spasial aktif, bobot referensi dihitung sebagai <b>w<sub>i</sub> = exp(−d<sub>i</sub>)/Σexp(−d<sub>i</sub>)</b>. Jarak kemiripan <i>d</i> diringkas dari kelompok parameter yang dipilih secara setara.</p><p>Distribusi kelas (produktivitas akuifer dan tutupan lahan) dibandingkan dengan setengah jumlah selisih absolut proporsi kelas. Tekstur tanah, elevasi, dan lereng dibandingkan dengan skala tetap, kemudian dibatasi pada 0–1. Sistem tidak memakai pengali debit tambahan; parameter spasial hanya menentukan bobot antar-referensi.</p></article>
+          <article><h3>Sumber data &amp; pemeriksaan</h3><p>Luas berasal dari geometri DTA hasil delineasi. Produktivitas akuifer dan tutupan lahan diperoleh dari layer vektor analisis; tekstur tanah memakai SoilGrids pada kedalaman 0–30, 0–100, atau 0–200 cm dengan pembobotan ketebalan lapisan; elevasi dan lereng dihitung dari DEM. Layer parameter berbobot dengan cakupan kurang dari 95% atau kelas yang tumpang tindih tidak digunakan diam-diam: simulasi dihentikan dengan penjelasan agar pengguna dapat melengkapi sumber atau menonaktifkan modulnya.</p><p>CAT dan litologi digunakan sebagai konteks kesesuaian pada target dan referensi, tanpa bobot tambahan. Persentase irisan konteks dihitung terhadap seluruh luas DTA. Beda CAT dan batugamping terpetakan menjadi catatan pemeriksaan; kesamaan CAT belum membuktikan konektivitas air tanah. Data konteks yang tidak tersedia ditandai tanpa menghentikan simulasi. Ketersediaan air tanah tidak menambah bobot karena informasinya bertumpang tindih dengan produktivitas akuifer.</p><p>Validasi bergiliran referensi (LOOCV) melaporkan APE Q50, RMSE, dan bias pada irisan tahun yang sama. Statistik persentil memakai <code>PERCENTILE.EXC(data, 1−p)</code> pada periode tengah bulanan, sehingga bukan kurva durasi aliran harian.</p></article>
         </div>
       </div>
 
@@ -341,7 +428,7 @@
       <div id="appToast" class="app-toast hidden" role="status" aria-live="polite"><i data-lucide="info"></i><span id="appToastText"></span></div>
 
       <div id="basinSourceModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
-        <div class="modal-card source-modal"><div class="modal-head"><div><span class="eyebrow">SUMBER DATA</span><h2>Batas DAS</h2></div><button id="closeBasinSourceModal" class="modal-close" type="button"><i data-lucide="x"></i></button></div><p>Batas DAS mengacu pada <b>Keputusan Menteri Kehutanan Nomor 150 Tahun 2025 tentang Penetapan Batas Daerah Aliran Sungai</b>.</p></div>
+        <div class="modal-card source-modal"><div class="modal-head"><div><span class="eyebrow">SUMBER DATA</span><h2>Batas DAS</h2></div><button id="closeBasinSourceModal" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div><p>Batas DAS mengacu pada <b>Keputusan Menteri Kehutanan Nomor 150 Tahun 2025 tentang Penetapan Batas Daerah Aliran Sungai</b>.</p></div>
       </div>
     </section>
   </main>
@@ -356,6 +443,7 @@ window.DTA_CONFIG = {
 <script defer src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" fetchpriority="high"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.7/Sortable.min.js"></script>
 <script defer src="/static/js/bbwsso-outside-mask.js?v=1.0"></script>
-<script defer src="/static/js/spatial.js?v=1.3.34-default-view-fit"></script>
-<script defer src="/static/js/hss.js?v=1.3.2-payload"></script>
+<script defer src="/static/js/spatial.js?v=1.6.6-modal-keyboard"></script>
+<script defer src="/static/js/hss.js?v=1.3.3-model-chart"></script>
+<script defer src="/static/js/hydro-model.js?v=1.6.7-workbook-network-message"></script>
 {% endblock %}

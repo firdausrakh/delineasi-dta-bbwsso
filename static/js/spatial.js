@@ -1,7 +1,9 @@
-const MAX_POINTS = 10;
+const MAX_POINTS = 100;
+const MANUAL_MAX_POINTS = 10;
 const POINT_NAME_MAX_LENGTH = 25;
 const POINT_PALETTE = ['#d94841','#6f56a8','#2f8b57','#d17b27','#2878b8','#a74e87','#557a2a','#b49724','#4e6cb3','#8a5b3d'];
-const POINT_COLORS = Object.fromEntries(Array.from({length:MAX_POINTS},(_,i)=>[`O${i+1}`,POINT_PALETTE[i]]));
+const pointColorForIndex=index=>POINT_PALETTE[index%POINT_PALETTE.length];
+const POINT_COLORS = Object.fromEntries(Array.from({length:MAX_POINTS},(_,i)=>[`O${i+1}`,pointColorForIndex(i)]));
 const DEFAULT_BASIN_COLOR = '#9b7300';
 const DEFAULT_RIVER_COLOR = '#0083d7';
 const DEFAULT_CHARACTERISTIC_MAIN_CHANNEL_COLOR = '#D946A8';
@@ -168,6 +170,7 @@ let currentRiverAssetKey = null;
 let hiddenRiverLabelIds = [];
 let lastRiverLabelFilterSignature = '';
 const modalCameraContext = new WeakMap();
+const modalFocusContext = new WeakMap();
 // Spatial source parameters used by Characteristic analysis and HSS Gama I.
 // Characteristic flowpaths are generated once by the hydrologic analysis.
 // Gama I reuses canonical L/Lca geometry but keeps its AU construction controls separate.
@@ -220,7 +223,7 @@ function persistState(){
     const riverOrders={};document.querySelectorAll('.river-order-toggle').forEach(x=>riverOrders[x.dataset.order]=x.checked);
     const characteristicRiverOrders={};document.querySelectorAll('.characteristic-order-toggle').forEach(x=>characteristicRiverOrders[x.dataset.order]=x.checked);
     sessionStorage.setItem(APP_STATE_KEY,JSON.stringify({
-      points:points.map(p=>({point_id:p.point_id,lon:p.lon,lat:p.lat,source:p.source,label:p.label})),
+      points:points.map(p=>({point_id:p.point_id,lon:p.lon,lat:p.lat,source:p.source,label:p.label,river_name:p.river_name})),
       hydrologicAnalysisCacheVersion:HYDROLOGIC_ANALYSIS_CACHE_VERSION,
       hydrologicAnalyses:Object.fromEntries((batchResult?.results||[]).filter(r=>r?.point_id&&r?.hydrologic_analysis).map(r=>[r.point_id,hydrologicAnalysisForSession(r.hydrologic_analysis)])),
       nameDrafts:Object.fromEntries(points.map(p=>[p.point_id,pointNameDraft(p.point_id)])),
@@ -422,7 +425,7 @@ function applyInterfaceLanguage(){
       'ANALISIS SPASIAL':'SPATIAL ANALYSIS','Istilah & Definisi':'Terms & Definitions','Metodologi & Sumber Data':'Methodology & Data Sources',
       'Pilih Titik':'Select Point','Mode satu titik':'Single-point mode','Bahasa':'Language','Pemisah desimal':'Decimal separator',
       'Pengaturan lanjutan':'Advanced settings','Pencarian sungai terdekat':'Nearest-stream search','Jarak penyesuaian batas DAS':'Basin-boundary adjustment distance',
-      'Hasil DTA':'DTA Results','Maksimal 10 DTA per pemrosesan':'Maximum 10 DTAs per run','Fokus Semua':'Focus All','Hapus Semua':'Clear All',
+      'Hasil DTA':'DTA Results','Maksimal 10 DTA per pemrosesan':'Maximum 10 DTAs per run','Unggah .xlsx':'Upload .xlsx','Fokus Semua':'Focus All','Hapus Semua':'Clear All',
       'Hubungan Antar Titik':'Relationships Between Points','Peta Dasar':'Basemap','Layer & Tampilan':'Layers & Display','Penggaris':'Measure',
       'Warna DTA':'DTA Color','Pilih warna':'Choose color','KODE HEX warna DTA':'DTA color HEX code','Opasitas':'Opacity','Batas DAS':'Basin Boundary',
       'Nama DAS':'Basin labels','Jaringan Sungai':'River Network','Otomatis sesuai zoom':'Auto by zoom','Label sungai':'River labels',
@@ -761,10 +764,18 @@ function updateHeaderHandleInteractivity(){
 }
 function openMapModal(el){
   if(!el)return;
+  if(el.classList.contains('hidden'))modalFocusContext.set(el,document.activeElement);
   try{modalCameraContext.set(el,getCameraState());}catch(_){}
   el.classList.remove('hidden');
   clearDtaHover();
   updateHeaderHandleInteractivity();
+  const heading=el.querySelector('h2');
+  if(heading&&!el.hasAttribute('aria-labelledby')){
+    if(!heading.id)heading.id=`${el.id}Title`;
+    el.setAttribute('aria-labelledby',heading.id);
+  }
+  el.tabIndex=-1;
+  (el.querySelector('.modal-close,button:not(:disabled)')||el).focus({preventScroll:true});
 }
 function closeMapModal(el){
   if(!el)return;
@@ -773,6 +784,9 @@ function closeMapModal(el){
   if(c&&Array.isArray(c.center)){try{map.jumpTo({center:c.center,zoom:c.zoom,bearing:c.bearing,pitch:0});}catch(_){}}
   modalCameraContext.delete(el);
   updateHeaderHandleInteractivity();
+  const previousFocus=modalFocusContext.get(el);
+  modalFocusContext.delete(el);
+  if(previousFocus?.isConnected)previousFocus.focus({preventScroll:true});
 }
 function copyText(text,button=null){const done=()=>{if(button){const old=button.innerHTML;button.innerHTML='<i data-lucide="check"></i>';refreshIcons(button);setTimeout(()=>{button.innerHTML=old;refreshIcons(button);},1200);}};if(navigator.clipboard?.writeText){navigator.clipboard.writeText(text).then(done).catch(()=>{});}else{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();try{document.execCommand('copy');done();}catch(_){}t.remove();}}
 function resultUiStatus(r,processing=false){if(processing)return {label:'Memproses',cls:'processing'};if(!r)return {label:'Menunggu',cls:'pending'};const pairs=r?.topology_qa?.pairs||[];const unresolved=pairs.some(x=>x?.status==='warning'&&x?.auto_repair_failed);if(unresolved)return {label:'Batas belum terkoreksi',cls:'warning'};return null;}
@@ -2051,7 +2065,7 @@ async function runBatchDelineation({fit=true,onlyPointId=null,preserveDerived=fa
       method:'POST',
       headers:{'Content-Type':'application/json','X-DTA-Client-ID':DTA_CLIENT_ID,'X-DTA-Request-ID':requestId},
       signal:requestController.signal,
-      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4,decimal_separator:decimalSeparator})
+      body:JSON.stringify({points:requestPoints.map(({point_id,lon,lat,source,label,river_name})=>({point_id,lon,lat,source,label,river_name})),snap_radius_m:requestSnapRadiusM,boundary_match_m:requestBoundaryMatchM,paek_tolerance_m:150,vw_tolerance_m:4,decimal_separator:decimalSeparator})
     });
     const payload=await readApiJsonResponse(response,'Delineasi gagal.');
     if(!requestIsCurrent())return null;
@@ -2099,7 +2113,7 @@ function fitToResults(){
 function updateAddPointButton(){
   const sessionBtn=$('addPointSessionBtn'),modeBtn=$('pointModeBtn');
   pointCountEl.textContent=String(points.length);
-  const atMultiLimit=pointInputMode==='multi'&&points.length>=MAX_POINTS;
+  const atMultiLimit=pointInputMode==='multi'&&points.length>=MANUAL_MAX_POINTS;
   if(sessionBtn){
     sessionBtn.classList.toggle('active',addingPoints);
     sessionBtn.classList.toggle('cancel-mode',addingPoints);
@@ -2225,6 +2239,7 @@ function initPointListSortable(){
   });
 }
 function renderPointCards(){
+  window.refreshHydroModelUiState?.();
   pointCountEl.textContent=String(points.length);updateAddPointButton();updateAllDtaVisibilityButton();
   if(!points.length){pointListEl.innerHTML='<div class="empty-state">Belum ada hasil delineasi.</div>';window.refreshHssUiState?.();return;}
   pointListEl.innerHTML=points.map((p)=>{
@@ -2493,7 +2508,7 @@ async function openPointPopup(lon,lat,source='map',searchLabel=null,{moveTargetI
         Object.assign(existing,previousPoint);batchResult=previousBatch;renderDtaLayers();renderRequestedPoints();renderPointCards();renderRelationship(previousBatch?.network_analysis||null);persistState();
       }
     }else if(pointInputMode==='multi'){
-      if(points.length>=MAX_POINTS)return;
+      if(points.length>=MANUAL_MAX_POINTS)return;
       hiddenDtaLayerIds.delete(targetId);points.push({point_id:targetId,lon,lat,source,label});pointNameDrafts.set(targetId,label||targetId);
       activePointId=targetId;closePointPopup();renderRequestedPoints();renderPointCards();persistState();
       await runBatchDelineation({fit:points.length===1,onlyPointId:targetId});
@@ -2717,11 +2732,52 @@ map.on('dblclick',e=>{
 
 $('mapSearchForm').addEventListener('submit',async e=>{e.preventDefault();const q=$('searchInput').value.trim();if(q.length<2){setStatus('Masukkan minimal 2 karakter.','error');return;}searchResultsEl.classList.remove('hidden');searchResultsEl.innerHTML='<div class="search-loading">Mencari…</div>';try{const r=await fetch(`/api/geocode?q=${encodeURIComponent(q)}`),p=await r.json();if(!r.ok)throw new Error(parseApiError(p,'Pencarian gagal.').message);if(!p.results.length){searchResultsEl.innerHTML='<div class="search-empty">Lokasi tidak ditemukan.</div>';return;}searchResultsEl.innerHTML=p.results.map((x,i)=>`<button class="search-result" type="button" data-i="${i}"><strong>${escapeHtml(x.name||x.display_name.split(',')[0])}</strong><span>${escapeHtml(x.display_name)}</span></button>`).join('');searchResultsEl.querySelectorAll('.search-result').forEach(b=>b.addEventListener('click',()=>{const x=p.results[Number(b.dataset.i)];searchResultsEl.classList.add('hidden');map.flyTo({center:[x.lon,x.lat],zoom:13});cancelScheduledPointPopup();if(addingPoints){clearLocationPreview();openPointPopup(Number(x.lon),Number(x.lat),x.source||'geocode',x.display_name);}else showLocationPreview(Number(x.lon),Number(x.lat),x.source||'geocode',x.display_name);}));}catch(err){searchResultsEl.innerHTML=`<div class="search-empty">${escapeHtml(err.message)}</div>`;}});
 $('previewCoordinateBtn').addEventListener('click',()=>{try{const {lat,lon}=parseCoordinate($('coordinateInput').value);map.flyTo({center:[lon,lat],zoom:13});cancelScheduledPointPopup();if(addingPoints){clearLocationPreview();openPointPopup(lon,lat,'coordinate');}else showLocationPreview(lon,lat,'coordinate');}catch(err){setStatus(err.message,'error');}});
-$('decimalSeparatorSelect')?.addEventListener('change',event=>{decimalSeparator=event.target.value==='.'?'.':',';persistState();renderPointCards();if(!$('hydrologicAnalysisModal').classList.contains('hidden')&&activePointId)openHydrologicAnalysis(activePointId);});
+$('decimalSeparatorSelect')?.addEventListener('change',event=>{decimalSeparator=event.target.value==='.'?'.':',';persistState();renderPointCards();window.refreshHydroModelDecimalDisplay?.();if(!$('hydrologicAnalysisModal').classList.contains('hidden')&&activePointId)openHydrologicAnalysis(activePointId);});
 $('coordinateInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('previewCoordinateBtn').click();}});
+let selectedXlsxUploadFile=null;
+function updateXlsxUploadModal(){
+  const fileName=$('xlsxUploadFileName'),confirm=$('confirmXlsxUploadBtn');
+  if(fileName)fileName.textContent=selectedXlsxUploadFile?.name||'Tarik dan lepas file .xlsx di sini, atau pilih file.';
+  if(confirm)confirm.disabled=!selectedXlsxUploadFile;
+}
+function selectXlsxUploadFile(file){
+  if(!file)return;
+  if(!file.name.toLowerCase().endsWith('.xlsx')){setStatus('Pilih file .xlsx.','error');return;}
+  selectedXlsxUploadFile=file;updateXlsxUploadModal();
+}
+async function processSelectedXlsxUpload(){
+  const file=selectedXlsxUploadFile;
+  if(!file)return;
+  setStatus('Memeriksa file .xlsx…','busy');
+  try{
+    const response=await fetch('/api/points-xlsx',{method:'POST',headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'},body:file});
+    const payload=await readApiJsonResponse(response,'Unggah .xlsx gagal.');
+    const uploaded=Array.isArray(payload.points)?payload.points:[];
+    if(!uploaded.length)throw new Error('Tidak ada titik yang dapat diproses.');
+    cancelScheduledPointPopup();cancelPointPopupValidation();closePointPopup({cancelPending:false});clearLocationPreview();
+    points=uploaded.map((point,index)=>({point_id:`O${index+1}`,lon:Number(point.lon),lat:Number(point.lat),source:'xlsx',label:clampPointName(point.label)||`Titik ${index+1}`,river_name:String(point.river_name||'').trim()||null}));
+    pointNameDrafts.clear();points.forEach(point=>pointNameDrafts.set(point.point_id,point.label));
+    pointNameSaving.clear();hiddenDtaLayerIds.clear();batchResult=null;activePointId=points[0]?.point_id||null;addingPoints=false;
+    renderRequestedPoints();renderPointCards();updateAddPointButton();persistState();
+    closeMapModal($('xlsxUploadModal'));selectedXlsxUploadFile=null;updateXlsxUploadModal();
+    await runBatchDelineation({fit:true});
+  }catch(err){setStatus(err?.message||String(err),'error');}
+}
+$('xlsxUploadBtn')?.addEventListener('click',()=>{selectedXlsxUploadFile=null;updateXlsxUploadModal();openMapModal($('xlsxUploadModal'));});
+$('chooseXlsxUploadBtn')?.addEventListener('click',()=>$('xlsxUploadInput')?.click());
+$('xlsxUploadInput')?.addEventListener('change',event=>{
+  const input=event.currentTarget,file=input.files?.[0];input.value='';
+  selectXlsxUploadFile(file);
+});
+const xlsxDropZone=$('xlsxDropZone');
+for(const eventName of ['dragenter','dragover'])xlsxDropZone?.addEventListener(eventName,event=>{event.preventDefault();xlsxDropZone.classList.add('is-dragover');});
+for(const eventName of ['dragleave','drop'])xlsxDropZone?.addEventListener(eventName,event=>{event.preventDefault();xlsxDropZone.classList.remove('is-dragover');});
+xlsxDropZone?.addEventListener('drop',event=>selectXlsxUploadFile(event.dataTransfer?.files?.[0]));
+$('confirmXlsxUploadBtn')?.addEventListener('click',processSelectedXlsxUpload);
+for(const id of ['closeXlsxUploadModal','cancelXlsxUploadBtn'])$(id)?.addEventListener('click',()=>closeMapModal($('xlsxUploadModal')));
 $('addPointSessionBtn').addEventListener('click',()=>{
   if(!addingPoints)warmBackend().catch(()=>{});
-  if(!addingPoints&&pointInputMode==='multi'&&points.length>=MAX_POINTS)return;
+  if(!addingPoints&&pointInputMode==='multi'&&points.length>=MANUAL_MAX_POINTS)return;
   addingPoints=!addingPoints;
   if(addingPoints){if(isExistingPointPopupOpen())closePointPopup();clearDtaHover();}
   if(!addingPoints){
@@ -2734,7 +2790,7 @@ $('addPointSessionBtn').addEventListener('click',()=>{
 });
 $('pointModeBtn').addEventListener('click',()=>{
   pointInputMode=pointInputMode==='single'?'multi':'single';
-  if(pointInputMode==='multi'&&points.length>=MAX_POINTS&&addingPoints){addingPoints=false;cancelScheduledPointPopup();cancelPointPopupValidation();if(pointPopup?.getElement?.()?.classList?.contains('pending-point-popup'))closePointPopup({cancelPending:false});}
+  if(pointInputMode==='multi'&&points.length>=MANUAL_MAX_POINTS&&addingPoints){addingPoints=false;cancelScheduledPointPopup();cancelPointPopupValidation();if(pointPopup?.getElement?.()?.classList?.contains('pending-point-popup'))closePointPopup({cancelPending:false});}
   updateAddPointButton();persistState();
   if(pointInputMode==='multi')showMultiModeHintOnce();
   setStatus(interactionStatusText(),'neutral');
@@ -2775,7 +2831,7 @@ function resetLayerStyling(){
   if(map.getLayer('official-basin-label'))map.setPaintProperty('official-basin-label','text-color',DEFAULT_BASIN_COLOR);
   for(const k of RIVER_KEYS){if(map.getLayer(`official-river-${k}`))map.setPaintProperty(`official-river-${k}`,'line-color',DEFAULT_RIVER_COLOR);}
   if(map.getLayer('official-river-labels'))map.setPaintProperty('official-river-labels','text-color',DEFAULT_RIVER_COLOR);
-  for(let i=1;i<=MAX_POINTS;i++)setDtaColor(`O${i}`,POINT_PALETTE[i-1],{save:false});
+  for(let i=1;i<=MAX_POINTS;i++)setDtaColor(`O${i}`,pointColorForIndex(i-1),{save:false});
   if(map.getLayer('esri-hillshade-layer'))map.setPaintProperty('esri-hillshade-layer','raster-opacity',.65);
   updateHatchOpacity();updateLineWidths();applyCharacteristicColors();applyLayerState();updateRiverVisibility();renderPointCards();persistState();setStatus('Tampilan layer dikembalikan ke bawaan.','success');
 }
@@ -2787,7 +2843,7 @@ function updateDownloadSummary(){
   const modes=[...document.querySelectorAll('.geometry-mode:checked')].map(x=>x.value==='smoothed'?'Diperhalus':'Asli');
   const characteristicCount=characteristicAnalyzedPointIds().length;
   const hssCount=window.getHssAnalyzedCount?.()||0;
-  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div><div><b>Karakteristik DTA</b><span>${$('downloadAnalysisReport')?.checked?`Disertakan untuk ${characteristicCount} DTA`:'Tidak disertakan'}</span></div><div><b>Analisis HSS</b><span>${$('downloadHss')?.checked?`Disertakan untuk ${hssCount} DTA`:'Tidak disertakan'}</span></div>`;
+  summary.innerHTML=`<div><b>${points.length} DTA</b><span>${modes.length?modes.join(' + '):'Belum memilih geometri'}</span></div><div><b>Format</b><span>${formats.length?formats.join(', '):'Belum dipilih'}</span></div><div><b>Jaringan sungai</b><span>${$('downloadRivers')?.checked?'Disertakan':'Tidak disertakan'}</span></div><div><b>Karakteristik DTA</b><span>${$('downloadAnalysisReport')?.checked?`Disertakan untuk ${characteristicCount} DTA`:'Tidak disertakan'}</span></div><div><b>Analisis HSS</b><span>${$('downloadHss')?.checked?`Disertakan untuk ${hssCount} DTA`:'Tidak disertakan'}</span></div><div><b>Model Hidrologi</b><span>${$('downloadHydroModel')?.checked?`${window.getHydroModelCount?.()||0} sheet DTA dalam satu .xlsx`:'Tidak disertakan'}</span></div>`;
 }
 
 document.querySelectorAll('.layer-eye-toggle').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();const group=button.dataset.layerGroup;if(group==='basins'){const turnOn=!($('showBasins')?.checked||$('showBasinLabels')?.checked);if($('showBasins'))$('showBasins').checked=turnOn;if($('showBasinLabels'))$('showBasinLabels').checked=turnOn;applyLayerState();persistState();return;}if(group==='rivers'){const turnOn=!($('showRivers')?.checked||$('showRiverLabels')?.checked);if($('showRivers'))$('showRivers').checked=turnOn;if($('showRiverLabels'))$('showRiverLabels').checked=turnOn;updateRiverVisibility();persistState();return;}if(group==='dta'){const anyVisible=points.some(point=>isDtaLayerVisible(point.point_id));if(anyVisible)points.forEach(point=>hiddenDtaLayerIds.add(point.point_id));else points.forEach(point=>hiddenDtaLayerIds.delete(point.point_id));clearDtaHover();applyPerDtaLayerVisibility();renderRequestedPoints();refreshCharacteristicSpatialSource();refreshGamaSpatialSource();updateLabelDeclutter();renderPointCards();syncLayerSummaryEyes();schedulePersistState();return;}if(group==='characteristic'){const ids=['showCharacteristicMainChannel','showCharacteristicL','showCharacteristicLca','showCharacteristicL1085','showCharacteristicCentroid','showCharacteristicAnalysisStreams'];const turnOn=!characteristicAnyVisible();ids.forEach(id=>{if($(id))$(id).checked=turnOn;});applyCharacteristicSpatialVisibility();persistState();return;}if(group==='gama'){const ids=['showGamaAu','showGamaWl','showGamaWu','showGamaConstruction'];const turnOn=!gamaAnyVisible();ids.forEach(id=>{if($(id))$(id).checked=turnOn;});applyGamaSpatialVisibility();persistState();return;}}));
@@ -2798,9 +2854,10 @@ document.querySelectorAll('.download-format,.geometry-mode').forEach(x=>x.addEve
 $('downloadRivers')?.addEventListener('change',updateDownloadSummary);$('downloadAnalysisReport')?.addEventListener('change',updateDownloadSummary);$('downloadHss')?.addEventListener('change',updateDownloadSummary);
 $('confirmDownloadBtn').addEventListener('click',async()=>{
   const formats=[...document.querySelectorAll('.download-format:checked')].map(x=>x.value);const geometry_modes=[...document.querySelectorAll('.geometry-mode:checked')].map(x=>x.value);
-  if(!geometry_modes.length){$('downloadStatus').textContent='Pilih Diperhalus, Asli, atau keduanya.';return;}if(!formats.length){$('downloadStatus').textContent='Pilih minimal satu format.';return;}
+  const include_hydro_model=$('downloadHydroModel')?.checked===true;
+  if(formats.length&&!geometry_modes.length){$('downloadStatus').textContent='Pilih Diperhalus, Asli, atau keduanya.';return;}if(!formats.length&&!include_hydro_model){$('downloadStatus').textContent='Pilih minimal satu format atau hasil Model Hidrologi.';return;}
   $('downloadStatus').textContent='Menyiapkan paket unduhan…';$('confirmDownloadBtn').disabled=true;
-  try{const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:points.map(({point_id,lon,lat,source,label})=>({point_id,lon,lat,source,label})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),geometry_modes,formats,include_rivers:$('downloadRivers').checked,include_analysis_report:$('downloadAnalysisReport')?.checked===true,include_hss:$('downloadHss')?.checked===true,hss_results:window.getHssDownloadPayload?.()||{},language:uiLanguage,decimal_separator:decimalSeparator})});if(!r.ok){const error=await parseErrorResponse(r,'Unduhan gagal.');throw new Error(error.message);}const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);a.href=url;a.download=m?m[1]:'Delineasi_DTA.zip';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);closeMapModal($('downloadModal'));}catch(e){$('downloadStatus').textContent=e.message||String(e);}finally{$('confirmDownloadBtn').disabled=false;}
+  try{const r=await fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:points.map(({point_id,lon,lat,source,label,river_name})=>({point_id,lon,lat,source,label,river_name})),snap_radius_m:Number(snapRadiusEl.value),boundary_match_m:Number(boundaryMatchEl.value),geometry_modes,formats,include_rivers:$('downloadRivers').checked,include_analysis_report:$('downloadAnalysisReport')?.checked===true,include_hss:$('downloadHss')?.checked===true,hss_results:window.getHssDownloadPayload?.()||{},include_hydro_model,hydro_model:include_hydro_model?window.getHydroModelDownloadPayload():null,language:uiLanguage,decimal_separator:decimalSeparator})});if(!r.ok){const error=await parseErrorResponse(r,'Unduhan gagal.');throw new Error(error.message);}const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');const cd=r.headers.get('content-disposition')||'';const m=cd.match(/filename="?([^";]+)"?/i);a.href=url;a.download=m?m[1]:'Delineasi_DTA.zip';document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);closeMapModal($('downloadModal'));}catch(e){$('downloadStatus').textContent=e.message||String(e);}finally{$('confirmDownloadBtn').disabled=false;}
 });
 
 for(const id of ['definitionHeaderBtn','definitionSidebarBtn'])$(id).addEventListener('click',()=>openMapModal($('definitionModal')));
@@ -2808,7 +2865,7 @@ for(const id of ['methodologyHeaderBtn','methodologySidebarBtn'])$(id).addEventL
 $('basinSourceBtn')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openMapModal($('basinSourceModal'));});
 $('closeDefinitionModal').addEventListener('click',()=>closeMapModal($('definitionModal')));$('closeMethodologyModal').addEventListener('click',()=>closeMapModal($('methodologyModal')));$('closeBasinSourceModal').addEventListener('click',()=>closeMapModal($('basinSourceModal')));$('closeKarstModal').addEventListener('click',()=>closeMapModal($('karstModal')));$('closeOutsideModal').addEventListener('click',()=>closeMapModal($('outsideModal')));
 $('closeHydrologicAnalysisModal').addEventListener('click',()=>closeMapModal($('hydrologicAnalysisModal')));
-for(const id of ['karstModal','outsideModal','confirmClearModal','downloadModal','hydrologicAnalysisModal','hssAnalysisModal','definitionModal','methodologyModal','basinSourceModal','basemapModal','usageNoticeModal'])$(id).addEventListener('click',e=>{if(e.target.id===id)closeMapModal(e.currentTarget);});
+for(const id of ['karstModal','outsideModal','confirmClearModal','xlsxUploadModal','downloadModal','hydrologicAnalysisModal','hssAnalysisModal','definitionModal','methodologyModal','basinSourceModal','basemapModal','usageNoticeModal'])$(id).addEventListener('click',e=>{if(e.target.id===id)closeMapModal(e.currentTarget);});
 $('headerHandle').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(isHeaderUiBlocked())return;toggleHeader();});
 $('closeDtaColorPicker')?.addEventListener('click',e=>{e.preventDefault();closeDtaColorPicker();});
 document.addEventListener('pointerdown',e=>{const panel=$('dtaColorPickerPanel');if(!panel||panel.classList.contains('hidden'))return;if(panel.contains(e.target)||e.target.closest?.('.change-point-color'))return;closeDtaColorPicker();});
@@ -2821,6 +2878,16 @@ $('undoDeleteBtn').addEventListener('click',undoDelete);
 $('usageInfoBtn')?.addEventListener('click',()=>openMapModal($('usageNoticeModal')));
 $('acceptUsageNotice').addEventListener('click',()=>closeMapModal($('usageNoticeModal')));
 document.addEventListener('keydown',e=>{
+  const activeModal=[...document.querySelectorAll('.modal-backdrop:not(.hidden)')].pop();
+  if(e.key==='Tab'&&activeModal){
+    const controls=[...activeModal.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex]')]
+      .filter(el=>!el.disabled&&el.tabIndex>=0&&el.getClientRects().length);
+    const first=controls[0],last=controls[controls.length-1];
+    if(!first){e.preventDefault();activeModal.focus();return;}
+    if(!activeModal.contains(document.activeElement)||(e.shiftKey&&document.activeElement===first)||(!e.shiftKey&&document.activeElement===last)){
+      e.preventDefault();(e.shiftKey?last:first).focus();return;
+    }
+  }
   const tag=(e.target?.tagName||'').toLowerCase();const typing=['input','textarea','select'].includes(tag)||e.target?.isContentEditable;
   const usageVisible=!$('usageNoticeModal').classList.contains('hidden');
   if(e.key==='f'||e.key==='F'){

@@ -64,6 +64,7 @@
     )).catch(error=>{chartRuntimePromise=null;throw error;});
     return chartRuntimePromise;
   }
+  window.ensureInteractiveChartRuntime=ensureChartRuntime;
 
   const cloneDefaults = () => Object.fromEntries(METHOD_DEFS.map(method => [
     method.id,

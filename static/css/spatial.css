@@ -3408,10 +3408,11 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
    ============================================================ */
 .point-input-control-row{
   display:grid;
-  grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr);
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:7px;
   align-items:stretch;
 }
+.xlsx-upload-button{margin-top:7px;background:var(--card-bg)!important;color:var(--text-main)!important;border-color:var(--border-color)!important}
 .point-input-control-row .btn{
   width:100%;
   min-width:0;
@@ -3460,9 +3461,18 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 .location-preview-card>p{margin:2px 0 0;font-size:.53rem;line-height:1.45;color:var(--text-muted)}
 
 @media(max-width:430px){
-  .point-input-control-row{grid-template-columns:1fr 1fr;gap:6px}
+  .point-input-control-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
   .point-input-control-row .btn{font-size:.55rem;padding-inline:6px}
 }
+
+.xlsx-upload-modal{width:min(440px,100%)}
+.xlsx-upload-modal>p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
+.xlsx-template-link{display:flex;align-items:center;gap:7px;margin-top:13px;color:var(--primary);font-size:12px;font-weight:800;text-decoration:none}
+.xlsx-template-link svg{width:15px;height:15px}
+.xlsx-file-choice{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:14px;padding:10px;border:1px dashed var(--border-color);border-radius:9px;transition:border-color .15s,background .15s}
+.xlsx-file-choice.is-dragover{border-color:var(--primary);background:var(--pu-blue-soft)}
+.xlsx-file-choice span{min-width:0;overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap}
+.xlsx-file-choice .btn{flex:none;font-size:11px}
 
 /* ============================================================
    Physical–hydrologic DTA analysis
@@ -3586,7 +3596,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 }
 .analysis-kicker{font-size:.56rem;letter-spacing:.085em}
 .analysis-executive>div>strong{font-size:1.16rem;line-height:1.08}
-.analysis-executive p{font-size:.68rem;line-height:1.62}
+.analysis-executive p{font-size:1rem;line-height:1.5;text-align:start}
 .analysis-section-title{margin-bottom:7px;align-items:center}
 .analysis-section-title>span{font-size:.73rem}
 .analysis-indicator-grid{gap:7px}
@@ -3795,7 +3805,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
    ============================================================ */
 :root{
   --ui-subtext-size:.75rem;      /* 12 px at the 16 px root */
-  --ui-control-text-size:.8125rem; /* 13 px */
+  --ui-control-text-size:.875rem;
 }
 
 /* Readability baseline for descriptions, hints, captions and secondary copy. */
@@ -3884,7 +3894,7 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 }
 .analysis-spinner>svg,.analysis-spinner>i{display:none!important}
 @media (prefers-reduced-motion:reduce){
-  .analysis-spinner{animation:analysis-spin .72s linear infinite!important}
+  .analysis-spinner{animation:none!important}
 }
 
 /* Desktop: keep Layer & Tampilan near the lower map controls instead of the top. */
@@ -3905,9 +3915,9 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 
 /* v1.3.0 final readability/alignment/spinner refinement */
 :root{
-  --ui-min-meta:11px;
-  --ui-subtext:12px;
-  --ui-control:13px;
+  --ui-min-meta:.75rem;
+  --ui-subtext:.875rem;
+  --ui-control:.875rem;
 }
 
 /* Raise the remaining undersized interface copy while retaining hierarchy. */
@@ -5176,3 +5186,209 @@ html:-webkit-full-screen .maplibregl-ctrl-top-left .map-search{
 
 
 /* Right-click coordinate context popup */
+.sidebar-actions .hydro-model-button,.sidebar-actions .hydro-model-button:hover,.sidebar-actions .hydro-model-button:focus-visible{display:flex!important;align-items:center!important;justify-content:center!important;min-height:36px!important;background:#1263bc!important;background-image:none!important;color:#fff!important;border-color:#1263bc!important}.hydro-model-button>svg{width:15px}
+.hydro-model-modal{width:min(1030px,calc(100vw - 28px))!important;max-width:1030px!important;max-height:min(92vh,900px)!important;overflow:auto!important;padding:20px!important}
+.hydro-model-picker{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0 0 16px;padding:0;border:0;min-width:0}
+.hydro-model-picker legend,.hydro-model-pending legend{margin-bottom:9px;padding:0;font-size:.56rem;font-weight:800;color:var(--text-strong)}
+.hydro-model-choice{display:flex;align-items:flex-start;gap:8px;margin:0;padding:12px;border:1px solid var(--border-color);border-radius:10px;background:var(--card-bg);cursor:pointer}
+.hydro-model-choice:has(input:checked){border-color:var(--primary);background:var(--surface-soft);box-shadow:inset 0 0 0 1px var(--primary)}
+.hydro-model-choice:has(input:disabled){cursor:not-allowed;opacity:.6}
+.hydro-model-choice:focus-within{outline:2px solid var(--primary);outline-offset:3px}
+.hydro-model-choice input{width:auto;margin:3px 0 0;flex:0 0 auto;accent-color:var(--primary)}
+.hydro-model-choice>span{display:grid;gap:6px;min-width:0}
+.hydro-model-choice strong{font-size:.61rem;line-height:1.3;color:var(--text-strong)}
+.hydro-model-choice small{font-size:.5rem;line-height:1.5;color:var(--text-muted)}
+.hydro-model-choice em{justify-self:start;padding:3px 7px;border-radius:999px;background:var(--surface-soft);color:var(--text-muted);font-size:.46rem;font-style:normal;font-weight:750}
+.hydro-model-choice:has(input:checked) em{color:var(--primary)}
+.hydro-model-requirements{display:grid;gap:0;margin:12px 0 0}
+.hydro-model-requirements>div{display:grid;grid-template-columns:minmax(150px,1fr) 2fr;gap:12px;padding:10px 0;border-bottom:1px solid var(--border-color);font-size:.53rem;line-height:1.5}
+.hydro-model-requirements dt{font-weight:750;color:var(--text-strong)}.hydro-model-requirements dd{margin:0;color:var(--text-muted)}
+.hydro-model-pending{min-width:0;margin:16px 0 0;padding:0;border:0}.hydro-model-pending input{opacity:.65;cursor:not-allowed}
+.hydro-algorithm-field{display:grid;gap:5px;max-width:320px;font-size:.54rem;font-weight:750;color:var(--text-muted)}
+.hydro-algorithm-field select{height:36px;padding:6px 8px;border:1px solid var(--border-color);border-radius:7px;background:var(--input-bg);color:var(--text-main);font:inherit}
+@media(max-width:700px){.hydro-model-picker{grid-template-columns:1fr}.hydro-model-choice{padding:10px}.hydro-model-requirements>div{grid-template-columns:1fr;gap:3px}}
+.hydro-model-modal .modal-head{margin-bottom:13px!important}.hydro-model-intro{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:11px;padding:12px 13px;border:1px solid var(--border-color);border-radius:11px;background:var(--surface-soft)}
+.hydro-model-mark{display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:var(--primary);color:#fff}.hydro-model-mark svg{width:21px}.hydro-model-intro>div:nth-child(2){display:grid;gap:3px}.hydro-model-intro strong{font-size:.68rem;color:var(--text-strong)}.hydro-model-intro p{margin:0;font-size:.52rem;line-height:1.45;color:var(--text-muted)}.hydro-model-pill{padding:5px 8px;border:1px solid var(--border-color);border-radius:999px;color:var(--primary);background:var(--card-bg);font-size:.48rem;font-weight:800;white-space:nowrap}
+.hydro-model-steps{display:flex;align-items:center;gap:7px;margin:14px 0 0;color:var(--text-muted);font-size:.48rem;font-weight:750}.hydro-model-steps span{display:inline-flex;align-items:center;gap:5px}.hydro-model-steps b{display:grid;place-items:center;width:18px;height:18px;border:1px solid var(--border-color);border-radius:50%;font-size:.46rem}.hydro-model-steps .active{color:var(--primary)}.hydro-model-steps .active b{border-color:var(--primary);background:var(--primary);color:#fff}.hydro-model-steps i{height:1px;flex:1;max-width:42px;background:var(--border-color)}
+.hydro-model-section{padding:16px 0;border-bottom:1px solid var(--border-color)}.hydro-section-heading{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px}.hydro-section-heading>span{display:grid;place-items:center;flex:0 0 25px;width:25px;height:25px;border-radius:7px;background:var(--surface-soft);color:var(--primary);font-size:.49rem;font-weight:850}.hydro-section-heading>div{display:grid;gap:2px}.hydro-section-heading h3{margin:0;font-size:.67rem;color:var(--text-strong)}.hydro-section-heading p{margin:0;font-size:.5rem;line-height:1.35;color:var(--text-muted)}
+.hydro-workbook-dropzone{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px;border:1px dashed var(--border-strong);border-radius:9px;background:var(--surface-soft);transition:border-color .15s,background .15s}.hydro-workbook-dropzone.is-dragover{border-color:var(--primary);background:var(--card-bg)}.hydro-workbook-dropzone>svg{width:19px;color:var(--primary)}.hydro-workbook-dropzone>div{display:grid;gap:3px}.hydro-workbook-dropzone strong{font-size:.55rem;color:var(--text-strong)}.hydro-workbook-dropzone small{font-size:.48rem;line-height:1.35;color:var(--text-muted)}.hydro-workbook-dropzone .btn{min-height:32px;font-size:.5rem}
+.hydro-workbook-info{min-height:18px;margin-top:8px;font-size:.52rem;line-height:1.4;color:var(--text-muted)}.hydro-donor-list{display:grid;gap:6px;margin-top:10px}.hydro-donor-row{display:grid;grid-template-columns:minmax(170px,1fr) minmax(185px,1.1fr);align-items:center;gap:12px;padding:9px 10px;border:1px solid var(--border-color);border-radius:9px;background:var(--card-bg)}.hydro-donor-row:has(input:checked){border-color:var(--primary);background:var(--surface-soft)}.hydro-donor-choice,.hydro-parameter-options label{display:flex;align-items:center;gap:7px;margin:0;font-size:.54rem;font-weight:700;color:var(--text-main)}.hydro-donor-choice input,.hydro-parameter-options input{width:auto;accent-color:var(--primary)}.hydro-donor-row select{width:100%;height:32px;padding:5px 7px;border:1px solid var(--border-color);border-radius:7px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:.52rem}.hydro-donor-row small,.hydro-donor-row span,.hydro-donor-row p{font-size:.5rem;color:var(--text-muted)}.hydro-target-summary,.hydro-period-card{margin-top:10px;padding:9px 10px;border-radius:8px;background:var(--surface-soft);font-size:.52rem;line-height:1.45;color:var(--text-muted)}.hydro-notes-field{margin-top:11px}.hydro-notes-field input{height:34px;padding:7px 9px;border:1px solid var(--border-color);border-radius:8px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:.54rem}
+.hydro-parameter-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin:12px 0}.hydro-parameter-options label{min-height:37px;padding:7px 8px;border:1px solid var(--border-color);border-radius:8px;background:var(--card-bg);font-size:.5rem}.hydro-parameter-options label:has(input:checked){border-color:var(--primary);background:var(--surface-soft)}.hydro-model-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.hydro-model-fields label{display:grid;gap:4px;font-size:.51rem;font-weight:750;color:var(--text-muted)}.hydro-model-fields input,.hydro-model-fields select{height:34px;padding:6px 8px;border:1px solid var(--border-color);border-radius:7px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:.55rem}.hydro-model-note{font-size:.51rem;line-height:1.5;margin:10px 0 0;color:var(--text-muted);overflow-wrap:anywhere}
+.hydro-run-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0 2px}.hydro-run-row small{font-size:.5rem;line-height:1.4;color:var(--text-muted)}.hydro-run-row .btn{background:var(--primary)!important;border-color:var(--primary)!important;color:#fff!important}.hydro-run-row .btn svg{width:14px}.hydro-model-result{margin-top:15px;padding:13px;border:1px solid var(--border-color);border-radius:10px;background:var(--card-bg)}.hydro-model-result h3{margin:0 0 10px;font-size:.65rem;color:var(--text-strong)}.hydro-model-result>label{display:grid;gap:4px;font-size:.5rem;font-weight:750;color:var(--text-muted)}.hydro-model-result select{height:33px;padding:6px 8px;border:1px solid var(--border-color);border-radius:7px;background:var(--input-bg);color:var(--text-main);font:inherit;font-size:.54rem}.hydro-model-result p,.hydro-model-result li{font-size:.51rem;line-height:1.5;color:var(--text-muted)}.hydro-model-table{overflow-x:auto;max-width:100%;margin:11px 0;border:1px solid var(--border-color);border-radius:8px}.hydro-model-table table{width:100%;border-collapse:collapse;font-size:.5rem}.hydro-model-table th,.hydro-model-table td{padding:7px 8px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--border-color)}.hydro-model-table thead th{background:var(--surface-soft);font-size:.47rem;color:var(--text-muted);text-transform:uppercase}.hydro-model-table tr:last-child>*{border-bottom:0}.hydro-model-table th:first-child,.hydro-model-table td:first-child{text-align:left}
+.hydro-quantile-table th,.hydro-quantile-table td,.hydro-quantile-table th:first-child,.hydro-quantile-table td:first-child{text-align:center}
+.hydro-semimonthly-table th,.hydro-semimonthly-table td,.hydro-semimonthly-table th:first-child,.hydro-semimonthly-table td:first-child{text-align:center}
+.hydro-reliability{margin-top:12px;padding:10px;border:1px solid var(--border-color);border-radius:9px;background:var(--card-bg)}.hydro-reliability-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.hydro-reliability-head>div:first-child{display:grid;gap:2px}.hydro-reliability-head strong{font-size:.56rem;color:var(--text-strong)}.hydro-reliability-head small{font-size:.47rem;color:var(--text-muted)}.hydro-chart-toggles{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px 8px}.hydro-chart-toggles label{display:inline-flex;align-items:center;gap:3px;margin:0;font-size:.47rem;color:var(--text-muted);cursor:pointer}.hydro-chart-toggles input{margin:0;accent-color:var(--primary)}.hydro-reliability-chart{display:block;width:100%;height:auto;margin-top:8px}.hydro-chart-grid{stroke:var(--border-color);stroke-width:1}.hydro-chart-axis{stroke:var(--text-muted);stroke-width:1}.hydro-chart-label,.hydro-chart-empty{fill:var(--text-muted);font-family:inherit;font-size:9px}.hydro-chart-line{fill:none;stroke:var(--primary);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.hydro-chart-q50{stroke-dasharray:5 3}.hydro-chart-q80{stroke-dasharray:2 3}.hydro-chart-q90{stroke-dasharray:8 3}
+@media(max-width:700px){.hydro-model-modal{width:calc(100vw - 12px)!important;max-height:calc(100dvh - 12px)!important;padding:14px!important}.hydro-parameter-options{grid-template-columns:1fr 1fr}.hydro-donor-row{grid-template-columns:1fr}.hydro-workbook-dropzone{grid-template-columns:auto minmax(0,1fr)}.hydro-workbook-dropzone .btn{grid-column:1/-1;width:100%}.hydro-run-row{align-items:stretch;flex-direction:column}.hydro-run-row .btn{width:100%}}
+@media(max-width:430px){.hydro-model-intro{grid-template-columns:38px minmax(0,1fr)}.hydro-model-mark{width:38px;height:38px}.hydro-model-pill{grid-column:2}.hydro-model-fields,.hydro-parameter-options{grid-template-columns:1fr}.hydro-model-steps i{max-width:20px}.hydro-model-modal{padding:11px!important}}
+
+.hydro-model-result pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;font-size:.7rem}.hydro-model-result summary{cursor:pointer;margin:10px 0}
+
+.hydro-model-fields .hydro-calibrate-field{display:flex;align-items:center;gap:8px;grid-column:1/-1}.hydro-model-fields .hydro-calibrate-field input{width:16px;height:16px;min-height:0;margin:0;flex:0 0 auto}
+
+.hydro-mock-bounds{min-width:0;margin-top:18px;border:1px solid var(--border-color);border-radius:9px;padding:12px}.hydro-mock-bounds legend{font-weight:600}.hydro-mock-bounds input[type="checkbox"]{width:16px;height:16px;min-height:0}.hydro-mock-values input,.hydro-mock-bounds input[type="number"]{width:100%;min-width:100px;box-sizing:border-box}.hydro-mock-values small{display:block;margin-top:4px}.hydro-mock-bounds:disabled{opacity:.65}
+
+/* Model Hidrologi: one readable type scale and a clear linear workflow. */
+.hydro-model-modal{max-width:980px!important;padding:28px!important}
+.hydro-model-modal .modal-head{margin-bottom:24px!important}
+.hydro-model-modal .modal-head h2{font-size:1.75rem!important;line-height:1.2!important}
+.hydro-model-modal .eyebrow{font-size:11px!important;letter-spacing:.1em!important}
+.hydro-model-picker{gap:12px;margin-bottom:20px}
+.hydro-model-picker legend{margin-bottom:12px;font-size:14px;font-weight:800;color:var(--text-strong)}
+.hydro-model-choice{gap:10px;padding:14px;min-height:88px;border-radius:12px}
+.hydro-model-choice>span{gap:7px}
+.hydro-model-choice strong{font-size:15px;line-height:1.3}
+.hydro-model-choice small{font-size:12px;line-height:1.55}
+.hydro-model-choice em{padding:4px 8px;font-size:11px}
+.hydro-model-choice input{margin-top:4px}
+.hydro-model-intro{gap:13px;padding:14px;border-radius:12px}
+.hydro-model-mark{width:44px;height:44px;border-radius:11px}
+.hydro-model-intro strong{font-size:16px;line-height:1.3}
+.hydro-model-intro p{font-size:13px;line-height:1.5}
+.hydro-model-note{font-size:12px;line-height:1.55}
+.hydro-model-section{padding:18px 0}
+.hydro-section-heading{gap:11px;margin-bottom:12px}
+.hydro-section-heading>span{flex-basis:30px;width:30px;height:30px;border-radius:8px;font-size:12px}
+.hydro-section-heading>div{gap:4px}
+.hydro-section-heading h3{font-size:16px;line-height:1.3}
+.hydro-section-heading p{font-size:12px;line-height:1.5}
+.hydro-workbook-dropzone{gap:12px;padding:14px;border-radius:10px}
+.hydro-workbook-dropzone>svg{width:21px}
+.hydro-workbook-dropzone strong{font-size:14px}
+.hydro-workbook-dropzone small{font-size:12px;line-height:1.5}
+.hydro-workbook-dropzone .btn{min-height:38px;padding-inline:14px;font-size:13px}
+.hydro-workbook-info,.hydro-target-summary,.hydro-period-card{font-size:12px;line-height:1.55}
+.hydro-donor-list{gap:8px;margin-top:12px}
+.hydro-donor-row{gap:14px;padding:12px;border-radius:10px}
+.hydro-donor-choice,.hydro-parameter-options label{font-size:13px}
+.hydro-donor-row select{height:36px;font-size:13px}
+.hydro-donor-row small,.hydro-donor-row span,.hydro-donor-row p{font-size:12px}
+.hydro-notes-field>span,.hydro-model-fields label,.hydro-algorithm-field{font-size:12px}
+.hydro-notes-field input,.hydro-model-fields input,.hydro-model-fields select,.hydro-algorithm-field select{height:38px;font-size:13px}
+.hydro-parameter-options{gap:8px;margin:14px 0}
+.hydro-parameter-options label{min-height:44px;padding:9px 10px}
+.hydro-model-requirements>div{padding:12px 0;font-size:13px;line-height:1.55}
+.hydro-run-row{position:relative;margin:0;padding:1rem 0;background:var(--card-bg);border-top:1px solid var(--border-color)}
+.hydro-run-row small{font-size:12px;line-height:1.5}
+.hydro-run-row .btn{min-height:42px;padding-inline:18px;font-size:14px}
+.hydro-model-result h3{font-size:16px}.hydro-model-result>label,.hydro-model-result p,.hydro-model-result li{font-size:13px;line-height:1.55}
+.hydro-model-table table{font-size:12px}.hydro-model-table th,.hydro-model-table td{padding:9px 10px}.hydro-model-table thead th{font-size:11px}
+@media(max-width:700px){.hydro-model-modal{padding:20px!important}.hydro-model-choice{min-height:0}.hydro-run-row{margin:0;padding:.875rem 0}.hydro-model-steps{font-size:.875rem}.hydro-model-steps i{max-width:24px}}
+
+/* Modal roles share relative sizes; legacy important sizes require scoped overrides. */
+.spatial-page .modal-card .modal-head h2{font-size:1.75rem!important;line-height:1.2}
+.spatial-page .modal-card :is(h3,.hydro-section-heading h3){font-size:1.125rem;line-height:1.4;font-weight:600}
+.spatial-page .modal-card :is(.hydro-model-note,.hydro-workbook-info,.hydro-target-summary,.hydro-period-card,.hydro-run-row small,.hydro-model-choice small,.hydro-section-heading p,.hydro-model-result p,.hydro-model-result li){font-size:.875rem;line-height:1.5}
+.spatial-page .modal-card :is(.modal-head>div,.hydro-model-section,.hydro-model-fields>label){min-width:0;overflow-wrap:anywhere}
+.spatial-page .modal-card .modal-close{flex:0 0 auto}
+.spatial-page .modal-actions{flex-wrap:wrap}
+.spatial-page .hss-dta-select>label{margin:0 0 .5rem}
+@media(max-width:430px){
+  .spatial-page .analysis-indicator-grid{grid-template-columns:minmax(0,1fr)}
+}
+
+/* Keep map-layer sliders usable without forcing horizontal panel scroll. */
+@media(max-width:430px){
+  .layer-panel .range-row{grid-template-columns:minmax(0,auto) minmax(0,1fr) auto}
+  .layer-panel .range-row input[type="range"]{min-width:0;width:100%}
+}
+
+/* Shared typography roles.  These scoped overrides retire legacy microcopy in
+   interactive WebGIS controls without changing map/canvas measurements. */
+body.spatial-page{
+  --type-page:clamp(1rem,.95rem + .2vw,1.125rem);
+  --type-section:.875rem;
+  --type-card:.8125rem;
+  --type-body:.875rem;
+  --type-label:.75rem;
+  --type-caption:.6875rem;
+  font-size:var(--type-body);
+}
+.spatial-page .sidebar-title .eyebrow,
+.spatial-page .modal-card .eyebrow{font-size:var(--type-caption)!important}
+.spatial-page .sidebar-title h1{font-size:var(--type-page)!important;line-height:1.2!important}
+.spatial-page .panel-section h2,
+.spatial-page .panel-title-row,
+.spatial-page .analysis-section-title>strong{font-size:var(--type-card)!important;line-height:1.4!important}
+.spatial-page .sidebar :is(label,.help,.status,.definition-link,.text-button,.small-title,.input-note),
+.spatial-page .modal-card :is(label,.help,.input-note,.download-status,.hydro-model-note,.hydro-workbook-info,.hydro-target-summary,.hydro-period-card,.hydro-run-row small,.hydro-model-choice small,.hydro-section-heading p,.hydro-model-result p,.hydro-model-result li){font-size:var(--type-label)!important;line-height:1.5!important}
+.spatial-page .sidebar :is(input[type=text],input[type=search],input[type=number],textarea,select,.btn),
+.spatial-page .modal-card :is(input[type=text],input[type=search],input[type=number],textarea,select,.btn){font-size:var(--type-body)!important}
+.spatial-page .point-summary-main strong,
+.spatial-page .point-summary-river,
+.spatial-page .point-summary-area{font-size:var(--type-label)!important;line-height:1.4!important}
+.spatial-page .point-summary-basin,
+.spatial-page .point-edit-label,
+.spatial-page .point-edit-label-row,
+.spatial-page .point-action-label{font-size:var(--type-caption)!important}
+.spatial-page .modal-card :is(h3,.hydro-section-heading h3,.hss-method-heading strong,.hss-result-head strong,.hss-empty-result strong){font-size:var(--type-card)!important;line-height:1.4!important}
+.spatial-page .hss-analysis-modal :is(.hss-dta-select,.hss-tr-compact,.hss-method-toggle b,.hss-param-grid label,.hss-auto-parameter,.hss-run-row strong,.hss-status,.hss-normalized-toggle,.hss-dirty-banner,.hss-global-input-row>label,.hss-morph-grid label,.hss-derived-title b,.hss-readonly-param>strong){font-size:var(--type-label)!important;line-height:1.5!important}
+.spatial-page .hss-analysis-modal :is(.hss-dta-summary small,.hss-method-toggle small,.hss-method-heading small,.hss-run-row small,.hss-empty-result span,.hss-result-head small,.hss-chart-legend,.hss-chart-details,.hss-chart-details p,.hss-global-input-row>small,.hss-morph-grid b,.hss-derived-title small,.hss-derived-grid>span small,.hss-readonly-param>span,.hss-readonly-param>strong b){font-size:var(--type-caption)!important;line-height:1.5!important}
+.spatial-page .hss-analysis-modal :is(.hss-dta-select select,.hss-param-grid input,.hss-global-input-row input,.hss-morph-grid input,.hss-tr-compact input){font-size:var(--type-body)!important}
+.spatial-page .hss-analysis-modal :is(.hss-summary-table,.hss-summary-table thead th,.hss-chart-tab,.hss-volume-badge){font-size:var(--type-caption)!important}
+.spatial-page .download-summary>div{font-size:var(--type-label)!important;line-height:1.5!important}
+
+/* Keep coordinate examples legible at narrow sidebar widths. */
+.spatial-page .coordinate-example{display:grid;gap:.25rem;font-size:var(--type-caption)!important;line-height:1.4!important}
+.spatial-page .coordinate-example-row{display:grid;grid-template-columns:minmax(0,1fr);gap:.125rem}
+.spatial-page .coordinate-example code{width:max-content;max-width:100%;padding:.0625rem .1875rem;font-size:var(--type-caption)!important;line-height:1.4;white-space:nowrap}
+
+/* Let the destructive action retain a readable, single-line label. */
+.spatial-page .section-heading-row{flex-wrap:wrap}
+.spatial-page .result-heading-actions{margin-left:auto}
+.spatial-page .result-heading-actions .result-stack-button{width:auto!important;min-width:5.5rem!important;height:2.375rem!important;min-height:2.375rem!important;padding:.25rem .5rem!important;white-space:nowrap}
+.spatial-page .result-heading-actions .result-stack-button span{font-size:var(--type-caption)!important;line-height:1!important}
+
+/* Keep DTA-result controls in a stable reading order at every sidebar width. */
+.spatial-page .outlet-section .section-heading-row{display:grid!important;grid-template-columns:minmax(0,1fr);justify-items:start!important;align-items:start!important;text-align:left!important}
+.spatial-page .outlet-section .section-heading-row>div:first-child,
+.spatial-page .outlet-section .section-heading-row h2{display:flex;align-items:center;min-height:0;margin-inline:0!important;text-align:left!important}
+.spatial-page .outlet-section .section-heading-row h2{line-height:1!important}
+.spatial-page .outlet-section .section-heading-row #pointCount{align-self:center}
+.spatial-page .outlet-section .result-heading-actions{align-items:center;justify-content:flex-start;margin-inline:0!important}
+.spatial-page .outlet-section .result-heading-actions .text-button{justify-content:center}
+.spatial-page .outlet-section .point-limit-note{margin-top:.5rem;text-align:left!important}
+
+/* Dense desktop headings; control and caption sizes remain unchanged. */
+.spatial-page .modal-card .modal-head h2{font-size:clamp(1.0625rem,1rem + .3vw,1.25rem)!important}
+.spatial-page .sidebar-title{grid-template-columns:2rem minmax(0,1fr);gap:.5rem}
+.spatial-page .section-icon{width:2rem;height:2rem;border-radius:.5rem}
+.spatial-page .section-icon svg{width:1rem;height:1rem}
+
+/* Reserve enough inline space for the basemap label at browser zoom. */
+.spatial-page .map-basemap-control{inline-size:6rem!important}
+.spatial-page .map-basemap-control button{inline-size:100%!important;min-inline-size:6rem!important;block-size:6rem!important;min-block-size:6rem!important}
+.spatial-page .map-basemap-label{padding:.1875rem .375rem!important}
+
+/* Sidebar actions use the compact label role, while fields retain body text. */
+.spatial-page .sidebar .btn{font-size:var(--type-label)!important}
+
+/* One vertical rhythm for every left-sidebar section and action. */
+.spatial-page .sidebar-scroll{--sidebar-space:.375rem;padding:.75rem .8125rem calc(.875rem + env(safe-area-inset-bottom))!important}
+.spatial-page .sidebar-scroll{display:flex;flex-direction:column;gap:var(--sidebar-space)}
+.spatial-page .sidebar-scroll>:not(.sidebar-title){margin:0!important}
+.spatial-page .sidebar-info-links{gap:var(--sidebar-space)!important;margin-bottom:0!important;padding-bottom:0!important}
+.spatial-page .sidebar-info-links .definition-link{min-height:0;padding:.1875rem 0!important;line-height:1.25}
+.spatial-page .panel-section{margin-bottom:0!important;padding-top:var(--sidebar-space)!important}
+.spatial-page .analysis-preferences{padding-block:var(--sidebar-space)!important}
+.spatial-page .advanced.panel-section{padding-top:0!important}
+.spatial-page .advanced>summary{padding:.375rem .5rem!important}
+.spatial-page .section-heading,.spatial-page .section-heading-row{margin-bottom:.375rem!important}
+.spatial-page .point-selection-section label{margin:.375rem 0!important}
+.spatial-page .outlet-section>:is(.point-limit-note,.result-heading-actions,.point-list,.point-input-control-row,.xlsx-upload-button){margin-top:.375rem!important}
+.spatial-page .sidebar-actions{display:grid;gap:.375rem;margin-top:var(--sidebar-space)!important;padding-top:var(--sidebar-space)!important}
+
+/* The five-node set diagram must not let a long node label widen its grid. */
+.spatial-page .set-node-group,
+.spatial-page .set-node-group-five{grid-template-columns:repeat(3,minmax(0,1fr))}
+.spatial-page .set-circle-node{min-inline-size:0}
+.spatial-page .set-circle-node span{overflow-wrap:anywhere}
+
+/* Sidebar has a stable desktop width and scrolls vertically only. */
+@media(min-width:781px){
+  body.spatial-page{--sidebar-w:19.6875rem}
+  .spatial-page .sidebar{width:var(--sidebar-w)!important;max-width:var(--sidebar-w)!important}
+}
+.spatial-page .sidebar-scroll{overflow-x:clip!important;overflow-y:auto!important;scrollbar-gutter:stable}
+.spatial-page .sidebar-scroll > *,
+.spatial-page .sidebar :is(.panel-section,.section-heading-row,.result-heading-actions,.point-card,.coordinate-example){min-inline-size:0;max-inline-size:100%}
+.spatial-page .sidebar :is(label,.help,.input-note,.point-limit-note,.relationship-content){overflow-wrap:anywhere}

@@ -1,6 +1,6 @@
 {
   "name": "delineasi-dta-bbwsso",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Delineasi DTA BBWS Serayu Opak - Web-based GIS application for watershed delineation",
   "private": true,
   "scripts": {

@@ -10,6 +10,7 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        libexpat1 \
+       libgomp1 \
        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -18,7 +19,7 @@ COPY requirements.txt /app/requirements.txt
 RUN /usr/local/bin/python -m pip install --upgrade pip \
     && /usr/local/bin/python -m pip install -r /app/requirements.txt \
     && test -x /usr/local/bin/gunicorn \
-    && /usr/local/bin/python -c "import rasterio; print('Rasterio import OK:', rasterio.__version__)"
+    && /usr/local/bin/python -c "import rasterio, h5py, scipy, sklearn, xgboost; print('GIS/hydrology imports OK')"
 
 COPY api /app/api
 COPY templates /app/templates

@@ -97,13 +97,15 @@ def test_wet_days_are_from_daily_areal_rain_and_partial_period_omitted(tmp_path)
         daily_rainfall(path,box(108.98,-7.02,109.02,-6.98),'EPSG:4326',2000,2001)
 
 
-@pytest.mark.parametrize('model',['mock','random_forest','xgboost'])
-def test_runoff_models_validation_partial_year_export_and_missing_observations(model):
+@pytest.mark.parametrize(('model', 'ml_algorithm'), [('mock', 'random_forest'), ('ml', 'random_forest'), ('ml', 'xgboost')])
+def test_runoff_models_validation_partial_year_export_and_missing_observations(model, ml_algorithm):
     p=point();target=point('B');target['area_km2']=200
     target['climate']['rows']=target['climate']['rows'][:-6]
     d=donor(p);d['records'][1]['values'][4]=None
-    payload=simulate_runoff([p,target],[d],model=model,warmup_years=0)
+    payload=simulate_runoff([p,target],[d],model=model,ml_algorithm=ml_algorithm,warmup_years=0)
     json.dumps(payload,allow_nan=False)
+    assert payload['model'] == model
+    assert payload['ml_algorithm'] == (ml_algorithm if model == 'ml' else None)
     assert payload['validation'] and payload['validation'][0]['count']>=6
     assert payload['results'][1]['records'][-1]['values'][-1] is None
     if model=='mock':
@@ -119,11 +121,12 @@ def test_runoff_models_validation_partial_year_export_and_missing_observations(m
 
 def test_ml_spatial_holdout_and_need_observed_data():
     a,b,c=point('A',2),point('B',2),point('C',2)
-    payload=simulate_runoff([a,b,c],[donor(a),donor(b)],model='random_forest')
+    payload=simulate_runoff([a,b,c],[donor(a),donor(b)],model='ml')
+    assert payload['ml_algorithm'] == 'random_forest'
     assert len(payload['validation'])==2
     assert all(v['scheme']=='Leave-one-DTA-out' for v in payload['validation'])
     with pytest.raises(ValueError,match='24 pasangan'):
-        simulate_runoff([a],[],model='random_forest')
+        simulate_runoff([a],[],model='ml')
     assert simulate_runoff([a],[],model='mock',warmup_years=0)['results'][0]['model_parameters']['status'].startswith('Parameter awal GIS')
 
 
@@ -221,5 +224,5 @@ def test_mock_zero_warmup_outputs_first_year_and_ml_ignores_mock_warmup():
     p=point(years=2)
     result=simulate_runoff([p],[],warmup_years=0)
     assert result['years']==[2000,2001] and result['results'][0]['statistics']['count']==48
-    ml=simulate_runoff([p],[donor(p)],model='random_forest')
+    ml=simulate_runoff([p],[donor(p)],model='ml')
     assert ml['years']==[2000,2001] and ml['warmup_years']==0

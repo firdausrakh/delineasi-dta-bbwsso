@@ -47,10 +47,10 @@ Periksa hasil snapping dan lokasi jaringan sungai yang dipilih; validitas angka 
 - Upload debit maksimum 10 MB (ukuran hasil dekompresi workbook juga dibatasi parser); sheet yang invalid memuat alasan.
 - `A1 = Tahun`, header bulan dan `I/II`, 24 nilai tengah bulanan per tahun, tahun bilangan bulat dan tidak melebihi tahun berjalan pada parser, tahun tidak boleh duplikat.
 - Debit harus numerik, finite, dan tidak negatif. **0 sah**. Data kosong hanya diperbolehkan pada mode/operasi yang mendukung missing secara eksplisit.
-- HydroMODAR: ≥2 DTA dan ≥1 referensi debit; set donor/target valid; eksponen `b` >0 ≤3; parameter similaritas wajib tersedia jika diaktifkan.
-- RF/XGBoost: membutuhkan observasi sebagai data pelatihan. FJ Mock: parameter mode/kalibrasi, tahun warm-up, data hujan/ET0/DEM/soil harus konsisten; tidak boleh mengarang sumber iklim.
+- Modular Drainage Area Ratio: ≥2 DTA dan ≥1 referensi debit; set donor/target valid; eksponen `b` >0 ≤3; parameter similaritas wajib tersedia jika diaktifkan.
+- Machine Learning: membutuhkan observasi sebagai data pelatihan; Random Forest/XGBoost adalah pilihan algoritmanya. FJ Mock: parameter mode/kalibrasi, tahun warm-up, data hujan/ET0/DEM/soil harus konsisten; tidak boleh mengarang sumber iklim.
 - Band hujan/zonal: cakupan atas **seluruh** DTA diperiksa; hujan negatif, tanggal band salah, dan periode hilang tidak boleh disamakan dengan nol.
-- Rasio luas donor/target di luar 0,5–2 dalam HydroMODAR adalah **peringatan pemeriksaan**, bukan otomatis hard-fail.
+- Rasio luas donor/target di luar 0,5–2 dalam Modular Drainage Area Ratio adalah **peringatan pemeriksaan**, bukan otomatis hard-fail.
 
 ## 6. Kode status dan tampilan error
 

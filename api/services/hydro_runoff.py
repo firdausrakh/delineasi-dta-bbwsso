@@ -141,10 +141,12 @@ def _estimator(model):
     return XGBRegressor(n_estimators=200,max_depth=3,learning_rate=.04,objective='reg:squarederror',n_jobs=1,random_state=42)
 
 
-def simulate_runoff(points,donors,*,model='mock',calibrate=True,k30=None,source_file='',warmup_years=3,
+def simulate_runoff(points,donors,*,model='mock',ml_algorithm='random_forest',calibrate=True,k30=None,source_file='',warmup_years=3,
                     mock_mode=None,mock_parameters=None,mock_bounds=None,mock_fit_parameters=None):
-    if model not in ('mock','random_forest','xgboost'):
+    if model not in ('mock','ml'):
         raise ValueError('Model hujan–debit tidak dikenal.')
+    if model == 'ml' and ml_algorithm not in ('random_forest','xgboost'):
+        raise ValueError('Algoritma Machine Learning tidak dikenal.')
     observations=_observations(points,donors)
     validation=[]
     predictions={}
@@ -252,7 +254,7 @@ def simulate_runoff(points,donors,*,model='mock',calibrate=True,k30=None,source_
                     depth=q*row['days']*86400/(p['area_km2']*1000)
                     samples.append((p['point_id'],i,x,depth,q,row['year'],row['period']))
         if len(samples)<24:
-            raise ValueError('RF/XGBoost membutuhkan ≥24 pasangan debit–iklim setelah enam periode lag hujan awal.')
+            raise ValueError('Machine Learning membutuhkan ≥24 pasangan debit–iklim setelah enam periode lag hujan awal.')
         X=np.array([s[2] for s in samples]);y=np.array([s[3] for s in samples])
         ids=sorted({s[0] for s in samples})
         splits=[]
@@ -268,13 +270,13 @@ def simulate_runoff(points,donors,*,model='mock',calibrate=True,k30=None,source_
         for train,test,scheme,id_ in splits:
             if train.sum()<24 or test.sum()<6:
                 continue
-            estimator=_estimator(model).fit(X[train],y[train])
+            estimator=_estimator(ml_algorithm).fit(X[train],y[train])
             qpred=[]
             for sample,depth in zip([s for s,t in zip(samples,test) if t],np.maximum(estimator.predict(X[test]),0)):
                 p=by_id[sample[0]];row=p['climate']['rows'][sample[1]]
                 qpred.append(float(q_from_depth(depth,p['area_km2'],row['days'])))
             validation.append({'point_id':id_,'label':by_id[id_]['label'],'scheme':scheme,**metrics([s[4] for s,t in zip(samples,test) if t],qpred)})
-        estimator=_estimator(model).fit(X,y)
+        estimator=_estimator(ml_algorithm).fit(X,y)
         for p in points:
             f=features[p['point_id']]
             values=[None]*len(p['climate']['rows'])
@@ -324,8 +326,8 @@ def simulate_runoff(points,donors,*,model='mock',calibrate=True,k30=None,source_
             paired=[(o,q) for o,q in paired if o is not None and q is not None]
             results[-1]['observation_comparison']=metrics([o for o,_ in paired],[q for _,q in paired]) if paired else None
             results[-1]['comparison_note']='Perbandingan seluruh pengamatan setelah pemanasan; ini bukan validasi independen.'
-    names={'mock':'FJ Mock (adaptasi tengah bulanan)','random_forest':'Random Forest','xgboost':'XGBoost'}
-    return {'model':model,'method':names[model],'unit':'m³/det','source_file':source_file,'results':results,
+    names={'mock':'FJ Mock (adaptasi tengah bulanan)','ml':'Machine Learning'}
+    return {'model':model,'ml_algorithm':ml_algorithm if model=='ml' else None,'method':names[model],'unit':'m³/det','source_file':source_file,'results':results,
             'warmup_years':warmup_years if model=='mock' else 0,
             'years':sorted({r['year'] for p in results for r in p['records']}),
             'references':[{**d,'label':next(p['label'] for p in points if p['point_id']==d['point_id'])} for d in donors],

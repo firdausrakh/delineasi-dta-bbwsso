@@ -46,6 +46,21 @@
 - **Sumber:** permintaan penataan UI project + `docs/UI_DESIGN_RULES.md`.
 - **Konsekuensi:** agent mengikuti hierarchy typography, relative units, dan pemeriksaan browser zoom 100–200%; jangan mengklaim implementasi seluruh komponen telah lolos.
 
+### ADR-008 — Modular Drainage Area Ratio sementara hanya memakai Luas DTA (2026-10-21)
+
+- **Status:** Accepted, temporary.
+- **Konteks:** pembacaan descriptor spasial—termasuk `hydro_vectors.gpkg`—menambah waktu proses Modular Drainage Area Ratio di Vercel.
+- **Keputusan:** nonaktifkan parameter selain Luas DTA pada UI dan tolak parameter tersebut di API; gunakan luas dari hasil delineasi yang sudah ada.
+- **Konsekuensi:** Modular Drainage Area Ratio tidak memuat descriptor spasial maupun konteks hidrogeologi sampai keputusan ini dicabut. Implementasi parameter tetap dipertahankan.
+- **Bukti:** `api/core.py`, `templates/spatial.html`, serta regresi `tests/test_hydro_model.py`.
+
+### ADR-009 — Identifier model hidrologi ringkas (2026-10-21)
+
+- **Status:** Accepted.
+- **Konteks:** nama model di antarmuka dan kontrak API perlu konsisten, sementara algoritma adalah pilihan di dalam Machine Learning.
+- **Keputusan:** gunakan `modar`, `mock`, dan `ml` pada field API `model`; gunakan `ml_algorithm` untuk `random_forest` atau `xgboost`.
+- **Konsekuensi:** consumer API harus memperbarui payload model lama; algoritma tetap dipilih eksplisit pada Machine Learning.
+
 ## Keputusan yang perlu diverifikasi sebelum diubah
 
 - Batas resmi/CRS dan standar sumber geodata aktif; versi setiap paket data produksi.

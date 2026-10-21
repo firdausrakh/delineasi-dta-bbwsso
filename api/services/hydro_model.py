@@ -264,9 +264,7 @@ def simulate(points, donors, *, b=1.0, groups=(), soil_depth=30, source_file='',
                             'area_km2': lookup[d['point_id']]['area_km2'],
                             'records': [{'year': year, 'values': values} for year, values in sorted(data[d['point_id']].items())]}
                            for d in donors],
-            'statistic_convention': 'PERCENTILE.EXC(data, 1-p); setiap periode berbobot sama; bukan FDC harian',
             'weight_convention': 'w=exp(-d)/sum(exp(-d)); d=rerata jarak kelompok; tanah/100%; elevasi/1000m; lereng/100%; hujan=sum(abs(Ptarget-P_referensi))/sum(Ptarget+P_referensi) pada periode yang sejajar. Hidrogeologi berbobot: produktivitas akuifer saja; CAT dan litologi hanya konteks.',
             'rainfall_convention': 'Hujan rerata areal pada irisan tahun debit digunakan untuk kemiripan referensi; tidak mengalikan debit dengan rasio hujan. Kelompok berbobot setara; belum dikalibrasi.' if 'rainfall' in groups else '',
             'validation': validation,
-            'validation_note': 'Dengan dua referensi, LOOCV hanya menguji transfer satu referensi dan tidak menguji manfaat pembobotan. Referensi bersarang tidak independen.' if len(donors) == 2 else 'LOOCV memakai irisan tahun bersama. Hasil pada sedikit referensi belum membuktikan akurasi umum.',
-            'uncertainty_note': 'Rentang transfer referensi adalah sensitivitas, bukan interval kepercayaan.'}
+            'validation_note': 'Dengan dua referensi, LOOCV hanya menguji transfer satu referensi dan tidak menguji manfaat pembobotan. Referensi bersarang tidak independen.' if len(donors) == 2 else 'LOOCV memakai irisan tahun bersama. Hasil pada sedikit referensi belum membuktikan akurasi umum.'}

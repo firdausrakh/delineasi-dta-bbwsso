@@ -75,7 +75,7 @@ Jika dokumen berbeda dari source terbaru, catat gap dan verifikasi sebelum mengu
 - Delineasi berbasis subbasin dan raster arah aliran D8, termasuk penanganan koneksi hulu–hilir serta batas DAS acuan.
 - Karakteristik DTA mencakup metrik morfometri, jaringan drainase, topografi, dan parameter hidrologi sesuai ketersediaan dataset.
 - Metode HSS yang terdokumentasi: NRCS/SCS, Nakayasu, Snyder–Alexeyev, Gama I, Limantara, ITB-1b, ITB-2b.
-- Model hidrologi yang tersedia pada snapshot: HydroMODAR, FJ Mock, dan RF/XGBoost; masing-masing mempunyai prasyarat input dan batas validasi.
+- Model hidrologi yang tersedia pada snapshot: Modular Drainage Area Ratio, FJ Mock, dan Machine Learning; masing-masing mempunyai prasyarat input dan batas validasi.
 - Hasil dapat ditampilkan dan diekspor sesuai modul yang digunakan; beberapa analisis membutuhkan data spasial tambahan yang tidak dibundel dalam ZIP.
 - Data spasial dan aset peta produksi berada di R2; perhitungan geometri dan analisis tetap dilakukan pada backend Python.
 

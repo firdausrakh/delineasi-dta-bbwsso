@@ -21,7 +21,7 @@ Untuk iterasi cepat, jalankan subset: `python -m pytest -q tests/test_hss_analys
 | `test_hss_analysis.py` | 7 metode, kalibrasi, konservasi volume, Gama I, benchmark |
 | `test_hydro_model.py` | Parser debit, DAR, similarity, donor, R2/model export |
 | `test_hydro_rainfall.py` | Raster areal rainfall, coverage, missing band, R2 signature |
-| `test_hydro_runoff.py` | FJ Mock neraca air, warm-up, ET0, RF/XGBoost, holdout |
+| `test_hydro_runoff.py` | FJ Mock neraca air, warm-up, ET0, Machine Learning, holdout |
 | `test_mock_controls.py` | Prior recession GIS, kalibrasi manual/auto, parameter bounds |
 | `test_mock_excel_reference.py` | Replay pembanding workbook/referensi perhitungan Mock |
 | `test_performance.py` | Supersede request, antrean heavy jobs |
@@ -34,7 +34,7 @@ Untuk iterasi cepat, jalankan subset: `python -m pytest -q tests/test_hss_analys
 | D8/topologi/stitching | `test_boundary_stitch`, test characteristics spatial | Outlet nested, cabang, dekat batas resmi |
 | Karakteristik/Tc | `test_hydrologic_analysis`, `test_characteristics_spatial` | Label satuan, indikasi data tidak tersedia, overlay |
 | HSS/Gama I | `test_hss_analysis` | Grafik, parameter stale, ekspor tiap metode |
-| Donor/HydroMODAR | `test_hydro_model`, `test_hydro_rainfall` | Tahun/period, donor sheet, warning coverage |
+| Donor/Modular Drainage Area Ratio | `test_hydro_model`, `test_hydro_rainfall` | Tahun/period, donor sheet, warning coverage |
 | FJ Mock/ML | `test_hydro_runoff`, `test_mock_controls`, `test_mock_excel_reference` | Warmup, donor, hasil parameter, hasil export |
 | API/shell/deploy | `test_performance`, `test_shell_performance` | Cold start, error route, map assets |
 | Frontend/CSS | tes API terkait + review manual | Desktop/mobile, keyboard, zoom, dialog, map controls |
@@ -57,7 +57,7 @@ Checklist **wajib untuk modifikasi UI** (pengujian *belum dilakukan* dalam penyu
 - Koordinat negatif, longitude/latitude tertukar, radius snap di luar rentang.
 - Data raster/soil/DEM/hujan tidak ada atau cakupannya parsial; tidak mengganti missing dengan nol.
 - Hujan 0 sah; band hujan hilang/metadata tidak cocok menyebabkan kegagalan yang jelas.
-- HydroMODAR input workbook kosong/invalid, 24 periode/tahun, tahun tidak kontigu, donor overlap dan komputasi volume tahun kabisat.
+- Modular Drainage Area Ratio input workbook kosong/invalid, 24 periode/tahun, tahun tidak kontigu, donor overlap dan komputasi volume tahun kabisat.
 - HSS Tp/Qp/volume yang dapat dibandingkan fixture dan parameter yang berbeda per DTA.
 - Download file per format dengan identitas DTA/satuan benar.
 

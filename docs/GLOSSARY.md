@@ -30,7 +30,7 @@
 | Tp / Qp / Tb | Waktu ke puncak / debit puncak / waktu dasar hidrograf, sesuai metode yang dihitung |
 | Gama I | Salah satu metode HSS yang memerlukan parameter geometri serta karakter jaringan DAS |
 | AU, WL, WU | Parameter geometrik Gama I: luas bagian hulu dan lebar DTA pada potongan lintasan tertentu |
-| HydroMODAR | Modul estimasi transfer debit DTA target berdasarkan luas dan opsional kemiripan karakteristik donor |
+| Modular Drainage Area Ratio | Modul estimasi transfer debit DTA target berdasarkan luas dan opsional kemiripan karakteristik donor |
 | DAR | Drainage Area Ratio, pendekatan skala luas tangkapan untuk transfer debit |
 | Donor | DTA referensi dengan catatan debit pengamatan untuk transfer/pelatihan |
 | Target | DTA yang akan diestimasi dari model atau transfer donor |
@@ -38,7 +38,7 @@
 | RF / XGBoost | Random Forest dan XGBoost; model machine learning pada modul debit yang memerlukan data pelatihan |
 | ET0 | Evapotranspirasi referensi yang dipakai sebagai input neraca air |
 | Warm-up | Periode awal simulasi untuk membentuk state model sebelum jendela output utama |
-| CAT | Cekungan Air Tanah; pada HydroMODAR digunakan sebagai konteks, bukan bobot otomatis |
+| CAT | Cekungan Air Tanah; pada Modular Drainage Area Ratio digunakan sebagai konteks, bukan bobot otomatis |
 | SoilGrids | Sumber atribut/raster tanah yang diproses modul model jika data tersedia |
 | R2 | Cloudflare R2 object storage untuk dataset runtime privat dan sebagian aset peta publik |
 | Stale result | Hasil lama yang tidak lagi selaras dengan titik/geometri/parameter terakhir dan harus dihitung ulang |

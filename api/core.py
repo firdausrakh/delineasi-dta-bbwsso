@@ -508,7 +508,8 @@ class MockParameterValues(BaseModel):
 class HydroModelRequest(BaseModel):
     points: list[OutletPoint] = Field(..., min_length=1, max_length=MAX_POINTS)
     donors: list[HydroDonor] = Field(default_factory=list)
-    model: str = Field('hydromodar', pattern='^(hydromodar|mock|random_forest|xgboost)$')
+    model: str = Field('modar', pattern='^(modar|mock|ml)$')
+    ml_algorithm: str = Field('random_forest', pattern='^(random_forest|xgboost)$')
     start_year: int = Field(1990, ge=1990, le=2100)
     end_year: int = Field(2026, ge=1990, le=2100)
     calibrate: bool = True
@@ -2741,23 +2742,25 @@ async def hydro_model_upload(request: Request, allow_missing: bool = False):
 
 
 def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_only=False):
-    runoff = req.model != 'hydromodar'
+    runoff = req.model != 'modar'
     if not parameters_only and runoff and req.start_year > req.end_year:
         raise ValueError('Tahun awal harus ≤ tahun akhir.')
     if not parameters_only and req.model=='mock' and req.start_year+req.warmup_years>req.end_year:
         raise ValueError('Tidak ada tahun keluaran setelah pemanasan; perpanjang rentang iklim atau kurangi tahun pemanasan.')
     if not runoff and (len(req.points)<2 or not req.donors):
-        raise ValueError('HydroMODAR memerlukan ≥2 DTA dan ≥1 referensi debit.')
+        raise ValueError('Modular Drainage Area Ratio memerlukan ≥2 DTA dan ≥1 referensi debit.')
     if runoff:
         # Validate observations before costly spatial extraction and remote ET0 requests.
         for donor in req.donors:
             validate_hydro_records(donor.records, allow_missing=True)
-        if req.model in ('random_forest','xgboost') and not req.donors:
-            raise ValueError('RF/XGBoost memerlukan debit pengamatan untuk pelatihan.')
+        if req.model == 'ml' and not req.donors:
+            raise ValueError('Machine Learning memerlukan debit pengamatan untuk pelatihan.')
     if 'lithology' in req.groups:
         raise ValueError('Litologi kini hanya konteks hidrogeologi. Muat ulang halaman dan pilih kembali parameter model.')
     if set(req.groups) - set(HYDRO_GROUPS):
         raise ValueError('Parameter model tidak dikenal.')
+    if not runoff and req.groups:
+        raise ValueError('Parameter Modular Drainage Area Ratio selain Luas DTA sementara dinonaktifkan.')
     rainfall_years = ()
     if not runoff and 'rainfall' in req.groups:
         rainfall_years = sorted(set.intersection(*(set(validate_hydro_records(d.records)) for d in req.donors)))
@@ -2778,7 +2781,8 @@ def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_o
     names = (list(MODEL_RASTERS) if 'soil' in req.groups else []) + (['dem'] if 'terrain' in req.groups else [])
     if runoff:
         names = [*SOIL_RASTERS, 'dem'] + ([] if parameters_only else ['daily_rainfall'])
-    names.append('hydro_vectors')  # CAT and lithology provide context in every model mode.
+    if runoff:
+        names.append('hydro_vectors')  # Required by the still-available runoff models.
     if not runoff and 'rainfall' in req.groups:
         names.append('rainfall')
     for name in names:
@@ -2803,7 +2807,8 @@ def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_o
         outlet = Point(*to_data.transform(float(result['snapped_lon']), float(result['snapped_lat'])))
         try:
             spatial_groups=('terrain','landcover','aquifer','recession') if req.model=='mock' else ('terrain','landcover') if runoff else req.groups
-            spatial = hydro_descriptors(geom, streams.crs, outlet, paths, spatial_groups, soil_depth=req.soil_depth, rainfall_years=rainfall_years)
+            spatial = ({'features': {}, 'warnings': [], 'coverage': {}, 'hydrogeology_context': {}}
+                       if not runoff else hydro_descriptors(geom, streams.crs, outlet, paths, spatial_groups, soil_depth=req.soil_depth, rainfall_years=rainfall_years))
             if runoff:
                 terrain = spatial['features'].get('terrain')
                 if not terrain or not all(v is not None and math.isfinite(v) for v in terrain):
@@ -2816,7 +2821,7 @@ def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_o
         except ValueError as exc:
             raise ValueError(f'{point.label or point.point_id}: {exc}') from exc
         points_data.append({'point_id': point.point_id, 'label': point.label or point.point_id,
-                            'area_km2': area_km2_equal(geom), **spatial, 'warnings': list(spatial['warnings'])})
+                            'area_km2': float(result['area_km2']), **spatial, 'warnings': list(spatial['warnings'])})
     if parameters_only:
         return {'model':'mock','points':points_data}
     if runoff:
@@ -2843,7 +2848,7 @@ def _run_hydro_model(req: HydroModelRequest, built_results=None, *, parameters_o
                 for p in points_data:
                     p['warnings'].append(message)
     if runoff:
-        payload = simulate_runoff(points_data, [d.model_dump() for d in req.donors], model=req.model,
+        payload = simulate_runoff(points_data, [d.model_dump() for d in req.donors], model=req.model, ml_algorithm=req.ml_algorithm,
             calibrate=req.calibrate, k30=req.k30, source_file=req.source_file, warmup_years=req.warmup_years,
             mock_mode=req.mock_mode,mock_bounds=req.mock_bounds,mock_fit_parameters=req.mock_fit_parameters,
             mock_parameters={key:value.model_dump(exclude_none=True) for key,value in req.mock_parameters.items()})

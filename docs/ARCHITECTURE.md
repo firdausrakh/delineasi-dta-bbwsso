@@ -35,7 +35,7 @@ Map assets publik (route /geodata/* lewat konfigurasi deploy)
 | API + delineasi | Request, snap outlet, raster D8, union subbasin, constraint batas DAS, multipoint topology | `api/core.py`, `api/services/boundary_stitch.py` |
 | Karakteristik | DEM, flowpath, drainage, lereng, tutupan lahan, CN, Tc, narasi, spatial layers | `api/services/hydrologic_analysis.py`, `characteristics_spatial.py` |
 | HSS | 7 metode, output kurva/parameter, perhitungan volume | `api/services/hss_analysis.py` |
-| Model | HydroMODAR / FJ Mock / RF-XGBoost, iklim dan data soil | `api/services/hydro_model.py`, `hydro_runoff.py`, `hydro_climate.py`, `hydro_spatial.py` |
+| Model | Modular Drainage Area Ratio / FJ Mock / Machine Learning, iklim dan data soil | `api/services/hydro_model.py`, `hydro_runoff.py`, `hydro_climate.py`, `hydro_spatial.py` |
 | Ekspor | Geometri, PDF/XLSX/format spasial, paket hasil | `api/core.py`, `api/services/*_report.py`, `*_workbook.py` |
 | Data runtime | Backend `local`/`r2`, materialisasi object, caching | `api/services/runtime_backend.py`; penyiapan `scripts/` |
 

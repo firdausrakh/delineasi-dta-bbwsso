@@ -22,7 +22,7 @@ Aplikasi WebGIS untuk menentukan batas Daerah Tangkapan Air dari outlet terpilih
 | Delineasi | DTA hybrid subbasin + D8, snapping, pembatasan DAS, rekonsiliasi topologi multipoint |
 | Karakteristik | Morfometri, topografi, drainase, lahan/CN, Tc, laporan/layer turunan jika input tersedia |
 | HSS | 7 metode, pengaturan koefisien per DTA, grafik, inspeksi volume, opsi ekspor |
-| Model debit | HydroMODAR, FJ Mock, Random Forest/XGBoost dengan prasyarat masing-masing |
+| Model debit | Modular Drainage Area Ratio, FJ Mock, Machine Learning dengan prasyarat masing-masing |
 | Hasil | Unduhan format spasial `gpkg/shp/geojson/kml`, laporan dan workbook pada opsi yang tersedia |
 
 ## 4. Kebutuhan fungsional baseline

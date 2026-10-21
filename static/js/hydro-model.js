@@ -13,11 +13,11 @@
   const groups = () => [...document.querySelectorAll('.hydro-group:checked')].map(input => input.value);
   const selectedModel = () => {
     const input = document.querySelector('input[name="hydrologyModel"]:checked');
-    return input ? input.value : 'hydromodar';
+    return input ? input.value : 'modar';
   };
   function showSelectedModel() {
     document.querySelectorAll('[data-hydro-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.hydroPanel !== selectedModel()));
-    document.querySelector('[data-hydro-climate-years]').hidden = selectedModel() === 'hydromodar';
+    document.querySelector('[data-hydro-climate-years]').hidden = selectedModel() === 'modar';
     el('hydroModelPicker').classList.add('hidden');
     el('hydroModelSetup').classList.remove('hidden');
     invalidate(); renderDonors();
@@ -66,7 +66,7 @@
   }, []).map(([start, end]) => start === end ? start : `${start}–${end}`).join(', ');
   function updateInfo() {
     const dtaCount = available().length;
-    const enoughDtas = dtaCount >= (selectedModel()==='hydromodar'?2:1);
+    const enoughDtas = dtaCount >= (selectedModel()==='modar'?2:1);
     el('hydroModelBtn').disabled = dtaCount === 0;
     el('hydroModelBtn').removeAttribute('title');
     el('runHydroModel').disabled = running || mockLoading || !enoughDtas;
@@ -78,7 +78,7 @@
     el('hydroMockBounds').disabled=!mockSimulated||running||mockLoading||el('hydroMockMode').value!=='auto';
     el('hydroMockParameterValues').querySelectorAll('input').forEach(input=>input.disabled=!mockSimulated||running||mockLoading||el('hydroMockMode').value==='gis');
     el('runHydroModel').textContent=selectedModel()==='mock'&&mockSimulated&&el('hydroMockMode').value!=='gis' ? 'Jalankan Kalibrasi' : 'Jalankan Simulasi';
-    const targets = available().filter(p => selectedModel()!=='hydromodar' || !selected.has(p.point_id));
+    const targets = available().filter(p => selectedModel()!=='modar' || !selected.has(p.point_id));
     el('hydroTargets').textContent = `${selected.size} referensi; ${targets.length} target: ${targets.map(p => name(p.point_id)).join(', ') || 'belum ada'}.`;
     const years = commonYears();
     el('hydroPeriod').textContent = years.length ? `Irisan ${years.length} tahun: ${yearRanges(years)} (${years.length * 24} periode).` : 'Belum ada irisan tahun yang valid pada sheet referensi terpilih.';
@@ -141,8 +141,8 @@
     updateInfo();
   }
   function recipe() {
-    const model=selectedModel()==='ml'?el('hydroMlAlgorithm').value:selectedModel();
-    const dar=model==='hydromodar';
+    const model=selectedModel();
+    const dar=model==='modar';
     const start=Number(el('hydroStartYear').value),end=Number(el('hydroEndYear').value),warm=Number(el('hydroWarmupYears').value);
     if(!dar && (!Number.isInteger(start)||!Number.isInteger(end)||start<1990||end>2100||start>end)) throw new Error('Rentang tahun iklim tidak valid.');
     if(model==='mock' && (!el('hydroWarmupYears').value.trim()||!Number.isInteger(warm)||warm<0||warm>100||start+warm>end)) throw new Error('Pemanasan harus 0–100 tahun bulat dan menyisakan minimal satu tahun keluaran.');
@@ -152,7 +152,7 @@
       const sheet = sheetFor(id);
       if (!sheet) throw new Error(`Pilih sheet debit untuk ${name(id)}.`);
       if (sheet.error) throw new Error(`${name(id)} / ${sheet.name}: ${sheet.error}`);
-      if(dar && sheet.records.some(r=>r.values.some(v=>v===null))) throw new Error('HydroMODAR memerlukan tahun debit lengkap. FJ Mock dan ML menerima periode kosong.');
+      if(dar && sheet.records.some(r=>r.values.some(v=>v===null))) throw new Error('Modular Drainage Area Ratio memerlukan tahun debit lengkap. FJ Mock dan ML menerima periode kosong.');
       return {point_id:id, sheet:sheet.name, records:sheet.records};
     });
     if (new Set(donors.map(d=>d.sheet)).size !== donors.length) throw new Error('Satu sheet hanya boleh dipasangkan ke satu DTA referensi.');
@@ -160,7 +160,7 @@
     const b = Number(el('hydroExponent').value);
     if (!Number.isFinite(b) || b <= 0 || b > 3) throw new Error('Eksponen luas b harus > 0 dan ≤ 3.');
     return {points:available().map(({point_id,lon,lat,source,label,river_name})=>({point_id,lon,lat,source,label,river_name})),
-      model, start_year:Number(el('hydroStartYear').value),end_year:Number(el('hydroEndYear').value),
+      model, ml_algorithm:model==='ml'?el('hydroMlAlgorithm').value:undefined, start_year:Number(el('hydroStartYear').value),end_year:Number(el('hydroEndYear').value),
       warmup_years:model==='mock'?warm:0,
       ...(model==='mock'?mockSettings():{}),
       donors, groups:dar?groups():[], b, soil_depth:Number(el('hydroSoilDepth').value),source_file:sourceFile,
@@ -185,7 +185,6 @@
       ${renderHydrogeologyContext(r)}
       ${renderRainfall(r)}
       <div class="hydro-model-table hydro-semimonthly-table"><table><caption>Debit hasil model tengah bulanan (m³/det)</caption><thead><tr><th scope="col" rowspan="2">Tahun</th>${['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des'].map(month=>`<th scope="colgroup" colspan="2">${month}</th>`).join('')}</tr><tr>${Array.from({length:12},()=>'<th scope="col">I</th><th scope="col">II</th>').join('')}</tr></thead><tbody>${r.records.map(row=>`<tr><th scope="row">${row.year}</th>${row.values.map(q=>`<td>${number(q)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
-      <p class="hydro-model-note">${escape(result.statistic_convention)}. ${escape(result.uncertainty_note)}</p>
       ${r.warnings.length ? `<ul>${r.warnings.map(w=>`<li>${escape(w)}</li>`).join('')}</ul>` : ''}
       ${!result.model && result.validation.length ? `<h4>Validasi bergiliran referensi</h4><div class="hydro-model-table"><table><thead><tr><th>DTA uji</th><th>APE Q50 model</th><th>APE Q50 luas saja</th><th>RMSE (m³/det)</th><th>Bias (m³/det)</th></tr></thead><tbody>${result.validation.map(v=>`<tr><td>${escape(v.label)}</td><td>${number(v.ape_q50_pct)}%</td><td>${number(v.baseline_ape_q50_pct)}%</td><td>${number(v.rmse)}</td><td>${number(v.bias)}</td></tr>`).join('')}</tbody></table></div><p class="hydro-model-note">${escape(result.validation_note)}</p>` : ''}`;
     bindReliabilityChart(r);
@@ -259,7 +258,7 @@
       if(sheet.error) return `<p>${escape(sheet.name)}: ${escape(sheet.error)}</p>`;
       const s=sheet.statistics;
       return `<details open><summary>${escape(sheet.name)}</summary><p>${yearRanges(sheet.records.map(r=>r.year))}; ${s.count} data valid; ${s.missing_count} kosong; ${s.zero_count} debit nol.</p><p>Minimum ${number(s.min)}; maksimum ${number(s.max)}; rerata ${number(s.mean)}; median ${number(s.median)}; simpangan baku sampel ${number(s.std)}; CV ${number(s.cv)}.</p><div class="hydro-model-table"><table><thead><tr>${Object.keys(s.quantiles).map(q=>`<th scope="col">${q}</th>`).join('')}</tr></thead><tbody><tr>${Object.values(s.quantiles).map(v=>`<td>${number(v)}</td>`).join('')}</tr></tbody></table></div></details>`;
-    }).join('')}<p class="hydro-model-note">Data kosong dikecualikan; debit nol tetap dihitung. Debit andalan memakai PERCENTILE.EXC(data, 1−p), setiap periode berbobot sama; bukan FDC harian. n.a. berarti jumlah data belum cukup atau statistik tidak terdefinisi.</p>` : '';
+    }).join('')}` : '';
   }
   async function uploadWorkbook(file) {
     const token=++uploadRevision;

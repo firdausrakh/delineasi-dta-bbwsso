@@ -38,9 +38,9 @@
 
 ## 6. Model hidrologi
 
-- Pilihan HydroMODAR, FJ Mock, atau RF/XGBoost menjelaskan prasyarat berbeda.
+- Pilihan Modular Drainage Area Ratio, FJ Mock, atau Machine Learning menjelaskan prasyarat berbeda.
 - Donor, range tahun, data input workbook, pilihan parameter, warm-up dan hasil harus jelas saling terkait.
-- FJ Mock dapat memakai prior GIS; RF/XGBoost membutuhkan observasi pelatihan; HydroMODAR mensyaratkan banyak DTA dan donor.
+- FJ Mock dapat memakai prior GIS; Machine Learning membutuhkan observasi pelatihan; Modular Drainage Area Ratio mensyaratkan banyak DTA dan donor.
 - Warnings dari coverage, ekstrapolasi, keterbatasan validasi dan periode data tidak boleh hilang dari UI.
 
 ## 7. Unduhan dan feedback

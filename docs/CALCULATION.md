@@ -46,7 +46,7 @@ Tersedia: **NRCS/SCS, Nakayasu, Snyder–Alexeyev, Gama I, Limantara, ITB-1b, IT
 
 Perubahan formula/kalibrasi harus diperiksa dengan `tests/test_hss_analysis.py`, termasuk benchmark dan audit volume yang telah ada.
 
-## 5. HydroMODAR: Drainage Area Ratio (DAR)
+## 5. Modular Drainage Area Ratio (DAR)
 
 Dari `api/services/hydro_model.py`, transfer satu donor:
 
@@ -73,7 +73,7 @@ Tanpa grup kemiripan, bobot sama. Grup meliputi `aquifer`, `soil`, `landcover`, 
 ## 6. FJ Mock dan machine learning
 
 - **FJ Mock:** neraca air berbasis masukan hujan/ET0, parameter GIS atau manual, periode pemanasan, dan opsi kalibrasi terhadap debit pengamatan. Implementasi: `hydro_runoff.py`, `hydro_mock_settings.py`, `hydro_soil.py`, `hydro_climate.py`, `hydro_recession.py`. Jangan menganggap parameter dapat diisi nol otomatis saat data tidak ada.
-- **Random Forest/XGBoost:** pelatihan dari data debit pengamatan serta fitur hidrometeorologi/spasial; tidak boleh dijalankan tanpa donor observasi. Lihat `simulate_runoff()` dan tes spatial holdout.
+- **Machine Learning:** pelatihan dari data debit pengamatan serta fitur hidrometeorologi/spasial; Random Forest atau XGBoost dipilih sebagai algoritma. Tidak boleh dijalankan tanpa donor observasi. Lihat `simulate_runoff()` dan tes spatial holdout.
 - Pilihan durasi tahun, kelengkapan hujan harian, warm-up, metadata ET0, dan cakupan DEM/soil adalah faktor validasi. Bukan semua data snapshot tersedia untuk menjalankan simulasi penuh.
 
 ## 7. Aturan perubahan formula

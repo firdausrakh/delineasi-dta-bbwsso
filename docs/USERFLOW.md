@@ -47,9 +47,9 @@ Outlet dipilih → jalankan delineasi → loading
 
 ```text
 Pilih Model Hidrologi
-   ├─ HydroMODAR → ≥2 DTA → unggah debit → donor/target → similarity → simulasi
+   ├─ Modular Drainage Area Ratio → ≥2 DTA → unggah debit → donor/target → similarity → simulasi
    ├─ FJ Mock   → data iklim/soil/DEM → parameter GIS/manual/auto → simulasi
-   └─ RF/XGBoost → debit observasi + data fitur → latih/evaluasi → estimasi
+   └─ Machine Learning → debit observasi + data fitur → pilih Random Forest/XGBoost → latih/evaluasi → estimasi
 ```
 
 - Upload workbook debit: `POST /api/hydro-model/workbook`.

@@ -188,7 +188,6 @@ def _runoff_sheet(result, payload):
     rows = _headers() + [[r['year'], *r['values']] for r in result['records']]
     rows += [[], ['Model', payload['method']], ['DTA', result['label']], ['Luas (km²)', result['area_km2']],
              ['Sumber debit', payload.get('source_file','')], ['Catatan sumber', payload.get('source_notes','')],
-             ['Statistik', payload['statistic_convention']], ['Batas penerapan', payload['uncertainty_note']],
              ['Validasi', payload['validation_note']]]
     if payload.get('model')=='mock':
         rows += [['Pemanasan (tahun)',result['model_parameters']['warmup_years']],
@@ -236,7 +235,7 @@ def workbook_bytes(payload):
     reference_rows = {reference['point_id']: {record['year']: row for row, record in enumerate(reference['records'], 3)} for reference in references}
     target_sheets = {result['point_id']: _safe_sheet_name(result['label'], used) for result in payload['results']}
     sheets = [(reference_sheets[reference['point_id']], _reference_sheet(reference)) for reference in references]
-    sheets += [(target_sheets[result['point_id']], _runoff_sheet(result,payload) if payload.get('model') in ('mock','random_forest','xgboost')
+    sheets += [(target_sheets[result['point_id']], _runoff_sheet(result,payload) if payload.get('model') in ('mock','ml')
                 else _sheet(result, payload, reference_sheets, reference_rows)) for result in payload['results']]
     style = ('<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="[&lt;10]0.00;[&lt;100]0.0;0"/></numFmts>'
              '<fonts count="2"><font><sz val="11"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts>'

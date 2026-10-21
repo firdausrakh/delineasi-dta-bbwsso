@@ -25,7 +25,7 @@ Dataset runtime (streams, subbasins, D8, DEM, land cover, rainfall, soil, ...)
 | `CharacteristicAnalysisRequest` | `point_result`, `decimal_separator` | Analisis fisik–hidrologi |
 | `HssRequest` | `point_id`, `label`, `hydrologic_analysis`, `methods`, `parameters`, `input_overrides`, `global_tr_hours` | Per DTA, per metode |
 | `HydroDonor` | `point_id`, `sheet`, `records[]` | Referensi debit |
-| `HydroModelRequest` | `points`, `donors`, `model`, rentang tahun, kalibrasi, parameter FJ Mock, grup similarity, dan opsi data | Simulasi |
+| `HydroModelRequest` | `points`, `donors`, `model` (`modar`/`mock`/`ml`), `ml_algorithm` (`random_forest`/`xgboost`), rentang tahun, kalibrasi, parameter FJ Mock, grup similarity, dan opsi data | Simulasi |
 | `DownloadRequest` | `points`, `geometry_modes`, `formats`, include flags, `hss_results`, `hydro_model` | Paket hasil |
 
 **Jangan mengubah tipe/rentang field hanya berdasarkan tabel ini.** Detail maksimum berasal dari `Field(...)`, `MAX_POINTS`, dan validasi lanjutan pada implementasi aktual.
@@ -34,7 +34,7 @@ Dataset runtime (streams, subbasins, D8, DEM, land cover, rainfall, soil, ...)
 
 - `lon` / `lat` adalah koordinat geografis dalam derajat. Proyeksi digunakan secara internal untuk operasi jarak/luas dan perhitungan GIS; cek transform pada `api/core.py`.
 - `area_km2` memakai km²; nilai panjang/jarak berakhiran `_m` menggunakan meter, kecuali dinyatakan lain dalam hasil.
-- Debit pengamatan dan output HydroMODAR menggunakan `m³/det`; setiap `record` debit memiliki `year` dan `values` sepanjang **24 periode tengah bulanan**.
+- Debit pengamatan dan output Modular Drainage Area Ratio menggunakan `m³/det`; setiap `record` debit memiliki `year` dan `values` sepanjang **24 periode tengah bulanan**.
 - HSS menyimpan waktu/parameter hidrograf, parameter tiap metode, dan ordinat; bentuk tepat respons `calculate_hss()` harus diperiksa sebelum digunakan di pihak ketiga.
 - Jangan mengganti nilai `null`/tidak tersedia menjadi nol. Nol debit adalah pengamatan yang valid, sementara nilai hilang memiliki arti berbeda.
 

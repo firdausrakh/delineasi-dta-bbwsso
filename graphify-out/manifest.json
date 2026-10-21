@@ -18,10 +18,10 @@
     "semantic_hash": "50106e5106ee5cc3a3b1695e052eecf5"
   },
   "api/core.py": {
-    "mtime": 1792497241.9907596,
-    "seen": 1792511099.378786,
-    "ast_hash": "5b65d0527a897655777f5e335863ff5d",
-    "semantic_hash": "5b65d0527a897655777f5e335863ff5d"
+    "mtime": 1792561115.5054035,
+    "seen": 1792561197.9846308,
+    "ast_hash": "8a97d6d55bd5ae31bd30c5abbf441a7f",
+    "semantic_hash": ""
   },
   "api/services/__init__.py": {
     "mtime": 1788025726.0,
@@ -90,10 +90,10 @@
     "semantic_hash": "083b3737fea9fe7e4058c4d5329497be"
   },
   "api/services/hydro_model.py": {
-    "mtime": 1792504433.7949412,
-    "seen": 1792511099.378786,
-    "ast_hash": "02b0017dfccc13c7b00e02d2e8e350e4",
-    "semantic_hash": "02b0017dfccc13c7b00e02d2e8e350e4"
+    "mtime": 1792561660.8623445,
+    "seen": 1792561706.975594,
+    "ast_hash": "9d190eaa96aac74b5611f1cb8a2613ee",
+    "semantic_hash": ""
   },
   "api/services/hydro_rainfall.py": {
     "mtime": 1792508880.208145,
@@ -108,10 +108,10 @@
     "semantic_hash": "6c735a4a973f301261e80db24ef35933"
   },
   "api/services/hydro_runoff.py": {
-    "mtime": 1792504388.2209797,
-    "seen": 1792511099.378786,
-    "ast_hash": "9e81623c0096269467d877b40ce0cee2",
-    "semantic_hash": "9e81623c0096269467d877b40ce0cee2"
+    "mtime": 1792561125.275563,
+    "seen": 1792561197.9846308,
+    "ast_hash": "e3f5fc49a73eef7b4c9099d5886c41d2",
+    "semantic_hash": ""
   },
   "api/services/hydro_soil.py": {
     "mtime": 1792494288.6876423,
@@ -126,10 +126,10 @@
     "semantic_hash": "4a97d375ecaa853fe5ca0c5108c6e3a5"
   },
   "api/services/hydro_workbook.py": {
-    "mtime": 1792504433.795941,
-    "seen": 1792511099.378786,
-    "ast_hash": "fe944233e45a49b892af50d1b4ad0f78",
-    "semantic_hash": "fe944233e45a49b892af50d1b4ad0f78"
+    "mtime": 1792561660.8623445,
+    "seen": 1792561706.975594,
+    "ast_hash": "317637291660c5a41c4ce6656ac19214",
+    "semantic_hash": ""
   },
   "api/services/hydrologic_analysis.py": {
     "mtime": 1792508880.2071447,
@@ -264,9 +264,9 @@
     "semantic_hash": "8b328f48a76b0f8f2f12a63c0160b080"
   },
   "static/js/hydro-model.js": {
-    "mtime": 1792548406.4371414,
-    "seen": 1792548433.6317115,
-    "ast_hash": "8e61f8c20f0543143f2710f10c276f0e",
+    "mtime": 1792561678.084183,
+    "seen": 1792561706.975594,
+    "ast_hash": "5d092b36469698afa53943d2d6b0b3c1",
     "semantic_hash": ""
   },
   "static/js/spatial.js": {
@@ -306,10 +306,10 @@
     "semantic_hash": "d6bcab263af4a49d8b99c6785360fd5c"
   },
   "tests/test_hydro_model.py": {
-    "mtime": 1792504016.408909,
-    "seen": 1792511099.378786,
-    "ast_hash": "779096672acd7bc79d3b10bc3e35ab3d",
-    "semantic_hash": "779096672acd7bc79d3b10bc3e35ab3d"
+    "mtime": 1792561660.8638468,
+    "seen": 1792561706.975594,
+    "ast_hash": "d23c193ed1453a9431b366ec90af7ece",
+    "semantic_hash": ""
   },
   "tests/test_hydro_rainfall.py": {
     "mtime": 1792485399.8327086,
@@ -318,10 +318,10 @@
     "semantic_hash": "ba45b6fb89c09f026e0df2ce373a806b"
   },
   "tests/test_hydro_runoff.py": {
-    "mtime": 1792496731.0572302,
-    "seen": 1792511099.378786,
-    "ast_hash": "4d22dfab6abc2613ec1ab82b60fda542",
-    "semantic_hash": "4d22dfab6abc2613ec1ab82b60fda542"
+    "mtime": 1792561168.1186416,
+    "seen": 1792561197.9846308,
+    "ast_hash": "9b4d9987f3f276886cad9e95d24c9700",
+    "semantic_hash": ""
   },
   "tests/test_hydrologic_analysis.py": {
     "mtime": 1788094323.0,
@@ -366,9 +366,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1792482572.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "91220178a1a248f1a8079ff89d3f4f84",
+    "mtime": 1792560985.3755245,
+    "seen": 1792561017.990692,
+    "ast_hash": "d27ceea0cdd20e2713618cd6544fa0ce",
     "semantic_hash": ""
   },
   "SPEC.md": {
@@ -378,57 +378,57 @@
     "semantic_hash": ""
   },
   "TODO.md": {
-    "mtime": 1792550976.8698747,
-    "seen": 1792551412.4048822,
-    "ast_hash": "127d322f4cf7cceda7febed2d78ef8e7",
+    "mtime": 1792560866.7995195,
+    "seen": 1792560903.3724823,
+    "ast_hash": "19db3b8ec9431e2fa8b4bdeeb4c3b0b4",
     "semantic_hash": ""
   },
   "docs/ARCHITECTURE.md": {
-    "mtime": 1792482224.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "8b0e7b8dfbf1ef6a3316b66207320e16",
+    "mtime": 1792560985.3755245,
+    "seen": 1792561017.990692,
+    "ast_hash": "95ea162642bd11dc0dd8e43d5aecc8df",
     "semantic_hash": ""
   },
   "docs/CALCULATION.md": {
-    "mtime": 1792482224.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "fe2c59d5ee605d243cae7ac494fa0648",
+    "mtime": 1792560985.3755245,
+    "seen": 1792561017.990692,
+    "ast_hash": "99be0f7f2bd4434b69f7c7376a490cd6",
     "semantic_hash": ""
   },
   "docs/DATA_MODEL.md": {
-    "mtime": 1792482224.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "a763274b0281745deedec5c2bfc3748e",
+    "mtime": 1792561168.1186416,
+    "seen": 1792561197.9846308,
+    "ast_hash": "308739e77bdfccfe0b09d9a73b40e81d",
     "semantic_hash": ""
   },
   "docs/DECISIONS.md": {
-    "mtime": 1792482484.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "360b7e8f3cf593c8a3077b9a61e6cd78",
+    "mtime": 1792561218.9067936,
+    "seen": 1792561706.975594,
+    "ast_hash": "15634df2cd9f5f47c3879e495fb2a3a9",
     "semantic_hash": ""
   },
   "docs/GLOSSARY.md": {
-    "mtime": 1792482484.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "02dfd4d3c89b08aeef76102cd092d012",
+    "mtime": 1792560866.8015192,
+    "seen": 1792560903.3724823,
+    "ast_hash": "cce22d0da39e06ce73f9a2f1c2f8aefa",
     "semantic_hash": ""
   },
   "docs/PRD.md": {
-    "mtime": 1792482224.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "a39f72ca24b16ef60b64a568d57cd950",
+    "mtime": 1792560985.3755245,
+    "seen": 1792561017.990692,
+    "ast_hash": "f006485be8f03d7b32df933c551bf9ba",
     "semantic_hash": ""
   },
   "docs/TECHNICAL_REFERENCE.md": {
-    "mtime": 1792482224.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "6e31708bbcfe930ee5b91f05f3a5fc92",
+    "mtime": 1792560995.8482955,
+    "seen": 1792561017.990692,
+    "ast_hash": "242a51b046f95606fe735e1682902906",
     "semantic_hash": ""
   },
   "docs/TESTING.md": {
-    "mtime": 1792482370.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "3af5c005e3264dcd2ed68a93ab18d248",
+    "mtime": 1792560985.3765247,
+    "seen": 1792561017.990692,
+    "ast_hash": "729c58d5371b20a0c7b407201a906896",
     "semantic_hash": ""
   },
   "docs/UI.md": {
@@ -444,21 +444,21 @@
     "semantic_hash": ""
   },
   "docs/USERFLOW.md": {
-    "mtime": 1792482370.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "6f18f504464bfd4cf8b04e4b153c86e6",
+    "mtime": 1792560985.3765247,
+    "seen": 1792561017.990692,
+    "ast_hash": "93710df516146041cba1d81982bfd8e2",
     "semantic_hash": ""
   },
   "docs/UX.md": {
-    "mtime": 1792482370.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "9b9509832b1cc8f94e4ac027ca65ac58",
+    "mtime": 1792560985.3765247,
+    "seen": 1792561017.990692,
+    "ast_hash": "f01d4a52fd41e8c487916b6d960913fb",
     "semantic_hash": ""
   },
   "docs/VALIDATION.md": {
-    "mtime": 1792482484.0,
-    "seen": 1792532109.032168,
-    "ast_hash": "f0383da50251f485b2930092bb49f50d",
+    "mtime": 1792560985.3765247,
+    "seen": 1792561017.990692,
+    "ast_hash": "f2ec116ad9926ec51f9d85f5574f7ec1",
     "semantic_hash": ""
   },
   "requirements.txt": {
@@ -480,9 +480,9 @@
     "semantic_hash": ""
   },
   "templates/spatial.html": {
-    "mtime": 1792555946.4508584,
-    "seen": 1792555974.1604154,
-    "ast_hash": "9e2a1cb0487e37efb7c018c9cb742707",
+    "mtime": 1792561115.5054035,
+    "seen": 1792561197.9846308,
+    "ast_hash": "21b33a1b30bb3c8d8c8a360175376272",
     "semantic_hash": ""
   },
   "static/images/social-preview.png": {

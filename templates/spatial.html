@@ -269,14 +269,14 @@
         <div class="modal-card hydro-model-modal">
           <div class="modal-head"><div><span class="eyebrow">ESTIMASI DEBIT &amp; KETERSEDIAAN AIR</span><h2 id="hydroModelTitle">Model Hidrologi</h2></div><button id="closeHydroModel" class="modal-close" type="button" aria-label="Tutup"><i data-lucide="x"></i></button></div>
           <fieldset id="hydroModelPicker" class="hydro-model-picker"><legend>Pilih model</legend>
-            <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="hydromodar" aria-controls="hydroModarPanel"><span><strong>HydroMODAR</strong><small>Transfer debit dari DTA referensi.</small></span></label>
+            <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="modar" aria-controls="hydroModarPanel"><span><strong>Modular Drainage Area Ratio</strong><small>Transfer debit dari DTA referensi.</small></span></label>
             <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="mock" aria-controls="hydroMockPanel" disabled><span><strong>FJ Mock</strong><small>Simulasi hujan–debit. Sementara dinonaktifkan.</small></span></label>
             <label class="hydro-model-choice"><input type="radio" name="hydrologyModel" value="ml" aria-controls="hydroMlPanel" disabled><span><strong>Machine Learning</strong><small>Prediksi dari data pengamatan. Sementara dinonaktifkan.</small></span></label>
           </fieldset>
           <div id="hydroModelSetup" class="hidden">
           <button id="chooseAnotherHydroModel" class="text-button" type="button"><i data-lucide="arrow-left"></i>Pilih model lain</button>
           <div>
-          <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Data debit &amp; DTA referensi</h3><p>Wajib untuk HydroMODAR dan RF/XGBoost.</p></div></div>
+          <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Data debit &amp; DTA referensi</h3><p>Wajib untuk Modular Drainage Area Ratio dan Machine Learning.</p></div></div>
             <div id="hydroWorkbookDropzone" class="hydro-workbook-dropzone"><input id="hydroWorkbook" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="visually-hidden"><i data-lucide="file-spreadsheet"></i><div><strong>Unggah workbook debit (.xlsx)</strong><small>Tarik file ke sini atau pilih file · m³/det · maksimal 10 MB</small></div><button id="chooseHydroWorkbook" class="btn btn-neutral" type="button">Pilih file</button></div>
             <a class="xlsx-template-link" href="/static/templates/template_input_debit.xlsx" download><i data-lucide="download"></i>Unduh contoh template debit .xlsx</a>
             <div id="hydroWorkbookInfo" class="hydro-workbook-info" aria-live="polite"></div>
@@ -286,17 +286,18 @@
             <label class="hydro-notes-field"><span>Sumber / catatan debit</span><input id="hydroSourceNotes" type="text" maxlength="2000" placeholder="Opsional — dicantumkan pada workbook hasil"></label>
           </section>
           </div>
-          <div id="hydroModarPanel" data-hydro-panel="hydromodar" role="region" aria-label="Pengaturan HydroMODAR">
+          <div id="hydroModarPanel" data-hydro-panel="modar" role="region" aria-label="Pengaturan Modular Drainage Area Ratio">
           <section class="hydro-model-section"><div class="hydro-section-heading"><div><h3>Parameter</h3></div></div>
-            <label>Paket parameter<select id="hydroPreset"><option value="area">Luas DTA saja</option><option value="climate">Luas + hujan tengah bulanan</option><option value="hydro">Luas + hidrogeologi</option><option value="physical">Luas + hidrogeologi + fisik DTA + hujan</option><option value="custom">Pilih sendiri</option></select></label>
+            <label>Paket parameter<select id="hydroPreset" aria-describedby="hydroParameterNotice"><option value="area">Luas DTA saja</option><option value="climate" disabled>Luas + hujan tengah bulanan (sementara dinonaktifkan)</option><option value="hydro" disabled>Luas + hidrogeologi (sementara dinonaktifkan)</option><option value="physical" disabled>Luas + hidrogeologi + fisik DTA + hujan (sementara dinonaktifkan)</option><option value="custom" disabled>Pilih sendiri (sementara dinonaktifkan)</option></select></label>
             <div class="hydro-parameter-options">
               <label><input type="checkbox" checked disabled> Luas DTA (wajib)</label>
-              <label><input class="hydro-group" type="checkbox" value="aquifer"> Produktivitas akuifer</label>
-              <label><input class="hydro-group" type="checkbox" value="soil"> Tekstur tanah</label>
-              <label><input class="hydro-group" type="checkbox" value="landcover"> Tutupan lahan</label>
-              <label><input class="hydro-group" type="checkbox" value="terrain"> Elevasi dan lereng</label>
-              <label><input class="hydro-group" type="checkbox" value="rainfall"> Hujan tengah bulanan</label>
+              <label><input class="hydro-group" type="checkbox" value="aquifer" disabled> Produktivitas akuifer</label>
+              <label><input class="hydro-group" type="checkbox" value="soil" disabled> Tekstur tanah</label>
+              <label><input class="hydro-group" type="checkbox" value="landcover" disabled> Tutupan lahan</label>
+              <label><input class="hydro-group" type="checkbox" value="terrain" disabled> Elevasi dan lereng</label>
+              <label><input class="hydro-group" type="checkbox" value="rainfall" disabled> Hujan tengah bulanan</label>
             </div>
+            <p id="hydroParameterNotice" class="hydro-model-note">Sementara hanya Luas DTA dari hasil delineasi yang digunakan.</p>
             <div class="hydro-model-fields"><label>Eksponen luas b<input id="hydroExponent" type="number" value="1" min="0.01" max="3" step="0.05"></label><label>Profil tanah<select id="hydroSoilDepth"><option value="30">0–30 cm</option><option value="100">0–100 cm</option><option value="200">0–200 cm</option></select></label></div>
             <p id="hydroMethodInfo" class="hydro-model-note"></p>
           </section>
@@ -351,7 +352,7 @@
           <article><h3>Daerah Aliran Sungai (DAS)</h3><p>Daerah Aliran Sungai yang selanjutnya disebut DAS adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan dan mengalirkan air yang berasal dari curah hujan ke danau atau ke laut secara alami, yang batas di darat merupakan pemisah topografis dan batas di laut sampai dengan daerah perairan yang masih terpengaruh aktivitas daratan.</p><cite>Peraturan Pemerintah Nomor 37 Tahun 2012 tentang Pengelolaan Daerah Aliran Sungai</cite></article>
           <article><h3>Daerah Tangkapan Air (DTA)</h3><p>Daerah Tangkapan Air adalah suatu wilayah daratan yang merupakan satu kesatuan dengan sungai dan anak-anak sungainya, yang berfungsi menampung, menyimpan, dan mengalirkan Air yang berasal dari curah hujan ke titik bangunan pengambilan debit sungai yang ditinjau, yang batas di darat merupakan pemisah topografis dan batas di hilir sampai dengan bangunan bendung atau bendungan.</p><cite>Peraturan Pemerintah Nomor 30 Tahun 2024 tentang Pengelolaan Sumber Daya Air</cite><div class="app-definition-note"><b>Penerapan dalam aplikasi:</b> DTA digunakan untuk menyatakan wilayah yang berkontribusi aliran pada titik tinjau yang dipilih pengguna.</div></article>
           <article><h3>Sub DAS</h3><p>Sub DAS adalah bagian DAS yang menerima air hujan dan mengalirkannya melalui anak sungai ke sungai utama. Setiap DAS terbagi habis kedalam Sub DAS-Sub DAS.</p><cite>Keputusan Menteri Kehutanan Nomor 52/KPTS-II/2001 Tahun 2001 tentang Pedoman Penyelenggaraan Pengelolaan Daerah Aliran Sungai</cite></article>
-          <article><h3>Model regionalisasi debit</h3><p>Model regionalisasi debit mentransfer debit dari DTA referensi ke DTA target. Luas DTA adalah komponen inti; pengguna dapat menambahkan kelompok parameter spasial untuk membentuk bobot kemiripan antar-DTA secara transparan.</p><div class="app-definition-note"><b>Ruang lingkup saat ini:</b> estimasi debit tengah bulanan. FJ Mock dan RF/XGBoost memakai hujan harian yang diagregasi tengah bulanan; kualitas air belum dimodelkan.</div></article>
+          <article><h3>Model regionalisasi debit</h3><p>Model regionalisasi debit mentransfer debit dari DTA referensi ke DTA target. Luas DTA adalah komponen inti; pengguna dapat menambahkan kelompok parameter spasial untuk membentuk bobot kemiripan antar-DTA secara transparan.</p><div class="app-definition-note"><b>Ruang lingkup saat ini:</b> estimasi debit tengah bulanan. FJ Mock dan Machine Learning memakai hujan harian yang diagregasi tengah bulanan; kualitas air belum dimodelkan.</div></article>
           <div class="definition-example">
             <h3>Contoh Hubungan DAS, Sub DAS, dan DTA</h3>
             <p>Hubungan DAS, Sub DAS, dan DTA dapat dipahami sebagai himpunan yang saling berada di dalam. Posisi outlet menentukan apakah DTA berada di dalam satu Sub DAS atau mewakili gabungan beberapa Sub DAS dan tangkapan langsung dalam satu DAS.</p>

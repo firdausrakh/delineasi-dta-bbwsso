@@ -76,6 +76,7 @@ def test_area_transfer_and_day_weighted_volume():
     model = simulate([point('A', 100), point('B', 200)], [donor('A', years=(2020,))])
     target = model['results'][0]
     assert target['records'][0]['values'] == [20]*24
+    assert 'statistic_convention' not in model and 'uncertainty_note' not in model
     assert target['statistics']['quantiles']['Q25'] == 20
     assert list(target['statistics']['quantiles']) == [f'Q{p}' for p in EXCEEDANCES]
     assert target['volume_m3'] == 20*366*86400

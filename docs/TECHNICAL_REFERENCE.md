@@ -7,7 +7,7 @@
 # Delineasi DTA BBWS Serayu Opak
 
 **Version:** `1.4.0`
-**Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS + HydroMODAR
+**Current repository state:** Cloudflare R2 Runtime — Karakteristik DTA + Analisis HSS + Modular Drainage Area Ratio
 **Production hydrology dataset:** threshold jaringan `1 km²`  
 **Runtime:** FastAPI + GeoPandas/Shapely/Rasterio + Cloudflare R2 + Vercel Container
 
@@ -59,12 +59,12 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 
 ### Model Hidrologi
 
-- Tombol biru **Model Hidrologi** membuka pilihan **HydroMODAR**, **FJ Mock**, dan **Random Forest / XGBoost**, termasuk sebelum DTA tersedia. Pemilihan model mempertahankan input debit dan membatalkan hasil lama agar unduhan sesuai model aktif.
-- Ketiga pendekatan sudah menjalankan perhitungan dan ekspor Excel. HydroMODAR memerlukan ≥2 DTA dan debit donor; Mock dapat berjalan tanpa debit memakai prior GIS; RF/XGBoost wajib dilatih dari debit. Rincian formulasi, data, dan batas validasi terdapat pada bagian Model Hidrologi di bawah.
+- Tombol biru **Model Hidrologi** membuka pilihan **Modular Drainage Area Ratio**, **FJ Mock**, dan **Machine Learning**, termasuk sebelum DTA tersedia. Pemilihan model mempertahankan input debit dan membatalkan hasil lama agar unduhan sesuai model aktif.
+- Ketiga pendekatan sudah menjalankan perhitungan dan ekspor Excel. Modular Drainage Area Ratio memerlukan ≥2 DTA dan debit donor; Mock dapat berjalan tanpa debit memakai prior GIS; Machine Learning wajib dilatih dari debit. Rincian formulasi, data, dan batas validasi terdapat pada bagian Model Hidrologi di bawah.
 
-#### HydroMODAR dengan kemiripan hujan opsional
+#### Modular Drainage Area Ratio dengan kemiripan hujan opsional
 
-- Pilih **HydroMODAR** di dalam **Model Hidrologi**. Delineasikan sedikitnya dua DTA, unggah satu Excel, lalu pilih DTA referensi. Tidak ada batas referensi tambahan di modul; daftar mengikuti DTA yang sudah tersedia pada sesi delineasi.
+- Pilih **Modular Drainage Area Ratio** di dalam **Model Hidrologi**. Delineasikan sedikitnya dua DTA, unggah satu Excel, lalu pilih DTA referensi. Tidak ada batas referensi tambahan di modul; daftar mengikuti DTA yang sudah tersedia pada sesi delineasi.
 - Format input tetap `Tahun` di A1 dan dua kolom I/II per bulan pada B:Y. Satu referensi otomatis memakai sheet pertama. Beberapa referensi dipasangkan ke sheet masing-masing; satu sheet tidak boleh digunakan oleh dua referensi. Metadata sumber/catatan diisi pada antarmuka.
 - Debit dalam m³/det, rerata tanggal 1–15 dan 16–akhir bulan. Nol valid; angka negatif, kosong, tahun non-integer/di masa depan, tahun/periode ganda, dan header tidak lengkap ditolak. Sheet tidak valid diberi alasan dan tidak dapat dipakai sebagai referensi. Tidak ada pengisian data otomatis.
 - Seluruh DTA yang tidak dipilih menjadi target. Perhitungan memakai irisan tahun seluruh referensi, dan luas kumulatif DTA penuh dari hasil delineasi, bukan luas incremental hit-area peta.
@@ -73,28 +73,28 @@ Repository ini adalah kelanjutan dari rilis web pertama `1.0.0.0`. Arsitektur pr
 - Produktivitas akuifer adalah satu-satunya kelompok hidrogeologi berbobot. CAT dan litologi menjadi konteks pada semua mode, ditampilkan untuk target dan referensi pada antarmuka serta workbook. Irisan kelas konteks dihitung terhadap seluruh luas DTA (cakupan parsial tidak dinormalisasi menjadi 100%). Beda CAT hanya memberi peringatan; kesamaan CAT tidak membuktikan konektivitas air tanah. Batugamping memberi catatan pemeriksaan potensi karst. Data konteks yang tidak tersedia dilaporkan dan tidak menggagalkan simulasi. Ketersediaan air tanah tidak menambah bobot karena bertumpang tindih dengan produktivitas; permintaan lama yang masih memilih litologi sebagai bobot harus diperbarui.
 - Satu referensi tetap berbobot 1. Parameter kemiripan memeriksa kesesuaian tanpa menambahkan pengali debit arbitrer. Rasio luas di luar 0,5–2 diberi catatan pemeriksaan, bukan otomatis ditolak.
 - Sumber vektor dengan cakupan kurang dari 95% atau kelas saling tumpang tindih tidak dipakai diam-diam. Parameter yang tidak tersedia menyebabkan simulasi ditolak dengan penjelasan, sehingga pengguna dapat melengkapi sumber atau menonaktifkannya.
-- SoilGrids: band 0–5, 5–15, 15–30, 30–60, 60–100, 100–200 cm. Pilihan profil 0–30, 0–100, 0–200 cm memakai pembobotan ketebalan lapisan. Tekstur g/kg dibagi 10 menjadi persen. Kombinasi pasir/debu/lempung diperiksa terhadap jumlah 1000 g/kg; ketidaklengkapan tidak diganti nol. SWC tidak digunakan untuk bobot tekstur HydroMODAR; dipakai untuk kapasitas tanah FJ Mock/ML.
+- SoilGrids: band 0–5, 5–15, 15–30, 30–60, 60–100, 100–200 cm. Pilihan profil 0–30, 0–100, 0–200 cm memakai pembobotan ketebalan lapisan. Tekstur g/kg dibagi 10 menjadi persen. Kombinasi pasir/debu/lempung diperiksa terhadap jumlah 1000 g/kg; ketidaklengkapan tidak diganti nol. SWC tidak digunakan untuk bobot tekstur Modular Drainage Area Ratio; dipakai untuk kapasitas tanah FJ Mock/ML.
 - Hujan diaktifkan melalui pilihan **Hujan tengah bulanan** atau paket **Luas + hujan tengah bulanan**. Masukan `shared/rainfall.tif` adalah COG multi-band dengan tanggal awal tiap periode dan satuan mm, disiapkan dari NetCDF asli. Rerata areal dihitung dengan luas irisan tiap sel terhadap DTA pada proyeksi equal-area EPSG:6933, termasuk DTA lebih kecil dari satu sel. Cakupan hujan valid wajib ≥95% dari seluruh luas DTA pada setiap periode. Tahun/periode yang tidak tersedia ditolak, tanpa imputasi atau penggantian nol. Hujan hanya memengaruhi kemiripan/bobot donor, bukan pengali rasio hujan terhadap debit atau model neraca air. Satu donor tetap berbobot 1. Sumber, SHA256, cakupan, rerata tahunan, dan deret hujan donor/target disertakan pada hasil dan Excel.
 - Referensi bersarang diterima dengan catatan ketidakindependenan. LOOCV menggunakan referensi lain untuk memprediksi setiap referensi bergiliran, dengan APE Q50, RMSE, dan bias pada irisan tahun bersama. Dengan dua referensi, LOOCV tidak menguji manfaat pembobotan.
 - Hasil: deret debit, Q10/Q20/Q25/Q30/Q40/Q50/Q60/Q70/Q80/Q90/Q95 per tengah bulan dan keseluruhan, minimum, maksimum, rerata, median, simpangan baku sampel, CV, jumlah nilai/nol, dan volume menurut jumlah hari aktual. Persentil mengikuti `PERCENTILE.EXC(data,1-p)` dengan periode berbobot sama; ini bukan FDC harian. Sampel yang belum mencukupi persentil EXC dan CV dengan rerata nol ditampilkan `n.a.`.
 - **Unduh Hasil → Hasil Model Hidrologi** menghasilkan satu workbook dengan satu sheet per DTA target. Tanpa format spasial tercentang, unduhan langsung `.xlsx`; bila digabung dengan format spasial, workbook berada sekali di akar ZIP. Sel hasil debit hijau, statistik memiliki formula Excel dan nilai cache. Metadata, referensi, bobot, fitur, dan validasi dicantumkan pada sheet target.
 - Perubahan geometri, referensi, sheet, parameter, atau metadata membatalkan hasil lama. Ekspor menghitung kembali dari konfigurasi dan data delineasi agar hasil dapat direproduksi.
 
-### Data HydroMODAR di Cloudflare R2
+### Data Modular Drainage Area Ratio di Cloudflare R2
 
 Raster tanah dikonversi menjadi **COG** dengan grid, band, dtype, dan nilai dasar tetap. Vektor analisis dikemas dalam **GeoPackage** `shared/hydro_vectors.gpkg` dengan lima layer: produktivitas akuifer, litologi akuifer, CAT, ketersediaan air tanah, dan tutupan lahan. GeoPackage menyimpan geometri dan atribut analisis utuh. **PMTiles** tepat untuk tampilan peta bertingkat zoom, bukan pengganti sumber overlay analisis; tidak dibuat bila layer tersebut belum dibutuhkan di peta. Lihat [GDAL COG](https://gdal.org/en/stable/drivers/raster/cog.html) dan [konsep PMTiles](https://docs.protomaps.com/pmtiles/).
 
 Bundle Model Hidrologi menyertakan delapan COG tanah, GeoPackage vektor, hujan harian NetCDF dan COG hujan tengah bulanan bersama data delineasi dan analisis lainnya.
 
-Letakkan hujan harian pada `data/shared/daily_rainfall_gridded_0.02.nc`. Jalankan **23_export_r2_bundle.bat** untuk membentuk COG tengah bulanan dan laporan 30 ekstrem. Sumber tengah bulanan lama masih didukung sebagai fallback HydroMODAR, tetapi FJ Mock/ML wajib memakai sumber harian. Instal dependency terbaru dari `requirements.txt` sebelum menjalankan.
+Letakkan hujan harian pada `data/shared/daily_rainfall_gridded_0.02.nc`. Jalankan **23_export_r2_bundle.bat** untuk membentuk COG tengah bulanan dan laporan 30 ekstrem. Sumber tengah bulanan lama masih didukung sebagai fallback Modular Drainage Area Ratio, tetapi FJ Mock/ML wajib memakai sumber harian. Instal dependency terbaru dari `requirements.txt` sebelum menjalankan.
 
 ```powershell
 .venv\Scripts\python.exe scripts/prepare_daily_rainfall.py "data/shared/daily_rainfall_gridded_0.02.nc" --output "data/shared/rainfall.tif" --report-dir "data/shared/rainfall_review"
 ```
 
-NetCDF sumber tidak diubah. EPSG:4326 ditetapkan dari koordinat lat/lon. Hanya akumulasi dengan seluruh hari valid yang dipakai pada setiap sel dan periode; sumber harian terdeskripsi TPS dengan batas 400 mm/hari. Laporan `top30_daily.csv`, `top30_semimonthly.csv`, dan `daily_summary.json` mencatat ekstrem untuk verifikasi terhadap stasiun. Data tersedia 1990–September 2026; Oktober–Desember 2026 kosong. HydroMODAR memerlukan tahun penuh, Mock/ML mempertahankan tahun parsial tanpa mengisi periode akhir dengan nol.
+NetCDF sumber tidak diubah. EPSG:4326 ditetapkan dari koordinat lat/lon. Hanya akumulasi dengan seluruh hari valid yang dipakai pada setiap sel dan periode; sumber harian terdeskripsi TPS dengan batas 400 mm/hari. Laporan `top30_daily.csv`, `top30_semimonthly.csv`, dan `daily_summary.json` mencatat ekstrem untuk verifikasi terhadap stasiun. Data tersedia 1990–September 2026; Oktober–Desember 2026 kosong. Modular Drainage Area Ratio memerlukan tahun penuh, Mock/ML mempertahankan tahun parsial tanpa mengisi periode akhir dengan nol.
 
-Di Windows, jalankan **23_export_r2_bundle.bat**, kemudian **24_upload_r2.bat**, lalu **25_verify_r2.bat**. Tidak diperlukan peluncur terpisah untuk HydroMODAR. Perintah yang setara:
+Di Windows, jalankan **23_export_r2_bundle.bat**, kemudian **24_upload_r2.bat**, lalu **25_verify_r2.bat**. Tidak diperlukan peluncur terpisah untuk Modular Drainage Area Ratio. Perintah yang setara:
 
 ```powershell
 .venv\Scripts\python.exe scripts/export_local_to_r2.py --overwrite
@@ -1008,12 +1008,12 @@ Master dataset dan arsip pengembangan sebaiknya disimpan terpisah sebagai backup
 
 ## Repository dan aplikasi
 
-### Model Hidrologi: HydroMODAR, FJ Mock, RF/XGBoost
+### Model Hidrologi: Modular Drainage Area Ratio, FJ Mock, Machine Learning
 
 Panel **Model Hidrologi** menjalankan tiga pendekatan dengan template debit yang sama
-(Tahun, 12 bulan × I/II, satuan m³/det). HydroMODAR memerlukan ≥2 DTA dan tahun debit
+(Tahun, 12 bulan × I/II, satuan m³/det). Modular Drainage Area Ratio memerlukan ≥2 DTA dan tahun debit
 lengkap pada referensi. Mock dan ML menerima periode pengamatan kosong; nilai kosong
-tetap hilang, bukan nol. Mock dapat dijalankan pada satu DTA tanpa debit. RF/XGBoost
+tetap hilang, bukan nol. Mock dapat dijalankan pada satu DTA tanpa debit. Machine Learning
 wajib dilatih dari ≥24 pasangan debit–iklim setelah enam periode awal untuk lag hujan.
 Untuk memperpanjang debit terukur, pasangkan sheet pada DTA tersebut dan pilih rentang
 iklim lebih panjang; pengamatan disimpan terpisah dari prediksi.
@@ -1147,21 +1147,21 @@ SMC berupa rasio. Parameter yang dikunci tetap tidak berubah, termasuk pada DTA 
 parameter yang ditransfer dibatasi rentang pencarian target.
 Transfer ini masih memerlukan uji independen di DAS tak terukur.
 
-RF/XGBoost memprediksi kedalaman limpasan, lalu dikonversi ke debit dengan luas dan
+Machine Learning memprediksi kedalaman limpasan, lalu dikonversi ke debit dengan luas dan
 hari kalender. Prediktor: P, ET0, fraksi hari hujan, durasi, P tiga periode sebelumnya,
 jumlah P enam periode sebelumnya, musim sinus/kosinus, SMC, Ksat, infiltrasi, fraksi
 terbuka, elevasi dan lereng. Tidak memakai lag debit pengamatan. Enam periode pertama
 tidak diprediksi. Uji leave-one-DTA-out bila ada beberapa DTA berlabel; jika satu DTA,
 uji temporal 75/25 bila sampel mencukupi. Fold dengan <24 sampel latih atau <6 uji
 tidak dilaporkan sebagai validasi. NSE, KGE, RMSE, bias dan PBIAS dicantumkan; tidak
-ada klaim akurasi bila belum diuji. RF/XGBoost tidak menjamin neraca air atau keandalan
+ada klaim akurasi bila belum diuji. Machine Learning tidak menjamin neraca air atau keandalan
 ekstrapolasi. Debit pengambilan, operasi waduk, dan perubahan lahan historis belum dimodelkan.
 
 Tahun akhir boleh parsial, hanya periode iklim lengkap yang dihitung; saat ini sumber
 harian mencakup 1990–September 2026. Statistik hanya memakai periode numerik tersedia.
 Workbook menyertakan pengamatan, prediksi, parameter GIS/model, input iklim, neraca air
 Mock, peringatan, dan hasil validasi. Nilai prediksi Mock/ML diekspor sebagai hasil
-perhitungan; formula transfer Excel tetap dipakai untuk HydroMODAR.
+perhitungan; formula transfer Excel tetap dipakai untuk Modular Drainage Area Ratio.
 
 `23_export_r2_bundle.bat` memprioritaskan hujan harian untuk membentuk `rainfall.tif`
 tengah bulanan (setiap sel wajib lengkap seluruh hari) dan laporan 30 nilai tertinggi
